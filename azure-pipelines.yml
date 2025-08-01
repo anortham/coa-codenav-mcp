@@ -175,6 +175,9 @@ stages:
               versionSpec: '18.x'
 
 
+          - task: NuGetAuthenticate@1
+            displayName: 'Authenticate to NuGet feeds'
+
           - task: DotNetCoreCLI@2
             displayName: "Restore packages"
             inputs:
@@ -269,3 +272,5 @@ stages:
               publishVstsFeed: "COA"
               allowPackageConflicts: true
               arguments: "--skip-duplicate"
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
