@@ -257,6 +257,9 @@ stages:
               artifactName: "packages"
               downloadPath: "$(System.ArtifactsDirectory)"
 
+          - task: NuGetAuthenticate@1
+            displayName: 'Authenticate to NuGet feed'
+            
           - task: DotNetCoreCLI@2
             displayName: "Push to COA Azure DevOps feed"
             inputs:
