@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "mcp__codesearch__index_workspace",
+      "mcp__codesearch__batch_operations",
+      "mcp__codesearch__text_search",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(dotnet build)",
+      "mcp__codesearch__file_search",
+      "mcp__codenav__roslyn_goto_definition",
+      "mcp__codenav__roslyn_load_solution",
+      "mcp__codenav__roslyn_find_all_references",
+      "Bash(dotnet build:*)",
+      "mcp__codenav__roslyn_trace_call_stack",
+      "Bash(grep:*)",
+      "mcp__codenav__roslyn_symbol_search",
+      "mcp__codenav__roslyn_find_implementations",
+      "mcp__codenav__roslyn_document_symbols",
+      "mcp__codenav__roslyn_get_type_members",
+      "mcp__codenav__roslyn_get_diagnostics"
+    ],
+    "deny": []
+  }
+}
