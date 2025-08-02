@@ -46,6 +46,8 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
     {
         _logger.LogDebug("Hover request received: FilePath={FilePath}, Line={Line}, Column={Column}", 
             parameters.FilePath, parameters.Line, parameters.Column);
+        
+        var startTime = DateTime.UtcNow;
             
         try
         {
@@ -58,9 +60,9 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
             if (document == null)
             {
                 _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return new HoverResult
+                return new HoverToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = $"Document not found in workspace: {parameters.FilePath}",
                     Error = new ErrorInfo
                     {
@@ -83,6 +85,15 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
                                 }
                             }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -101,9 +112,9 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
             if (semanticModel == null)
             {
                 _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
-                return new HoverResult
+                return new HoverToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = "Could not get semantic model for document",
                     Error = new ErrorInfo
                     {
@@ -117,6 +128,15 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
                                 "Try reloading the solution"
                             }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -128,9 +148,9 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
             
             if (node == null)
             {
-                return new HoverResult
+                return new HoverToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = "No syntax node found at position",
                     Error = new ErrorInfo
                     {
@@ -139,6 +159,15 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
                         {
                             Steps = new List<string> { "Ensure the position is within a valid code element" }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -161,9 +190,9 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
             {
                 _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
                     parameters.Line, parameters.Column, parameters.FilePath);
-                return new HoverResult
+                return new HoverToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = "No symbol found at the specified position",
                     Error = new ErrorInfo
                     {
@@ -177,6 +206,15 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
                                 "Try adjusting the column position to the start of the symbol name"
                             }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -199,16 +237,46 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
                 _logger.LogDebug("Stored hover result with URI: {ResourceUri}", resourceUri);
             }
 
-            var result = new HoverResult
+            var result = new HoverToolResult
             {
-                Found = true,
-                SymbolName = symbol.ToDisplayString(),
-                SymbolKind = symbol.Kind.ToString(),
+                Success = true,
                 HoverInfo = hoverInfo,
+                SymbolDetails = new SymbolDetails
+                {
+                    FullName = symbol.ToDisplayString(),
+                    Kind = symbol.Kind.ToString(),
+                    TypeInfo = GetTypeInfoSummary(symbol),
+                    Parameters = hoverInfo.Parameters,
+                    ReturnType = hoverInfo.ReturnType,
+                    Modifiers = GetModifiers(symbol)
+                },
                 Message = "Found hover information",
-                NextActions = nextActions,
+                Actions = nextActions,
                 Insights = insights,
-                ResourceUri = resourceUri
+                ResourceUri = resourceUri,
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                    TargetSymbol = symbol.ToDisplayString()
+                },
+                Summary = new SummaryInfo
+                {
+                    TotalFound = 1,
+                    Returned = 1,
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    SymbolInfo = new SymbolSummary
+                    {
+                        Name = symbol.Name,
+                        Kind = symbol.Kind.ToString(),
+                        ContainingType = symbol.ContainingType?.ToDisplayString(),
+                        Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                    }
+                },
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
             };
 
             _logger.LogInformation("Hover completed successfully for '{SymbolName}'", symbol.ToDisplayString());
@@ -217,9 +285,9 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in Hover");
-            return new HoverResult
+            return new HoverToolResult
             {
-                Found = false,
+                Success = false,
                 Message = $"Error: {ex.Message}",
                 Error = new ErrorInfo
                 {
@@ -233,6 +301,15 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
                             "Try the operation again"
                         }
                     }
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                 }
             };
         }
@@ -240,10 +317,12 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
 
     private HoverInfo BuildHoverInfo(ISymbol symbol, SyntaxNode node, SemanticModel semanticModel)
     {
+        const int MAX_DOCUMENTATION_LENGTH = 2000; // Limit documentation to avoid token overflow
+        
         var info = new HoverInfo
         {
             Signature = GetSignature(symbol),
-            Documentation = GetDocumentation(symbol),
+            Documentation = TruncateDocumentation(GetDocumentation(symbol), MAX_DOCUMENTATION_LENGTH),
             TypeInfo = GetTypeInfo(symbol),
             DeclarationInfo = GetDeclarationInfo(symbol)
         };
@@ -488,6 +567,60 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
             _ => symbol.Kind.ToString().ToLower()
         };
     }
+    
+    private string? TruncateDocumentation(string? documentation, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(documentation))
+            return documentation;
+            
+        if (documentation.Length <= maxLength)
+            return documentation;
+            
+        // Truncate and add ellipsis
+        return documentation.Substring(0, maxLength - 3) + "...";
+    }
+    
+    private List<string> GetModifiers(ISymbol symbol)
+    {
+        var modifiers = new List<string>();
+        
+        if (symbol.IsStatic) modifiers.Add("static");
+        if (symbol.IsVirtual) modifiers.Add("virtual");
+        if (symbol.IsOverride) modifiers.Add("override");
+        if (symbol.IsAbstract) modifiers.Add("abstract");
+        if (symbol.IsSealed) modifiers.Add("sealed");
+        if (symbol.IsExtern) modifiers.Add("extern");
+        
+        if (symbol is IMethodSymbol method)
+        {
+            if (method.IsAsync) modifiers.Add("async");
+            if (method.IsExtensionMethod) modifiers.Add("extension");
+        }
+        
+        return modifiers;
+    }
+    
+    private string? GetTypeInfoSummary(ISymbol symbol)
+    {
+        if (symbol is INamedTypeSymbol namedType)
+        {
+            var parts = new List<string>();
+            
+            if (namedType.TypeKind == TypeKind.Class) parts.Add("class");
+            else if (namedType.TypeKind == TypeKind.Interface) parts.Add("interface");
+            else if (namedType.TypeKind == TypeKind.Struct) parts.Add("struct");
+            else if (namedType.TypeKind == TypeKind.Enum) parts.Add("enum");
+            else if (namedType.TypeKind == TypeKind.Delegate) parts.Add("delegate");
+            
+            if (namedType.IsGenericType) parts.Add("generic");
+            if (namedType.BaseType != null && namedType.BaseType.SpecialType != SpecialType.System_Object)
+                parts.Add($"inherits {namedType.BaseType.Name}");
+            
+            return parts.Count > 0 ? string.Join(", ", parts) : null;
+        }
+        
+        return null;
+    }
 }
 
 public class HoverParams
@@ -505,146 +638,4 @@ public class HoverParams
     public int Column { get; set; }
 }
 
-public class HoverResult
-{
-    [JsonPropertyName("found")]
-    public bool Found { get; set; }
-    
-    [JsonPropertyName("symbolName")]
-    public string? SymbolName { get; set; }
-    
-    [JsonPropertyName("symbolKind")]
-    public string? SymbolKind { get; set; }
-    
-    [JsonPropertyName("hoverInfo")]
-    public HoverInfo? HoverInfo { get; set; }
-    
-    [JsonPropertyName("message")]
-    public string? Message { get; set; }
-
-    [JsonPropertyName("nextActions")]
-    public List<NextAction>? NextActions { get; set; }
-    
-    [JsonPropertyName("insights")]
-    public List<string>? Insights { get; set; }
-    
-    [JsonPropertyName("error")]
-    public ErrorInfo? Error { get; set; }
-    
-    [JsonPropertyName("resourceUri")]
-    public string? ResourceUri { get; set; }
-}
-
-public class HoverInfo
-{
-    [JsonPropertyName("signature")]
-    public string? Signature { get; set; }
-    
-    [JsonPropertyName("documentation")]
-    public string? Documentation { get; set; }
-    
-    [JsonPropertyName("typeInfo")]
-    public TypeInfoDetails? TypeInfo { get; set; }
-    
-    [JsonPropertyName("declarationInfo")]
-    public DeclarationInfo? DeclarationInfo { get; set; }
-    
-    [JsonPropertyName("parameters")]
-    public List<ParameterInfo>? Parameters { get; set; }
-    
-    [JsonPropertyName("returnType")]
-    public string? ReturnType { get; set; }
-    
-    [JsonPropertyName("propertyType")]
-    public string? PropertyType { get; set; }
-    
-    [JsonPropertyName("isReadOnly")]
-    public bool? IsReadOnly { get; set; }
-    
-    [JsonPropertyName("isWriteOnly")]
-    public bool? IsWriteOnly { get; set; }
-    
-    [JsonPropertyName("fieldType")]
-    public string? FieldType { get; set; }
-    
-    [JsonPropertyName("isConst")]
-    public bool? IsConst { get; set; }
-    
-    [JsonPropertyName("constValue")]
-    public string? ConstValue { get; set; }
-}
-
-public class ParameterInfo
-{
-    [JsonPropertyName("name")]
-    public required string Name { get; set; }
-    
-    [JsonPropertyName("type")]
-    public required string Type { get; set; }
-    
-    [JsonPropertyName("isOptional")]
-    public bool IsOptional { get; set; }
-    
-    [JsonPropertyName("hasDefaultValue")]
-    public bool HasDefaultValue { get; set; }
-    
-    [JsonPropertyName("defaultValue")]
-    public string? DefaultValue { get; set; }
-}
-
-public class TypeInfoDetails
-{
-    [JsonPropertyName("isClass")]
-    public bool IsClass { get; set; }
-    
-    [JsonPropertyName("isInterface")]
-    public bool IsInterface { get; set; }
-    
-    [JsonPropertyName("isStruct")]
-    public bool IsStruct { get; set; }
-    
-    [JsonPropertyName("isEnum")]
-    public bool IsEnum { get; set; }
-    
-    [JsonPropertyName("isDelegate")]
-    public bool IsDelegate { get; set; }
-    
-    [JsonPropertyName("isGeneric")]
-    public bool IsGeneric { get; set; }
-    
-    [JsonPropertyName("baseType")]
-    public string? BaseType { get; set; }
-    
-    [JsonPropertyName("interfaces")]
-    public List<string>? Interfaces { get; set; }
-}
-
-public class DeclarationInfo
-{
-    [JsonPropertyName("accessibility")]
-    public string? Accessibility { get; set; }
-    
-    [JsonPropertyName("isStatic")]
-    public bool IsStatic { get; set; }
-    
-    [JsonPropertyName("isAbstract")]
-    public bool IsAbstract { get; set; }
-    
-    [JsonPropertyName("isVirtual")]
-    public bool IsVirtual { get; set; }
-    
-    [JsonPropertyName("isOverride")]
-    public bool IsOverride { get; set; }
-    
-    [JsonPropertyName("isSealed")]
-    public bool IsSealed { get; set; }
-    
-    [JsonPropertyName("isExtern")]
-    public bool IsExtern { get; set; }
-    
-    [JsonPropertyName("containingType")]
-    public string? ContainingType { get; set; }
-    
-    [JsonPropertyName("namespace")]
-    public string? Namespace { get; set; }
-}
+// Result classes have been moved to COA.CodeNav.McpServer.Models namespace

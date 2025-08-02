@@ -4,6 +4,7 @@ using COA.CodeNav.McpServer.Services;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
+using System.IO;
 using System.Text.Json.Serialization;
 
 namespace COA.CodeNav.McpServer.Tools;
@@ -46,6 +47,8 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
         _logger.LogDebug("FindImplementations request received: FilePath={FilePath}, Line={Line}, Column={Column}", 
             parameters.FilePath, parameters.Line, parameters.Column);
             
+        var startTime = DateTime.UtcNow;
+            
         try
         {
             _logger.LogInformation("Processing FindImplementations for {FilePath} at {Line}:{Column}", 
@@ -57,9 +60,9 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
             if (document == null)
             {
                 _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return new FindImplementationsResult
+                return new FindImplementationsToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = $"Document not found in workspace: {parameters.FilePath}",
                     Error = new ErrorInfo
                     {
@@ -82,7 +85,13 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
                                 }
                             }
                         }
-                    }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata { ExecutionTime = "0ms" }
                 };
             }
 
@@ -100,9 +109,9 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
             if (semanticModel == null)
             {
                 _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
-                return new FindImplementationsResult
+                return new FindImplementationsToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = "Could not get semantic model for document",
                     Error = new ErrorInfo
                     {
@@ -116,6 +125,15 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
                                 "Try reloading the solution"
                             }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -132,9 +150,9 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
             {
                 _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
                     parameters.Line, parameters.Column, parameters.FilePath);
-                return new FindImplementationsResult
+                return new FindImplementationsToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = "No symbol found at the specified position",
                     Error = new ErrorInfo
                     {
@@ -148,6 +166,15 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
                                 "Try adjusting the column position to the start of the symbol name"
                             }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -155,16 +182,24 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
             // Check if symbol can have implementations
             if (!CanHaveImplementations(symbol))
             {
-                return new FindImplementationsResult
+                return new FindImplementationsToolResult
                 {
-                    Found = false,
-                    SymbolName = symbol.ToDisplayString(),
-                    SymbolKind = symbol.Kind.ToString(),
+                    Success = false,
                     Message = $"Symbol '{symbol.Name}' of kind '{symbol.Kind}' cannot have implementations",
                     Insights = new List<string>
                     {
                         "Only interfaces, abstract classes, abstract methods, and virtual methods can have implementations",
                         "For concrete types, use 'Find All References' to see where they are used"
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                        TargetSymbol = symbol.ToDisplayString()
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -251,43 +286,97 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
 
             if (!implementations.Any())
             {
-                return new FindImplementationsResult
+                return new FindImplementationsToolResult
                 {
-                    Found = false,
-                    SymbolName = symbol.ToDisplayString(),
-                    SymbolKind = symbol.Kind.ToString(),
-                    TotalImplementations = 0,
+                    Success = false,
                     Message = $"No implementations found for '{symbol.Name}'",
-                    Insights = GenerateNoImplementationsInsights(symbol)
+                    Insights = GenerateNoImplementationsInsights(symbol),
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                        TargetSymbol = symbol.ToDisplayString()
+                    },
+                    Summary = new SummaryInfo
+                    {
+                        TotalFound = 0,
+                        Returned = 0,
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                        SymbolInfo = new SymbolSummary
+                        {
+                            Name = symbol.Name,
+                            Kind = symbol.Kind.ToString(),
+                            ContainingType = symbol.ContainingType?.ToDisplayString(),
+                            Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                        }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                    }
                 };
             }
 
             var insights = GenerateInsights(symbol, implementations);
-            var nextActions = GenerateNextActions(symbol, implementations);
+            var actions = GenerateActions(symbol, implementations);
 
             var resourceUri = _resourceProvider?.StoreAnalysisResult("find-implementations",
                 new { symbol = symbol.ToDisplayString(), implementations },
                 $"Implementations of {symbol.Name}");
 
-            return new FindImplementationsResult
+            return new FindImplementationsToolResult
             {
-                Found = true,
-                SymbolName = symbol.ToDisplayString(),
-                SymbolKind = symbol.Kind.ToString(),
-                TotalImplementations = implementations.Count,
-                Implementations = implementations,
+                Success = true,
                 Message = $"Found {implementations.Count} implementation(s) of '{symbol.Name}'",
+                Implementations = implementations,
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                    TargetSymbol = symbol.ToDisplayString()
+                },
+                Summary = new SummaryInfo
+                {
+                    TotalFound = implementations.Count,
+                    Returned = implementations.Count,
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    SymbolInfo = new SymbolSummary
+                    {
+                        Name = symbol.Name,
+                        Kind = symbol.Kind.ToString(),
+                        ContainingType = symbol.ContainingType?.ToDisplayString(),
+                        Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                    }
+                },
+                ResultsSummary = new ResultsSummary
+                {
+                    Included = implementations.Count,
+                    Total = implementations.Count,
+                    HasMore = false
+                },
+                Distribution = new ImplementationDistribution
+                {
+                    ByType = implementations.GroupBy(i => i.ImplementationType ?? "Unknown")
+                        .ToDictionary(g => g.Key, g => g.Count()),
+                    ByProject = implementations.Where(i => i.Location != null)
+                        .GroupBy(i => Path.GetFileName(Path.GetDirectoryName(i.Location!.FilePath) ?? "Unknown"))
+                        .ToDictionary(g => g.Key, g => g.Count())
+                },
                 Insights = insights,
-                NextActions = nextActions,
+                Actions = actions,
+                Meta = new ToolMetadata
+                {
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                },
                 ResourceUri = resourceUri
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in Find Implementations");
-            return new FindImplementationsResult
+            return new FindImplementationsToolResult
             {
-                Found = false,
+                Success = false,
                 Message = $"Error: {ex.Message}",
                 Error = new ErrorInfo
                 {
@@ -301,6 +390,15 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
                             "Try the operation again"
                         }
                     }
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolMetadata
+                {
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                 }
             };
         }
@@ -420,7 +518,7 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
         return insights;
     }
 
-    private List<NextAction> GenerateNextActions(ISymbol symbol, List<ImplementationInfo> implementations)
+    private List<NextAction> GenerateActions(ISymbol symbol, List<ImplementationInfo> implementations)
     {
         var actions = new List<NextAction>();
 
@@ -484,28 +582,4 @@ public class FindImplementationsParams
     [JsonPropertyName("column")]
     [Description("Column number (1-based) where the symbol appears")]
     public required int Column { get; set; }
-}
-
-public class FindImplementationsResult
-{
-    public bool Found { get; set; }
-    public string? SymbolName { get; set; }
-    public string? SymbolKind { get; set; }
-    public int TotalImplementations { get; set; }
-    public List<ImplementationInfo>? Implementations { get; set; }
-    public string? Message { get; set; }
-    public List<string>? Insights { get; set; }
-    public List<NextAction>? NextActions { get; set; }
-    public ErrorInfo? Error { get; set; }
-    public string? ResourceUri { get; set; }
-}
-
-public class ImplementationInfo
-{
-    public string? ImplementingType { get; set; }
-    public string? ImplementingMember { get; set; }
-    public LocationInfo? Location { get; set; }
-    public bool IsDirectImplementation { get; set; }
-    public bool IsExplicitImplementation { get; set; }
-    public string? ImplementationType { get; set; }
 }

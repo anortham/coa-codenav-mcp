@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging;
 using System.Collections.Immutable;
+using System.IO;
 using System.Text.Json.Serialization;
 
 namespace COA.CodeNav.McpServer.Tools;
@@ -44,6 +45,8 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
         _logger.LogDebug("GetDiagnostics request received: Scope={Scope}, FilePath={FilePath}", 
             parameters.Scope, parameters.FilePath);
             
+        var startTime = DateTime.UtcNow;
+            
         try
         {
             _logger.LogInformation("Processing GetDiagnostics with scope: {Scope}", parameters.Scope);
@@ -53,7 +56,7 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
             if (!workspaces.Any())
             {
                 _logger.LogWarning("No workspace loaded");
-                return new GetDiagnosticsResult
+                return new GetDiagnosticsToolResult
                 {
                     Success = false,
                     Message = "No workspace loaded. Please load a solution or project first.",
@@ -78,6 +81,15 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                                 }
                             }
                         }
+                    },
+                    Query = new DiagnosticsQuery
+                    {
+                        Scope = parameters.Scope ?? "solution",
+                        FilePath = parameters.FilePath
+                    },
+                    Meta = new ToolMetadata
+                    {
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                     }
                 };
             }
@@ -91,7 +103,7 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                 case "file":
                     if (string.IsNullOrEmpty(parameters.FilePath))
                     {
-                        return new GetDiagnosticsResult
+                        return new GetDiagnosticsToolResult
                         {
                             Success = false,
                             Message = "File path is required when scope is 'file'",
@@ -106,6 +118,15 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                                         "Or use 'project' or 'solution' scope"
                                     }
                                 }
+                            },
+                            Query = new DiagnosticsQuery
+                            {
+                                Scope = parameters.Scope ?? "solution",
+                                FilePath = parameters.FilePath
+                            },
+                            Meta = new ToolMetadata
+                            {
+                                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                             }
                         };
                     }
@@ -113,7 +134,7 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                     var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
                     if (document == null)
                     {
-                        return new GetDiagnosticsResult
+                        return new GetDiagnosticsToolResult
                         {
                             Success = false,
                             Message = $"Document not found: {parameters.FilePath}",
@@ -128,6 +149,15 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                                         "Verify the file is part of the loaded solution/project"
                                     }
                                 }
+                            },
+                            Query = new DiagnosticsQuery
+                            {
+                                Scope = parameters.Scope ?? "solution",
+                                FilePath = parameters.FilePath
+                            },
+                            Meta = new ToolMetadata
+                            {
+                                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                             }
                         };
                     }
@@ -188,22 +218,61 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                 new { diagnostics = allDiagnostics, grouped = groupedDiagnostics },
                 $"Diagnostics for {parameters.Scope ?? "solution"}");
 
-            return new GetDiagnosticsResult
+            // Count diagnostics by severity
+            var errorCount = allDiagnostics.Count(d => d.Severity == "Error");
+            var warningCount = allDiagnostics.Count(d => d.Severity == "Warning");
+            var infoCount = allDiagnostics.Count(d => d.Severity == "Info");
+
+            return new GetDiagnosticsToolResult
             {
                 Success = true,
-                TotalDiagnostics = allDiagnostics.Count,
-                Diagnostics = parameters.GroupBy != null ? null : allDiagnostics,
-                GroupedDiagnostics = parameters.GroupBy != null ? groupedDiagnostics : null,
                 Message = FormatSummaryMessage(allDiagnostics),
+                Diagnostics = parameters.GroupBy != null ? null : allDiagnostics,
+                Query = new DiagnosticsQuery
+                {
+                    Scope = parameters.Scope ?? "solution",
+                    FilePath = parameters.FilePath,
+                    Severities = parameters.Severities?.ToList(),
+                    Categories = parameters.CategoryFilter != null ? new List<string> { parameters.CategoryFilter } : null
+                },
+                Summary = new DiagnosticsSummary
+                {
+                    TotalFound = allDiagnostics.Count,
+                    Returned = allDiagnostics.Count,
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    ErrorCount = errorCount,
+                    WarningCount = warningCount,
+                    InfoCount = infoCount
+                },
+                ResultsSummary = new ResultsSummary
+                {
+                    Included = allDiagnostics.Count,
+                    Total = allDiagnostics.Count,
+                    HasMore = false
+                },
+                Distribution = new DiagnosticsDistribution
+                {
+                    BySeverity = allDiagnostics.GroupBy(d => d.Severity)
+                        .ToDictionary(g => g.Key, g => g.Count()),
+                    ByCategory = allDiagnostics.GroupBy(d => d.Category ?? "General")
+                        .ToDictionary(g => g.Key, g => g.Count()),
+                    ByFile = allDiagnostics.Where(d => d.Location != null)
+                        .GroupBy(d => Path.GetFileName(d.Location!.FilePath))
+                        .ToDictionary(g => g.Key, g => g.Count())
+                },
                 Insights = insights,
-                NextActions = nextActions,
+                Actions = nextActions,
+                Meta = new ToolMetadata
+                {
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                },
                 ResourceUri = resourceUri
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in Get Diagnostics");
-            return new GetDiagnosticsResult
+            return new GetDiagnosticsToolResult
             {
                 Success = false,
                 Message = $"Error: {ex.Message}",
@@ -219,6 +288,15 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                             "Try the operation again"
                         }
                     }
+                },
+                Query = new DiagnosticsQuery
+                {
+                    Scope = parameters.Scope ?? "solution",
+                    FilePath = parameters.FilePath
+                },
+                Meta = new ToolMetadata
+                {
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                 }
             };
         }
@@ -703,33 +781,4 @@ public class GetDiagnosticsParams
     [JsonPropertyName("groupBy")]
     [Description("Group diagnostics by: 'File', 'Severity', 'Category', 'Source'")]
     public string? GroupBy { get; set; }
-}
-
-public class GetDiagnosticsResult
-{
-    public bool Success { get; set; }
-    public int TotalDiagnostics { get; set; }
-    public List<DiagnosticInfo>? Diagnostics { get; set; }
-    public Dictionary<string, List<DiagnosticInfo>>? GroupedDiagnostics { get; set; }
-    public string? Message { get; set; }
-    public List<string>? Insights { get; set; }
-    public List<NextAction>? NextActions { get; set; }
-    public ErrorInfo? Error { get; set; }
-    public string? ResourceUri { get; set; }
-}
-
-public class DiagnosticInfo
-{
-    public required string Id { get; set; }
-    public required string Category { get; set; }
-    public required string Severity { get; set; }
-    public required string Message { get; set; }
-    public required string Source { get; set; }
-    public string? FilePath { get; set; }
-    public LocationInfo? Location { get; set; }
-    public bool IsSuppressed { get; set; }
-    public bool IsWarningAsError { get; set; }
-    public bool HasCodeFix { get; set; }
-    public List<string>? Tags { get; set; }
-    public Dictionary<string, string?>? Properties { get; set; }
 }

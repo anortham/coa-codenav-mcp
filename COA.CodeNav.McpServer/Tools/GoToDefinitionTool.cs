@@ -46,6 +46,8 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
     {
         _logger.LogDebug("GoToDefinition request received: FilePath={FilePath}, Line={Line}, Column={Column}", 
             parameters.FilePath, parameters.Line, parameters.Column);
+        
+        var startTime = DateTime.UtcNow;
             
         try
         {
@@ -58,9 +60,9 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
             if (document == null)
             {
                 _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return new GoToDefinitionResult
+                return new GoToDefinitionToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = $"Document not found in workspace: {parameters.FilePath}",
                     Error = new ErrorInfo
                     {
@@ -83,6 +85,15 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
                                 }
                             }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -101,9 +112,9 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
             if (semanticModel == null)
             {
                 _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
-                return new GoToDefinitionResult
+                return new GoToDefinitionToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = "Could not get semantic model for document",
                     Error = new ErrorInfo
                     {
@@ -117,6 +128,15 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
                                 "Try reloading the solution"
                             }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -133,9 +153,9 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
             {
                 _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
                     parameters.Line, parameters.Column, parameters.FilePath);
-                return new GoToDefinitionResult
+                return new GoToDefinitionToolResult
                 {
-                    Found = false,
+                    Success = false,
                     Message = "No symbol found at the specified position",
                     Error = new ErrorInfo
                     {
@@ -149,6 +169,15 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
                                 "Try adjusting the column position to the start of the symbol name"
                             }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -179,24 +208,66 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
             // If symbol is from metadata, try to find the metadata location
             if (locations.Count == 0 && symbol.Locations.Any(l => l.IsInMetadata))
             {
-                return new GoToDefinitionResult
+                return new GoToDefinitionToolResult
                 {
-                    Found = true,
-                    SymbolName = symbol.ToDisplayString(),
-                    SymbolKind = symbol.Kind.ToString(),
+                    Success = true,
                     IsMetadata = true,
-                    Message = $"Symbol '{symbol.Name}' is defined in metadata (external assembly)"
+                    Message = $"Symbol '{symbol.Name}' is defined in metadata (external assembly)",
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                        TargetSymbol = symbol.ToDisplayString()
+                    },
+                    Summary = new SummaryInfo
+                    {
+                        TotalFound = 0,
+                        Returned = 0,
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                        SymbolInfo = new SymbolSummary
+                        {
+                            Name = symbol.Name,
+                            Kind = symbol.Kind.ToString(),
+                            ContainingType = symbol.ContainingType?.ToDisplayString(),
+                            Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                        }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                    }
                 };
             }
 
             if (locations.Count == 0)
             {
-                return new GoToDefinitionResult
+                return new GoToDefinitionToolResult
                 {
-                    Found = false,
-                    SymbolName = symbol.ToDisplayString(),
-                    SymbolKind = symbol.Kind.ToString(),
-                    Message = "Symbol definition location not found"
+                    Success = false,
+                    Message = "Symbol definition location not found",
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                        TargetSymbol = symbol.ToDisplayString()
+                    },
+                    Summary = new SummaryInfo
+                    {
+                        TotalFound = 0,
+                        Returned = 0,
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                        SymbolInfo = new SymbolSummary
+                        {
+                            Name = symbol.Name,
+                            Kind = symbol.Kind.ToString(),
+                            ContainingType = symbol.ContainingType?.ToDisplayString(),
+                            Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                        }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                    }
                 };
             }
 
@@ -220,18 +291,45 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
                 _logger.LogDebug("No resource provider available - result will not be persisted");
             }
             
-            var result = new GoToDefinitionResult
+            var result = new GoToDefinitionToolResult
             {
-                Found = true,
-                SymbolName = symbol.ToDisplayString(),
-                SymbolKind = symbol.Kind.ToString(),
+                Success = true,
                 Locations = locations,
                 Message = locations.Count == 1 
                     ? "Found definition" 
                     : $"Found {locations.Count} definitions (partial classes/methods)",
-                NextActions = nextActions,
+                Actions = nextActions,
                 Insights = insights,
-                ResourceUri = resourceUri
+                ResourceUri = resourceUri,
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                    TargetSymbol = symbol.ToDisplayString()
+                },
+                Summary = new SummaryInfo
+                {
+                    TotalFound = locations.Count,
+                    Returned = locations.Count,
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    SymbolInfo = new SymbolSummary
+                    {
+                        Name = symbol.Name,
+                        Kind = symbol.Kind.ToString(),
+                        ContainingType = symbol.ContainingType?.ToDisplayString(),
+                        Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                    }
+                },
+                ResultsSummary = new ResultsSummary
+                {
+                    Included = locations.Count,
+                    Total = locations.Count,
+                    HasMore = false
+                },
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
             };
 
             _logger.LogInformation("GoToDefinition completed successfully: Found {LocationCount} location(s) for '{SymbolName}'", 
@@ -242,9 +340,9 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in Go to Definition");
-            return new GoToDefinitionResult
+            return new GoToDefinitionToolResult
             {
-                Found = false,
+                Success = false,
                 Message = $"Error: {ex.Message}",
                 Error = new ErrorInfo
                 {
@@ -258,6 +356,15 @@ Not for: Finding usages (use roslyn_find_all_references), searching by name (use
                             "Try the operation again"
                         }
                     }
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                 }
             };
         }
@@ -414,53 +521,6 @@ public class GoToDefinitionParams
     public int Column { get; set; }
 }
 
-public class GoToDefinitionResult
-{
-    [JsonPropertyName("found")]
-    public bool Found { get; set; }
-    
-    [JsonPropertyName("symbolName")]
-    public string? SymbolName { get; set; }
-    
-    [JsonPropertyName("symbolKind")]
-    public string? SymbolKind { get; set; }
-    
-    [JsonPropertyName("locations")]
-    public List<LocationInfo>? Locations { get; set; }
-    
-    [JsonPropertyName("isMetadata")]
-    public bool IsMetadata { get; set; }
-    
-    [JsonPropertyName("message")]
-    public string? Message { get; set; }
+// This class has been replaced by GoToDefinitionToolResult in Models/ToolResults.cs
 
-    [JsonPropertyName("nextActions")]
-    public List<NextAction>? NextActions { get; set; }
-    
-    [JsonPropertyName("insights")]
-    public List<string>? Insights { get; set; }
-    
-    [JsonPropertyName("error")]
-    public ErrorInfo? Error { get; set; }
-    
-    [JsonPropertyName("resourceUri")]
-    public string? ResourceUri { get; set; }
-}
-
-public class LocationInfo
-{
-    [JsonPropertyName("filePath")]
-    public required string FilePath { get; set; }
-    
-    [JsonPropertyName("line")]
-    public int Line { get; set; }
-    
-    [JsonPropertyName("column")]
-    public int Column { get; set; }
-    
-    [JsonPropertyName("endLine")]
-    public int EndLine { get; set; }
-    
-    [JsonPropertyName("endColumn")]
-    public int EndColumn { get; set; }
-}
+// LocationInfo class moved to Models/ExistingModels.cs

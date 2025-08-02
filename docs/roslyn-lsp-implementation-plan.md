@@ -231,16 +231,243 @@ This document provides a comprehensive, step-by-step implementation plan for int
 ### 📋 TODO (1 tool)
 - Code Metrics Tool
 
+## Phase 6: Code Modification Tools (High Priority for AI Agents)
+
+### 6.1 Apply Code Fix Tool 🔧
+**Priority: CRITICAL** - Enables AI to automatically fix compilation errors
+
+#### Tool Specification
+```csharp
+[McpServerTool(Name = "roslyn_apply_code_fix")]
+[Description(@"Apply a code fix for a diagnostic at a specific location.
+Returns: Modified code with the fix applied, affected files list.
+Prerequisites: Call roslyn_get_diagnostics first to get available fixes.
+Use cases: Fix compilation errors, apply analyzer suggestions, resolve warnings.
+AI benefit: Enables automatic error resolution without manual intervention.")]
+```
+
+#### Implementation Requirements
+- [ ] Create ApplyCodeFixTool MCP tool
+- [ ] Integrate with Roslyn's CodeFixProvider infrastructure
+- [ ] Support preview mode before applying
+- [ ] Handle multi-file fixes (e.g., adding using statements)
+- [ ] Implement fix selection when multiple fixes available
+- [ ] Add rollback/undo support
+- [ ] Ensure transactional application (all-or-nothing)
+
+#### Result Schema
+```csharp
+public class ApplyCodeFixToolResult : ToolResultBase
+{
+    public List<FileChange> AppliedChanges { get; set; }
+    public string FixTitle { get; set; }
+    public string DiagnosticId { get; set; }
+    public bool AllFilesSucceeded { get; set; }
+}
+```
+
+### 6.2 Generate Code Tool 🏗️
+**Priority: HIGH** - Reduces boilerplate, speeds development
+
+#### Tool Specification
+```csharp
+[McpServerTool(Name = "roslyn_generate_code")]
+[Description(@"Generate code for common patterns (constructors, properties, interface implementations).
+Returns: Generated code with insertion points.
+Prerequisites: Position must be inside a type declaration.
+Use cases: Generate constructors from fields, properties from fields, interface implementations.
+AI benefit: Quickly scaffold code following project conventions.")]
+```
+
+#### Implementation Requirements
+- [ ] Create GenerateCodeTool MCP tool
+- [ ] Support generation types:
+  - [ ] Constructor from fields/properties
+  - [ ] Properties from fields
+  - [ ] Interface implementation stubs
+  - [ ] Override methods
+  - [ ] Equality members (Equals, GetHashCode)
+  - [ ] IDisposable pattern
+- [ ] Detect and follow project code style
+- [ ] Handle partial classes correctly
+- [ ] Generate XML documentation stubs
+
+### 6.3 Extract Method Tool 📦
+**Priority: HIGH** - Core refactoring operation
+
+#### Tool Specification
+```csharp
+[McpServerTool(Name = "roslyn_extract_method")]
+[Description(@"Extract selected code into a new method.
+Returns: Refactored code with new method and updated call site.
+Prerequisites: Valid code selection that can be extracted.
+Use cases: Refactor long methods, extract reusable logic, improve code organization.
+AI benefit: Helps maintain clean code architecture.")]
+```
+
+#### Implementation Requirements
+- [ ] Create ExtractMethodTool MCP tool
+- [ ] Implement code flow analysis
+- [ ] Detect required parameters and return values
+- [ ] Generate meaningful method names
+- [ ] Handle variable scoping correctly
+- [ ] Support async method extraction
+- [ ] Preserve code formatting
+
+### 6.4 Add Missing Usings Tool 📥
+**Priority: HIGH** - Common fix for copy-pasted code
+
+#### Tool Specification
+```csharp
+[McpServerTool(Name = "roslyn_add_missing_usings")]
+[Description(@"Add missing using directives for unresolved types.
+Returns: Updated file with required using statements.
+Prerequisites: File must have unresolved type references.
+Use cases: Fix missing imports, resolve type references after paste.
+AI benefit: Quickly fix common compilation errors.")]
+```
+
+#### Implementation Requirements
+- [ ] Create AddMissingUsingsTool MCP tool
+- [ ] Search for types in referenced assemblies
+- [ ] Suggest fully qualified names as alternative
+- [ ] Handle ambiguous type names
+- [ ] Respect existing using organization
+- [ ] Support global usings (.NET 6+)
+- [ ] Add extension method usings
+
+### 6.5 Format Document Tool 🎨
+**Priority: HIGH** - Maintains code quality
+
+#### Tool Specification
+```csharp
+[McpServerTool(Name = "roslyn_format_document")]
+[Description(@"Format code according to project settings and .editorconfig.
+Returns: Formatted code following project conventions.
+Prerequisites: Valid C# document.
+Use cases: Clean up code formatting, fix indentation, organize usings.
+AI benefit: Ensures generated/modified code matches project style.")]
+```
+
+#### Implementation Requirements
+- [ ] Create FormatDocumentTool MCP tool
+- [ ] Apply .editorconfig settings
+- [ ] Format indentation and whitespace
+- [ ] Organize using statements
+- [ ] Sort members by accessibility/type
+- [ ] Handle region formatting
+- [ ] Support format selection
+
+## Phase 7: Code Intelligence Tools (Medium Priority)
+
+### 7.1 Get Code Completions Tool 💡
+**Priority: MEDIUM** - Helps with API discovery
+
+#### Tool Specification
+```csharp
+[McpServerTool(Name = "roslyn_get_completions")]
+[Description(@"Get IntelliSense-like code completions at a position.
+Returns: List of completion items with documentation.
+Prerequisites: Valid position in code.
+Use cases: Discover available methods/properties, complete partial code.
+AI benefit: Helps explore APIs without documentation.")]
+```
+
+#### Implementation Requirements
+- [ ] Return completion items with:
+  - [ ] Symbol name and kind
+  - [ ] Full signature
+  - [ ] Documentation
+  - [ ] Parameter information
+- [ ] Support member access completions
+- [ ] Include snippet completions
+- [ ] Rank by relevance
+
+### 7.2 Find Type Hierarchy Tool 🌳
+**Priority: MEDIUM** - Understanding type relationships
+
+#### Implementation Requirements
+- [ ] Show inheritance chain
+- [ ] Find base classes and interfaces
+- [ ] Find all derived types
+- [ ] Support generic type relationships
+- [ ] Include interface implementations
+
+### 7.3 Get Signature Help Tool 📝
+**Priority: MEDIUM** - Helps with correct API usage
+
+#### Implementation Requirements
+- [ ] Show active parameter
+- [ ] Display all overloads
+- [ ] Include parameter documentation
+- [ ] Handle generic methods
+- [ ] Support named parameters
+
+### 7.4 Find Unused Code Tool 🧹
+**Priority: MEDIUM** - Code cleanup
+
+#### Implementation Requirements
+- [ ] Detect unused:
+  - [ ] Private methods
+  - [ ] Fields
+  - [ ] Properties
+  - [ ] Classes
+  - [ ] Using statements
+- [ ] Consider reflection usage
+- [ ] Handle conditional compilation
+
+### 7.5 Generate Unit Test Tool 🧪
+**Priority: MEDIUM** - Improves code quality
+
+#### Implementation Requirements
+- [ ] Detect test framework (xUnit, NUnit, MSTest)
+- [ ] Generate test class structure
+- [ ] Create test methods for public methods
+- [ ] Generate meaningful test names
+- [ ] Add basic assertions
+- [ ] Mock dependencies
+
+## Implementation Guidelines for All New Tools
+
+### Consistent Result Schema
+All new tools MUST follow the established pattern:
+
+1. **Inherit from ToolResultBase** or create specific result class
+2. **Include standard fields**: Success, Message, Error, Query, Summary, Meta
+3. **Implement token management** for large results (MAX_RETURNED_* constants)
+4. **Add AI-optimized features**: Insights, NextActions
+5. **Track execution time** in all cases
+
+### Error Handling
+1. Use specific **ErrorCodes** from the enum
+2. Provide **recovery steps** that are actionable
+3. Include **suggested actions** with pre-filled parameters
+4. Capture **original query** in error responses
+
+### Code Quality Requirements
+1. **Async all the way**: Use async/await properly
+2. **Cancellation support**: Respect CancellationToken
+3. **Logging**: Use ILogger with appropriate levels
+4. **Null safety**: Use nullable reference types
+5. **Resource cleanup**: Implement proper disposal
+
+### Testing Requirements
+1. **Unit tests** for core logic
+2. **Integration tests** with real Roslyn workspaces
+3. **Performance tests** for large codebases
+4. **Error case coverage**
+5. **AI scenario validation**
+
 ## Next Steps
 
-1. ~~Implement Symbol Search Tool (highest priority for AI agents)~~ ✅ COMPLETED
-2. ~~Implement Find Implementations Tool (critical for code understanding)~~ ✅ COMPLETED
-~~3. Complete Document Symbols Tool (in progress)~~ ✅ COMPLETED
-~~4. Implement Get Type Members Tool~~ ✅ COMPLETED
-~~5. Implement Get Diagnostics Tool~~ ✅ COMPLETED
+1. Implement Apply Code Fix Tool (highest priority - enables error fixing)
+2. Implement Generate Code Tool (high value for code generation)
+3. Implement Extract Method Tool (essential refactoring)
+4. Implement Add Missing Usings Tool (common quick fix)
+5. Implement Format Document Tool (code quality)
 6. Evaluate performance and reliability metrics
 7. Gather user feedback and iterate
-8. Consider implementing Code Metrics Tool
+8. Consider implementing Phase 7 tools based on usage patterns
 
 ## Success Metrics
 

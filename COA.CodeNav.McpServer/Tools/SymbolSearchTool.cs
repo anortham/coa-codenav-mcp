@@ -19,6 +19,8 @@ public class SymbolSearchTool : ITool
     private readonly ILogger<SymbolSearchTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
+    
+    private const int MAX_RETURNED_SYMBOLS = 50; // Limit returned symbols to manage token usage
 
     public string ToolName => "roslyn_symbol_search";
     public string Description => "Search for symbols by name or pattern across the solution";
@@ -45,6 +47,8 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
         _logger.LogDebug("SymbolSearch request received: Query={Query}, SearchType={SearchType}, SymbolKinds={SymbolKinds}", 
             parameters.Query, parameters.SearchType, string.Join(",", parameters.SymbolKinds ?? Array.Empty<string>()));
             
+        var startTime = DateTime.UtcNow;
+            
         try
         {
             _logger.LogInformation("Processing SymbolSearch for query: {Query}", parameters.Query);
@@ -54,10 +58,9 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
             if (!workspaces.Any())
             {
                 _logger.LogWarning("No workspace loaded");
-                return new SymbolSearchResult
+                return new SymbolSearchToolResult
                 {
-                    Found = false,
-                    Query = parameters.Query,
+                    Success = false,
                     Message = "No workspace loaded. Please load a solution or project first.",
                     Error = new ErrorInfo
                     {
@@ -80,7 +83,14 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                                 }
                             }
                         }
-                    }
+                    },
+                    Query = new SymbolSearchQuery 
+                    { 
+                        SearchPattern = parameters.Query,
+                        SearchType = parameters.SearchType ?? "contains",
+                        SymbolKinds = parameters.SymbolKinds?.ToList()
+                    },
+                    Meta = new ToolMetadata { ExecutionTime = "0ms" }
                 };
             }
 
@@ -90,7 +100,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
             {
                 allProjects.AddRange(workspace.Solution.Projects);
             }
-            var symbols = new ConcurrentBag<SymbolInfo>();
+            var symbols = new ConcurrentBag<Models.SymbolInfo>();
             var searchPattern = BuildSearchPattern(parameters.Query, parameters.SearchType);
 
             // Process all projects in parallel
@@ -118,55 +128,99 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
 
             await Task.WhenAll(tasks);
 
-            var resultList = symbols
+            // Apply max result limit to manage token usage
+            var maxResults = Math.Min(parameters.MaxResults ?? MAX_RETURNED_SYMBOLS, MAX_RETURNED_SYMBOLS);
+            var allSymbols = symbols
                 .OrderBy(s => s.Name)
                 .ThenBy(s => s.FullName)
-                .Take(parameters.MaxResults ?? 100)
                 .ToList();
+                
+            var resultList = allSymbols.Take(maxResults).ToList();
 
             if (!resultList.Any())
             {
-                return new SymbolSearchResult
+                return new SymbolSearchToolResult
                 {
-                    Found = false,
-                    Query = parameters.Query,
-                    TotalMatches = 0,
+                    Success = false,
                     Message = $"No symbols found matching '{parameters.Query}'",
                     Insights = new List<string>
                     {
                         "Try using wildcards: *Service to find symbols ending with 'Service'",
                         "Use fuzzy search by appending ~: UserSrvc~ to find similar names",
                         "Check if the solution is fully loaded and compiled"
+                    },
+                    Query = new SymbolSearchQuery 
+                    { 
+                        SearchPattern = parameters.Query,
+                        SearchType = parameters.SearchType ?? "contains",
+                        SymbolKinds = parameters.SymbolKinds?.ToList()
+                    },
+                    Summary = new SummaryInfo
+                    {
+                        TotalFound = 0,
+                        Returned = 0,
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
 
-            var insights = GenerateInsights(resultList, parameters);
+            var insights = GenerateInsights(allSymbols, resultList, parameters);
             var nextActions = GenerateNextActions(resultList);
 
-            var resourceUri = _resourceProvider?.StoreAnalysisResult("symbol-search",
-                new { query = parameters.Query, results = resultList },
-                $"Symbol search: {parameters.Query}");
-
-            return new SymbolSearchResult
+            var shouldTruncate = allSymbols.Count > maxResults;
+            string? resourceUri = null;
+            
+            // Store full results if truncated
+            if (shouldTruncate && _resourceProvider != null)
             {
-                Found = true,
-                Query = parameters.Query,
-                TotalMatches = resultList.Count,
+                resourceUri = _resourceProvider.StoreAnalysisResult("symbol-search",
+                    new { query = parameters.Query, results = allSymbols },
+                    $"Symbol search: {parameters.Query} (full results)");
+            }
+            
+            return new SymbolSearchToolResult
+            {
+                Success = true,
+                Message = $"Found {allSymbols.Count} symbols matching '{parameters.Query}'{(shouldTruncate ? $" (showing first {resultList.Count})" : "")}",
                 Symbols = resultList,
-                Message = $"Found {resultList.Count} symbols matching '{parameters.Query}'",
                 Insights = insights,
-                NextActions = nextActions,
-                ResourceUri = resourceUri
+                Actions = nextActions,
+                ResourceUri = resourceUri,
+                Query = new SymbolSearchQuery 
+                { 
+                    SearchPattern = parameters.Query,
+                    SearchType = parameters.SearchType ?? "contains",
+                    SymbolKinds = parameters.SymbolKinds?.ToList()
+                },
+                Summary = new SummaryInfo
+                {
+                    TotalFound = allSymbols.Count,
+                    Returned = resultList.Count,
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                },
+                ResultsSummary = new ResultsSummary
+                {
+                    Included = resultList.Count,
+                    Total = allSymbols.Count,
+                    HasMore = shouldTruncate
+                },
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    Truncated = shouldTruncate
+                }
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in Symbol Search");
-            return new SymbolSearchResult
+            return new SymbolSearchToolResult
             {
-                Found = false,
-                Query = parameters.Query,
+                Success = false,
                 Message = $"Error: {ex.Message}",
                 Error = new ErrorInfo
                 {
@@ -180,6 +234,16 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                             "Try the operation again"
                         }
                     }
+                },
+                Query = new SymbolSearchQuery 
+                { 
+                    SearchPattern = parameters.Query,
+                    SearchType = parameters.SearchType ?? "contains",
+                    SymbolKinds = parameters.SymbolKinds?.ToList()
+                },
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                 }
             };
         }
@@ -189,7 +253,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
         INamespaceOrTypeSymbol container,
         Func<string, bool> searchPattern,
         SymbolSearchParams parameters,
-        ConcurrentBag<SymbolInfo> results,
+        ConcurrentBag<Models.SymbolInfo> results,
         string projectName,
         CancellationToken cancellationToken)
     {
@@ -200,7 +264,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
             if (location != null)
             {
                 var lineSpan = location.GetLineSpan();
-                results.Add(new SymbolInfo
+                results.Add(new Models.SymbolInfo
                 {
                     Name = container.Name,
                     FullName = container.ToDisplayString(),
@@ -217,7 +281,9 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                     Accessibility = container.DeclaredAccessibility.ToString(),
                     IsStatic = container.IsStatic,
                     IsAbstract = container.IsAbstract,
-                    IsSealed = container.IsSealed
+                    IsSealed = container.IsSealed,
+                    IsVirtual = container is ITypeSymbol type && type.IsVirtual,
+                    IsOverride = container is ITypeSymbol t && t.IsOverride
                 });
             }
         }
@@ -239,7 +305,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                     if (location != null)
                     {
                         var lineSpan = location.GetLineSpan();
-                        results.Add(new SymbolInfo
+                        results.Add(new Models.SymbolInfo
                         {
                             Name = member.Name,
                             FullName = member.ToDisplayString(),
@@ -377,16 +443,22 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
         return patternIndex == pattern.Length;
     }
 
-    private List<string> GenerateInsights(List<SymbolInfo> symbols, SymbolSearchParams parameters)
+    private List<string> GenerateInsights(List<Models.SymbolInfo> allSymbols, List<Models.SymbolInfo> returnedSymbols, SymbolSearchParams parameters)
     {
         var insights = new List<string>();
 
+        // If results were truncated, mention it
+        if (allSymbols.Count > returnedSymbols.Count)
+        {
+            insights.Add($"🔍 Showing {returnedSymbols.Count} of {allSymbols.Count} total matches");
+        }
+
         // Distribution by symbol kind
-        var kindGroups = symbols.GroupBy(s => s.Kind).OrderByDescending(g => g.Count());
+        var kindGroups = allSymbols.GroupBy(s => s.Kind).OrderByDescending(g => g.Count());
         insights.Add($"Found {string.Join(", ", kindGroups.Select(g => $"{g.Count()} {g.Key.ToLower()}s"))}");
 
         // Distribution by project
-        var projectGroups = symbols.GroupBy(s => s.ProjectName).OrderByDescending(g => g.Count());
+        var projectGroups = allSymbols.GroupBy(s => s.ProjectName).OrderByDescending(g => g.Count());
         if (projectGroups.Count() > 1)
         {
             insights.Add($"Symbols distributed across {projectGroups.Count()} projects");
@@ -400,7 +472,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
         }
 
         // Accessibility insights
-        var publicSymbols = symbols.Count(s => s.Accessibility == "Public");
+        var publicSymbols = allSymbols.Count(s => s.Accessibility == "Public");
         if (publicSymbols > 0)
         {
             insights.Add($"{publicSymbols} public symbols that are part of the API surface");
@@ -409,7 +481,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
         return insights;
     }
 
-    private List<NextAction> GenerateNextActions(List<SymbolInfo> symbols)
+    private List<NextAction> GenerateNextActions(List<Models.SymbolInfo> symbols)
     {
         var actions = new List<NextAction>();
 
@@ -483,32 +555,5 @@ public class SymbolSearchParams
     public int? MaxResults { get; set; }
 }
 
-public class SymbolSearchResult
-{
-    public bool Found { get; set; }
-    public required string Query { get; set; }
-    public int TotalMatches { get; set; }
-    public List<SymbolInfo>? Symbols { get; set; }
-    public string? Message { get; set; }
-    public List<string>? Insights { get; set; }
-    public List<NextAction>? NextActions { get; set; }
-    public ErrorInfo? Error { get; set; }
-    public string? ResourceUri { get; set; }
-}
-
-public class SymbolInfo
-{
-    public required string Name { get; set; }
-    public required string FullName { get; set; }
-    public required string Kind { get; set; }
-    public string? ContainerType { get; set; }
-    public string? Namespace { get; set; }
-    public required string ProjectName { get; set; }
-    public LocationInfo? Location { get; set; }
-    public required string Accessibility { get; set; }
-    public bool IsStatic { get; set; }
-    public bool IsAbstract { get; set; }
-    public bool IsSealed { get; set; }
-    public bool IsVirtual { get; set; }
-    public bool IsOverride { get; set; }
-}
+// Result classes have been moved to COA.CodeNav.McpServer.Models namespace
+// Note: SymbolInfo for SymbolSearchTool remains in Models namespace but with enhanced properties

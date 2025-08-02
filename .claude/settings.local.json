@@ -19,7 +19,9 @@
       "mcp__codenav__roslyn_find_implementations",
       "mcp__codenav__roslyn_document_symbols",
       "mcp__codenav__roslyn_get_type_members",
-      "mcp__codenav__roslyn_get_diagnostics"
+      "mcp__codenav__roslyn_get_diagnostics",
+      "mcp__codenav__roslyn_rename_symbol",
+      "mcp__codenav__roslyn_hover"
     ],
     "deny": []
   }

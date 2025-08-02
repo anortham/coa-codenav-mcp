@@ -163,6 +163,185 @@ Key points:
 - Parameters should use `[Description]` from COA.CodeNav.McpServer.Attributes (not System.ComponentModel)
 - Tool class must be registered in Program.cs with DI: `services.AddScoped<MyNewTool>();`
 
+### Tool Result Schema Consistency
+
+**CRITICAL**: All tools MUST follow the consistent result schema pattern established by CodeSearch MCP. This ensures a uniform API surface for AI agents and maintainability.
+
+#### Required Result Structure
+
+Every tool must return a result class that inherits from `ToolResultBase` or create a specific result class in `Models/ToolResults.cs`:
+
+```csharp
+public class MyToolResult : ToolResultBase
+{
+    public override string Operation => "roslyn_my_tool";
+    
+    [JsonPropertyName("query")]
+    public QueryInfo? Query { get; set; }
+    
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
+    
+    // Tool-specific result fields...
+    
+    [JsonPropertyName("resultsSummary")]
+    public ResultsSummary? ResultsSummary { get; set; }
+    
+    [JsonPropertyName("distribution")]
+    public MyDistribution? Distribution { get; set; }  // Optional
+}
+```
+
+#### Standard Fields (from ToolResultBase)
+
+1. **Success** (bool) - ALWAYS set to indicate success/failure
+2. **Operation** (string) - Tool name for tracking
+3. **Message** (string) - Human-readable result message
+4. **Error** (ErrorInfo) - Structured error with recovery steps
+5. **Insights** (List<string>) - AI-friendly insights about results
+6. **Actions** (List<NextAction>) - Suggested next tool calls
+7. **Meta** (ToolMetadata) - Execution time, truncation info
+8. **ResourceUri** (string) - URI for full results if truncated
+
+#### Error Handling Pattern
+
+```csharp
+return new MyToolResult
+{
+    Success = false,
+    Message = "Descriptive error message",
+    Error = new ErrorInfo
+    {
+        Code = ErrorCodes.SPECIFIC_ERROR_CODE,
+        Recovery = new RecoveryInfo
+        {
+            Steps = new List<string>
+            {
+                "Step 1 to recover",
+                "Step 2 to recover"
+            },
+            SuggestedActions = new List<SuggestedAction>
+            {
+                new SuggestedAction
+                {
+                    Tool = "suggested_tool",
+                    Description = "What this will do",
+                    Parameters = new { /* params */ }
+                }
+            }
+        }
+    },
+    Query = new QueryInfo { /* capture original query */ },
+    Meta = new ToolMetadata 
+    { 
+        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+    }
+};
+```
+
+#### Token Management
+
+For tools returning large collections, implement pagination:
+
+```csharp
+private const int MAX_RETURNED_ITEMS = 50; // Adjust based on item size
+
+// In your tool implementation:
+var shouldTruncate = results.Count > MAX_RETURNED_ITEMS;
+var returnedResults = shouldTruncate 
+    ? results.Take(MAX_RETURNED_ITEMS).ToList() 
+    : results;
+
+// Store full results if truncated
+if (shouldTruncate && _resourceProvider != null)
+{
+    var resourceUri = _resourceProvider.StoreAnalysisResult(
+        "tool-name",
+        new { results = results },
+        $"Full results for {query}"
+    );
+    // Include resourceUri in response
+}
+```
+
+#### AI-Optimized Features
+
+1. **Insights**: Generate 3-5 contextual insights about the results
+2. **NextActions**: Suggest logical follow-up tool calls with pre-filled parameters
+3. **Progressive Disclosure**: Use summary mode for large results
+4. **Execution Time**: Always track and report execution time
+5. **Query Context**: Always capture the original query parameters
+
+#### Example Implementation Pattern
+
+```csharp
+public async Task<object> ExecuteAsync(MyToolParams parameters, CancellationToken cancellationToken = default)
+{
+    var startTime = DateTime.UtcNow;
+    
+    try
+    {
+        // Tool logic here...
+        
+        return new MyToolResult
+        {
+            Success = true,
+            Message = "Clear success message",
+            // Tool-specific fields...
+            Query = new QueryInfo
+            {
+                FilePath = parameters.FilePath,
+                Position = new PositionInfo 
+                { 
+                    Line = parameters.Line, 
+                    Column = parameters.Column 
+                }
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = results.Count,
+                Returned = returnedResults.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            },
+            Insights = GenerateInsights(results),
+            Actions = GenerateNextActions(results),
+            Meta = new ToolMetadata
+            {
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                Truncated = shouldTruncate
+            }
+        };
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error in tool execution");
+        return new MyToolResult
+        {
+            Success = false,
+            Message = $"Error: {ex.Message}",
+            Error = new ErrorInfo
+            {
+                Code = ErrorCodes.INTERNAL_ERROR,
+                Recovery = new RecoveryInfo
+                {
+                    Steps = new List<string>
+                    {
+                        "Check the server logs for detailed error information",
+                        "Verify the solution/project is loaded correctly",
+                        "Try the operation again"
+                    }
+                }
+            },
+            Query = /* capture original query */,
+            Meta = new ToolMetadata 
+            { 
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+            }
+        };
+    }
+}
+```
+
 ### Testing
 To test the server:
 1. Build the project: `dotnet build --configuration Debug`

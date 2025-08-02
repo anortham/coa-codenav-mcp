@@ -18,21 +18,28 @@ public class FindAllReferencesTool
     private readonly ILogger<FindAllReferencesTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly AnalysisResultResourceProvider? _resourceProvider;
+    
+    private const int MAX_RETURNED_REFERENCES = 50; // Limit to avoid token overflow
 
     public FindAllReferencesTool(
         ILogger<FindAllReferencesTool> logger,
         RoslynWorkspaceService workspaceService,
-        DocumentService documentService)
+        DocumentService documentService,
+        AnalysisResultResourceProvider? resourceProvider = null)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _resourceProvider = resourceProvider;
     }
 
     [McpServerTool(Name = "roslyn_find_all_references")]
     [Description("Find all references to a symbol at a given position in a file")]
-    public async Task<FindAllReferencesResult> ExecuteAsync(FindAllReferencesParams parameters, CancellationToken cancellationToken = default)
+    public async Task<object> ExecuteAsync(FindAllReferencesParams parameters, CancellationToken cancellationToken = default)
     {
+        var startTime = DateTime.UtcNow;
+        
         try
         {
             _logger.LogInformation("Finding all references at {FilePath}:{Line}:{Column}", 
@@ -42,10 +49,32 @@ public class FindAllReferencesTool
             var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
             if (document == null)
             {
-                return new FindAllReferencesResult
+                return new FindAllReferencesToolResult
                 {
-                    Found = false,
-                    Message = $"Document not found in workspace: {parameters.FilePath}"
+                    Success = false,
+                    Message = $"Document not found in workspace: {parameters.FilePath}",
+                    Error = new ErrorInfo
+                    {
+                        Code = ErrorCodes.DOCUMENT_NOT_FOUND,
+                        Recovery = new RecoveryInfo
+                        {
+                            Steps = new List<string>
+                            {
+                                "Ensure the file path is correct and absolute",
+                                "Verify the solution/project containing this file is loaded",
+                                "Use roslyn_load_solution or roslyn_load_project to load the containing project"
+                            }
+                        }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                    }
                 };
             }
 
@@ -57,10 +86,32 @@ public class FindAllReferencesTool
             var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
             if (semanticModel == null)
             {
-                return new FindAllReferencesResult
+                return new FindAllReferencesToolResult
                 {
-                    Found = false,
-                    Message = "Failed to get semantic model"
+                    Success = false,
+                    Message = "Failed to get semantic model",
+                    Error = new ErrorInfo
+                    {
+                        Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
+                        Recovery = new RecoveryInfo
+                        {
+                            Steps = new List<string>
+                            {
+                                "Ensure the project is fully loaded and compiled",
+                                "Check for compilation errors in the project",
+                                "Try reloading the solution"
+                            }
+                        }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                    }
                 };
             }
 
@@ -68,10 +119,32 @@ public class FindAllReferencesTool
             var symbol = await SymbolFinder.FindSymbolAtPositionAsync(semanticModel, position, document.Project.Solution.Workspace, cancellationToken);
             if (symbol == null)
             {
-                return new FindAllReferencesResult
+                return new FindAllReferencesToolResult
                 {
-                    Found = false,
-                    Message = "No symbol found at the specified position"
+                    Success = false,
+                    Message = "No symbol found at the specified position",
+                    Error = new ErrorInfo
+                    {
+                        Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
+                        Recovery = new RecoveryInfo
+                        {
+                            Steps = new List<string>
+                            {
+                                "Verify the line and column numbers are correct (1-based)",
+                                "Ensure the cursor is on a symbol (class, method, property, etc.)",
+                                "Try adjusting the column position to the start of the symbol name"
+                            }
+                        }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                    }
                 };
             }
 
@@ -83,7 +156,7 @@ public class FindAllReferencesTool
                 document.Project.Solution, 
                 cancellationToken);
 
-            var locations = new List<ReferenceLocation>();
+            var locations = new List<Models.ReferenceLocation>();
 
             foreach (var referencedSymbol in references)
             {
@@ -93,7 +166,7 @@ public class FindAllReferencesTool
                     var span = location.Location.SourceSpan;
                     var lineSpan = (await refDoc.GetTextAsync(cancellationToken)).Lines.GetLinePositionSpan(span);
 
-                    locations.Add(new ReferenceLocation
+                    locations.Add(new Models.ReferenceLocation
                     {
                         FilePath = refDoc.FilePath ?? "<unknown>",
                         Line = lineSpan.Start.Line + 1,
@@ -109,33 +182,151 @@ public class FindAllReferencesTool
             _logger.LogInformation("Found {Count} references to {SymbolName}", locations.Count, symbol.Name);
 
             // Generate next actions
-            var nextActions = GenerateNextActions(symbol, locations);
-
-            return new FindAllReferencesResult
+            // Sort locations for consistent results
+            var sortedLocations = locations.OrderBy(l => l.FilePath).ThenBy(l => l.Line).ToList();
+            var totalCount = sortedLocations.Count;
+            
+            // Determine if we need to truncate
+            var shouldTruncate = totalCount > MAX_RETURNED_REFERENCES;
+            var returnedLocations = shouldTruncate 
+                ? sortedLocations.Take(MAX_RETURNED_REFERENCES).ToList()
+                : sortedLocations;
+            
+            // Store full results as a resource if truncated
+            string? resourceUri = null;
+            if (shouldTruncate && _resourceProvider != null)
             {
-                Found = true,
-                SymbolName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-                SymbolKind = symbol.Kind.ToString(),
-                TotalCount = locations.Count,
-                Locations = locations.OrderBy(l => l.FilePath).ThenBy(l => l.Line).ToList(),
-                Message = $"Found {locations.Count} reference(s)",
-                NextActions = nextActions
+                var fullData = new
+                {
+                    symbol = symbol.ToDisplayString(),
+                    symbolKind = symbol.Kind.ToString(),
+                    totalReferences = totalCount,
+                    allLocations = sortedLocations,
+                    searchedFrom = new { parameters.FilePath, parameters.Line, parameters.Column }
+                };
+                
+                resourceUri = _resourceProvider.StoreAnalysisResult(
+                    "find-all-references",
+                    fullData,
+                    $"All {totalCount} references to {symbol.Name}"
+                );
+                
+                _logger.LogDebug("Stored full reference data as resource: {ResourceUri}", resourceUri);
+            }
+            
+            var nextActions = GenerateNextActions(symbol, returnedLocations, shouldTruncate, resourceUri);
+            var insights = GenerateInsights(symbol, sortedLocations); // Use all locations for accurate insights
+            
+            // Calculate distribution on all locations
+            var distribution = new ReferenceDistribution
+            {
+                ByFile = sortedLocations.GroupBy(l => l.FilePath)
+                    .ToDictionary(g => g.Key, g => g.Count()),
+                ByKind = sortedLocations.GroupBy(l => l.Kind ?? "unknown")
+                    .ToDictionary(g => g.Key, g => g.Count())
+            };
+            
+            // Add truncation insight if needed
+            if (shouldTruncate)
+            {
+                insights.Insert(0, $"Showing first {MAX_RETURNED_REFERENCES} of {totalCount} references (full results available via resource URI)");
+            }
+
+            return new FindAllReferencesToolResult
+            {
+                Success = true,
+                Locations = returnedLocations,
+                Message = shouldTruncate 
+                    ? $"Found {totalCount} reference(s) - showing first {MAX_RETURNED_REFERENCES}"
+                    : $"Found {totalCount} reference(s)",
+                Actions = nextActions,
+                Insights = insights,
+                ResourceUri = resourceUri,
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                    TargetSymbol = symbol.ToDisplayString()
+                },
+                Summary = new SummaryInfo
+                {
+                    TotalFound = totalCount,
+                    Returned = returnedLocations.Count,
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    SymbolInfo = new SymbolSummary
+                    {
+                        Name = symbol.Name,
+                        Kind = symbol.Kind.ToString(),
+                        ContainingType = symbol.ContainingType?.ToDisplayString(),
+                        Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                    }
+                },
+                ResultsSummary = new ResultsSummary
+                {
+                    Included = returnedLocations.Count,
+                    Total = totalCount,
+                    HasMore = shouldTruncate
+                },
+                Distribution = distribution,
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    Truncated = shouldTruncate
+                }
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error finding references");
-            return new FindAllReferencesResult
+            return new FindAllReferencesToolResult
             {
-                Found = false,
-                Message = $"Error finding references: {ex.Message}"
+                Success = false,
+                Message = $"Error finding references: {ex.Message}",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.INTERNAL_ERROR,
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new List<string>
+                        {
+                            "Check the server logs for detailed error information",
+                            "Verify the solution/project is loaded correctly",
+                            "Try the operation again"
+                        }
+                    }
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
             };
         }
     }
 
-    private List<NextAction> GenerateNextActions(ISymbol symbol, List<ReferenceLocation> locations)
+    private List<NextAction> GenerateNextActions(ISymbol symbol, List<Models.ReferenceLocation> locations, bool wasTruncated, string? resourceUri)
     {
         var actions = new List<NextAction>();
+        
+        // If results were truncated, provide action to get full results
+        if (wasTruncated && !string.IsNullOrEmpty(resourceUri))
+        {
+            actions.Add(new NextAction
+            {
+                Id = "get_all_references",
+                Description = $"Retrieve all references from stored resource",
+                ToolName = "read_resource",
+                Parameters = new
+                {
+                    uri = resourceUri
+                },
+                Priority = "high"
+            });
+        }
 
         // If this is a method or property, suggest going to its definition
         if (symbol.Kind == SymbolKind.Method || symbol.Kind == SymbolKind.Property || 
@@ -241,6 +432,74 @@ public class FindAllReferencesTool
 
         return actions;
     }
+    
+    private List<string> GenerateInsights(ISymbol symbol, List<Models.ReferenceLocation> locations)
+    {
+        var insights = new List<string>();
+        
+        // Basic symbol info
+        insights.Add($"Symbol '{symbol.Name}' is a {GetFriendlySymbolKind(symbol)}");
+        
+        // File distribution
+        var fileCount = locations.Select(l => l.FilePath).Distinct().Count();
+        if (fileCount == 1)
+        {
+            insights.Add($"All references are in a single file");
+        }
+        else
+        {
+            insights.Add($"References spread across {fileCount} files");
+        }
+        
+        // Reference type distribution
+        var sourceRefs = locations.Count(l => l.Kind == "reference");
+        var metadataRefs = locations.Count(l => l.Kind == "metadata");
+        if (metadataRefs > 0)
+        {
+            insights.Add($"{sourceRefs} source references, {metadataRefs} metadata references");
+        }
+        
+        // Usage patterns
+        if (symbol.Kind == SymbolKind.Method)
+        {
+            insights.Add($"Method is called {locations.Count} time(s)");
+        }
+        else if (symbol.Kind == SymbolKind.Property)
+        {
+            insights.Add($"Property is accessed {locations.Count} time(s)");
+        }
+        else if (symbol.Kind == SymbolKind.Field)
+        {
+            insights.Add($"Field is referenced {locations.Count} time(s)");
+        }
+        
+        // Most referenced file
+        if (fileCount > 1)
+        {
+            var topFile = locations.GroupBy(l => l.FilePath)
+                .OrderByDescending(g => g.Count())
+                .First();
+            insights.Add($"Most references in {Path.GetFileName(topFile.Key)} ({topFile.Count()} references)");
+        }
+        
+        return insights;
+    }
+    
+    private string GetFriendlySymbolKind(ISymbol symbol)
+    {
+        return symbol.Kind switch
+        {
+            SymbolKind.Method => symbol is IMethodSymbol m && m.MethodKind == MethodKind.Constructor ? "constructor" : "method",
+            SymbolKind.Property => "property",
+            SymbolKind.Field => "field",
+            SymbolKind.Event => "event",
+            SymbolKind.NamedType => symbol is INamedTypeSymbol t ? t.TypeKind.ToString().ToLower() : "type",
+            SymbolKind.Namespace => "namespace",
+            SymbolKind.Parameter => "parameter",
+            SymbolKind.Local => "local variable",
+            _ => symbol.Kind.ToString().ToLower()
+        };
+    }
 }
 
 public class FindAllReferencesParams
@@ -258,50 +517,4 @@ public class FindAllReferencesParams
     public required int Column { get; set; }
 }
 
-public class FindAllReferencesResult
-{
-    [JsonPropertyName("found")]
-    public bool Found { get; set; }
-
-    [JsonPropertyName("symbolName")]
-    public string? SymbolName { get; set; }
-
-    [JsonPropertyName("symbolKind")]
-    public string? SymbolKind { get; set; }
-
-    [JsonPropertyName("totalCount")]
-    public int TotalCount { get; set; }
-
-    [JsonPropertyName("locations")]
-    public List<ReferenceLocation>? Locations { get; set; }
-
-    [JsonPropertyName("message")]
-    public string? Message { get; set; }
-
-    [JsonPropertyName("nextActions")]
-    public List<NextAction>? NextActions { get; set; }
-}
-
-public class ReferenceLocation
-{
-    [JsonPropertyName("filePath")]
-    public required string FilePath { get; set; }
-
-    [JsonPropertyName("line")]
-    public int Line { get; set; }
-
-    [JsonPropertyName("column")]
-    public int Column { get; set; }
-
-    [JsonPropertyName("endLine")]
-    public int EndLine { get; set; }
-
-    [JsonPropertyName("endColumn")]
-    public int EndColumn { get; set; }
-
-    [JsonPropertyName("kind")]
-    public string? Kind { get; set; }
-
-    [JsonPropertyName("text")]
-    public string? Text { get; set; }
-}
+// Result classes have been moved to Models/ToolResults.cs and Models/CodeElementModels.cs

@@ -40,6 +40,8 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
         _logger.LogDebug("RenameSymbol request received: FilePath={FilePath}, Line={Line}, Column={Column}, NewName={NewName}, Preview={Preview}", 
             parameters.FilePath, parameters.Line, parameters.Column, parameters.NewName, parameters.Preview);
             
+        var startTime = DateTime.UtcNow;
+            
         try
         {
             _logger.LogInformation("Processing RenameSymbol for {FilePath} at {Line}:{Column} to '{NewName}'", 
@@ -51,13 +53,13 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
             if (document == null)
             {
                 _logger.LogWarning("Document not found: {FilePath}", parameters.FilePath);
-                return new RenameSymbolResult
+                return new RenameSymbolToolResult
                 {
                     Success = false,
                     Message = $"Document not found: {parameters.FilePath}",
                     Error = new ErrorInfo
                     {
-                        Code = "DOCUMENT_NOT_FOUND",
+                        Code = ErrorCodes.DOCUMENT_NOT_FOUND,
                         Recovery = new RecoveryInfo
                         {
                             Steps = new List<string>
@@ -65,9 +67,24 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                                 "Ensure the file path is correct and absolute",
                                 "Verify the solution/project containing this file is loaded",
                                 "Use roslyn_load_solution or roslyn_load_project to load the workspace"
+                            },
+                            SuggestedActions = new List<SuggestedAction>
+                            {
+                                new SuggestedAction
+                                {
+                                    Tool = "roslyn_load_solution",
+                                    Description = "Load the solution containing this file",
+                                    Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
+                                }
                             }
                         }
-                    }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata { ExecutionTime = "0ms" }
                 };
             }
 
@@ -80,13 +97,13 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
             if (semanticModel == null)
             {
                 _logger.LogError("Failed to get semantic model for document");
-                return new RenameSymbolResult
+                return new RenameSymbolToolResult
                 {
                     Success = false,
                     Message = "Failed to get semantic model",
                     Error = new ErrorInfo
                     {
-                        Code = "SEMANTIC_MODEL_ERROR",
+                        Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
                         Recovery = new RecoveryInfo
                         {
                             Steps = new List<string>
@@ -96,7 +113,13 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                                 "Try reloading the solution"
                             }
                         }
-                    }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata { ExecutionTime = "0ms" }
                 };
             }
 
@@ -111,13 +134,13 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
             if (symbol == null)
             {
                 _logger.LogDebug("No symbol found at position {Position}", position);
-                return new RenameSymbolResult
+                return new RenameSymbolToolResult
                 {
                     Success = false,
                     Message = "No symbol found at the specified position",
                     Error = new ErrorInfo
                     {
-                        Code = "NO_SYMBOL_AT_POSITION",
+                        Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
                         Recovery = new RecoveryInfo
                         {
                             Steps = new List<string>
@@ -127,6 +150,15 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                                 "Check that the file has been saved and parsed"
                             }
                         }
+                    },
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
                 };
             }
@@ -139,12 +171,10 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
             {
                 _logger.LogWarning("Symbol cannot be renamed: {SymbolName} ({SymbolKind})", 
                     symbol.Name, symbol.Kind);
-                return new RenameSymbolResult
+                return new RenameSymbolToolResult
                 {
                     Success = false,
                     Message = $"Cannot rename {symbol.Kind} '{symbol.Name}'",
-                    SymbolName = symbol.Name,
-                    SymbolKind = symbol.Kind.ToString(),
                     Error = new ErrorInfo
                     {
                         Code = "SYMBOL_CANNOT_BE_RENAMED",
@@ -165,12 +195,10 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
             if (!IsValidIdentifier(parameters.NewName))
             {
                 _logger.LogWarning("Invalid identifier: {NewName}", parameters.NewName);
-                return new RenameSymbolResult
+                return new RenameSymbolToolResult
                 {
                     Success = false,
                     Message = $"'{parameters.NewName}' is not a valid identifier",
-                    SymbolName = symbol.Name,
-                    SymbolKind = symbol.Kind.ToString(),
                     Error = new ErrorInfo
                     {
                         Code = "INVALID_IDENTIFIER",
@@ -214,12 +242,10 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                 
                 if (!parameters.Preview)
                 {
-                    return new RenameSymbolResult
+                    return new RenameSymbolToolResult
                     {
                         Success = false,
                         Message = $"Rename would cause {conflicts.Count} conflict(s)",
-                        SymbolName = symbol.Name,
-                        SymbolKind = symbol.Kind.ToString(),
                         Conflicts = conflicts,
                         Error = new ErrorInfo
                         {
@@ -233,6 +259,16 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                                     "Use preview mode to see all changes before applying"
                                 }
                             }
+                        },
+                        Query = new QueryInfo
+                        {
+                            FilePath = parameters.FilePath,
+                            Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                            TargetSymbol = symbol.ToDisplayString()
+                        },
+                        Meta = new ToolMetadata 
+                        { 
+                            ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                         }
                     };
                 }
@@ -246,18 +282,39 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                 _logger.LogInformation("Rename preview generated: {ChangeCount} file(s) would be modified", changes.Count);
                 
                 // Store preview result
-                var previewResult = new RenameSymbolResult
+                var previewResult = new RenameSymbolToolResult
                 {
                     Success = true,
                     Message = $"Preview: Renaming '{symbol.Name}' to '{parameters.NewName}' would affect {changes.Count} file(s)",
-                    SymbolName = symbol.Name,
-                    SymbolKind = symbol.Kind.ToString(),
-                    NewName = parameters.NewName,
                     Changes = changes,
                     Conflicts = conflicts,
-                    IsPreview = true,
+                    Preview = true,
+                    Applied = false,
                     Insights = GenerateInsights(symbol, changes, conflicts),
-                    NextActions = GenerateNextActions(symbol, parameters, changes)
+                    Actions = GenerateNextActions(symbol, parameters, changes),
+                    Query = new QueryInfo
+                    {
+                        FilePath = parameters.FilePath,
+                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                        TargetSymbol = symbol.ToDisplayString()
+                    },
+                    Summary = new SummaryInfo
+                    {
+                        TotalFound = changes.Count,
+                        Returned = changes.Count,
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                        SymbolInfo = new SymbolSummary
+                        {
+                            Name = symbol.Name,
+                            Kind = symbol.Kind.ToString(),
+                            ContainingType = symbol.ContainingType?.ToDisplayString(),
+                            Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                        }
+                    },
+                    Meta = new ToolMetadata 
+                    { 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                    }
                 };
 
                 if (_resourceProvider != null)
@@ -282,18 +339,16 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                 }
             }
 
-            var result = new RenameSymbolResult
+            var result = new RenameSymbolToolResult
             {
                 Success = true,
                 Message = $"Successfully renamed '{symbol.Name}' to '{parameters.NewName}' in {changes.Count} file(s)",
-                SymbolName = symbol.Name,
-                SymbolKind = symbol.Kind.ToString(),
-                NewName = parameters.NewName,
                 Changes = changes,
                 Conflicts = conflicts,
-                IsPreview = false,
+                Preview = false,
+                Applied = true,
                 Insights = GenerateInsights(symbol, changes, conflicts),
-                NextActions = new List<NextAction>
+                Actions = new List<NextAction>
                 {
                     new NextAction
                     {
@@ -308,6 +363,29 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                         },
                         Priority = "high"
                     }
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                    TargetSymbol = symbol.ToDisplayString()
+                },
+                Summary = new SummaryInfo
+                {
+                    TotalFound = changes.Count,
+                    Returned = changes.Count,
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    SymbolInfo = new SymbolSummary
+                    {
+                        Name = symbol.Name,
+                        Kind = symbol.Kind.ToString(),
+                        ContainingType = symbol.ContainingType?.ToDisplayString(),
+                        Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                    }
+                },
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                 }
             };
 
@@ -323,13 +401,13 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in RenameSymbol");
-            return new RenameSymbolResult
+            return new RenameSymbolToolResult
             {
                 Success = false,
                 Message = $"Internal error: {ex.Message}",
                 Error = new ErrorInfo
                 {
-                    Code = "INTERNAL_ERROR",
+                    Code = ErrorCodes.INTERNAL_ERROR,
                     Recovery = new RecoveryInfo
                     {
                         Steps = new List<string>
@@ -339,6 +417,15 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                             "Try the operation again"
                         }
                     }
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                 }
             };
         }
@@ -373,9 +460,9 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
         return name.Skip(1).All(c => char.IsLetterOrDigit(c) || c == '_');
     }
 
-    private List<ConflictInfo> GetConflicts(Solution originalSolution, Solution renamedSolution)
+    private List<RenameConflict> GetConflicts(Solution originalSolution, Solution renamedSolution)
     {
-        var conflicts = new List<ConflictInfo>();
+        var conflicts = new List<RenameConflict>();
         
         // This is a simplified conflict detection
         // In a real implementation, Roslyn provides more detailed conflict information
@@ -417,13 +504,15 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
             var fileChange = new FileChange
             {
                 FilePath = originalDoc.FilePath ?? "",
-                Changes = textChanges.Select(tc => new TextChange
+                Changes = textChanges.Select(tc => new Models.TextChange
                 {
-                    StartLine = originalText.Lines.GetLinePosition(tc.Span.Start).Line + 1,
-                    StartColumn = originalText.Lines.GetLinePosition(tc.Span.Start).Character + 1,
-                    EndLine = originalText.Lines.GetLinePosition(tc.Span.End).Line + 1,
-                    EndColumn = originalText.Lines.GetLinePosition(tc.Span.End).Character + 1,
-                    OldText = originalText.GetSubText(tc.Span).ToString(),
+                    Span = new Models.TextSpan
+                    {
+                        Start = tc.Span.Start,
+                        End = tc.Span.End,
+                        Line = originalText.Lines.GetLinePosition(tc.Span.Start).Line + 1,
+                        Column = originalText.Lines.GetLinePosition(tc.Span.Start).Character + 1
+                    },
                     NewText = tc.NewText ?? ""
                 }).ToList()
             };
@@ -434,7 +523,7 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
         return changes;
     }
 
-    private List<string> GenerateInsights(ISymbol symbol, List<FileChange> changes, List<ConflictInfo> conflicts)
+    private List<string> GenerateInsights(ISymbol symbol, List<FileChange> changes, List<RenameConflict> conflicts)
     {
         var insights = new List<string>();
 
@@ -555,89 +644,4 @@ public class RenameSymbolParams
     public bool? RenameFile { get; set; }
 }
 
-public class RenameSymbolResult
-{
-    [JsonPropertyName("success")]
-    public bool Success { get; set; }
-    
-    [JsonPropertyName("message")]
-    public string? Message { get; set; }
-    
-    [JsonPropertyName("symbolName")]
-    public string? SymbolName { get; set; }
-    
-    [JsonPropertyName("symbolKind")]
-    public string? SymbolKind { get; set; }
-    
-    [JsonPropertyName("newName")]
-    public string? NewName { get; set; }
-    
-    [JsonPropertyName("changes")]
-    public List<FileChange>? Changes { get; set; }
-    
-    [JsonPropertyName("conflicts")]
-    public List<ConflictInfo>? Conflicts { get; set; }
-    
-    [JsonPropertyName("isPreview")]
-    public bool IsPreview { get; set; }
-    
-    [JsonPropertyName("insights")]
-    public List<string>? Insights { get; set; }
-    
-    [JsonPropertyName("nextActions")]
-    public List<NextAction>? NextActions { get; set; }
-    
-    [JsonPropertyName("error")]
-    public ErrorInfo? Error { get; set; }
-    
-    [JsonPropertyName("resourceUri")]
-    public string? ResourceUri { get; set; }
-}
-
-public class FileChange
-{
-    [JsonPropertyName("filePath")]
-    public required string FilePath { get; set; }
-    
-    [JsonPropertyName("changes")]
-    public required List<TextChange> Changes { get; set; }
-}
-
-public class TextChange
-{
-    [JsonPropertyName("startLine")]
-    public int StartLine { get; set; }
-    
-    [JsonPropertyName("startColumn")]
-    public int StartColumn { get; set; }
-    
-    [JsonPropertyName("endLine")]
-    public int EndLine { get; set; }
-    
-    [JsonPropertyName("endColumn")]
-    public int EndColumn { get; set; }
-    
-    [JsonPropertyName("oldText")]
-    public required string OldText { get; set; }
-    
-    [JsonPropertyName("newText")]
-    public required string NewText { get; set; }
-}
-
-public class ConflictInfo
-{
-    [JsonPropertyName("type")]
-    public required string Type { get; set; }
-    
-    [JsonPropertyName("description")]
-    public required string Description { get; set; }
-    
-    [JsonPropertyName("filePath")]
-    public string? FilePath { get; set; }
-    
-    [JsonPropertyName("line")]
-    public int? Line { get; set; }
-    
-    [JsonPropertyName("column")]
-    public int? Column { get; set; }
-}
+// Result classes have been moved to COA.CodeNav.McpServer.Models namespace
