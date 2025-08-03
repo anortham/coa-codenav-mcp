@@ -1,6 +1,7 @@
 using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using COA.CodeNav.McpServer.Utilities;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -115,37 +116,90 @@ Not for: Cross-file symbol search (use roslyn_symbol_search), finding references
             // Get the root node
             var root = await syntaxTree.GetRootAsync(cancellationToken);
 
-            // Extract symbols
-            var symbols = new List<DocumentSymbol>();
-            ExtractSymbols(root, symbols, semanticModel, parameters.IncludePrivate ?? false);
+            // Extract all symbols
+            var allSymbols = new List<DocumentSymbol>();
+            ExtractSymbols(root, allSymbols, semanticModel, parameters.IncludePrivate ?? false);
 
             // Apply filters
             if (parameters.SymbolKinds?.Any() == true)
             {
-                symbols = FilterSymbolsByKind(symbols, parameters.SymbolKinds);
+                allSymbols = FilterSymbolsByKind(allSymbols, parameters.SymbolKinds);
             }
 
-            // Generate insights
-            var insights = GenerateInsights(symbols);
+            // Apply token management
+            var totalSymbolCount = CountSymbols(allSymbols);
+            
+            // Create token-aware response
+            var response = TokenEstimator.CreateTokenAwareResponse(
+                allSymbols,
+                symbols => EstimateDocumentSymbolsTokens(symbols),
+                requestedMax: parameters.MaxResults ?? 100, // Default to 100 symbols
+                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
+                toolName: "roslyn_document_symbols"
+            );
+
+            // Generate insights (use all symbols for accurate insights)
+            var insights = GenerateInsights(allSymbols);
+            
+            // Add truncation message if needed
+            if (response.WasTruncated)
+            {
+                insights.Insert(0, response.GetTruncationMessage());
+                if (response.SafetyLimitApplied)
+                {
+                    // When safety limit is applied, we might need to flatten the hierarchy
+                    response.Items = FlattenSymbolHierarchy(response.Items, response.ReturnedCount);
+                }
+            }
 
             // Generate next actions
-            var nextActions = GenerateNextActions(symbols, parameters.FilePath);
+            var nextActions = GenerateNextActions(allSymbols, parameters.FilePath);
+            
+            // Add action to get more results if truncated
+            if (response.WasTruncated)
+            {
+                nextActions.Insert(0, new NextAction
+                {
+                    Id = "get_more_symbols",
+                    Description = "Get additional symbols",
+                    ToolName = "roslyn_document_symbols",
+                    Parameters = new
+                    {
+                        filePath = parameters.FilePath,
+                        maxResults = Math.Min(totalSymbolCount, 500),
+                        includePrivate = parameters.IncludePrivate
+                    },
+                    Priority = "high"
+                });
+            }
 
-            // Store result
-            var resourceUri = _resourceProvider?.StoreAnalysisResult("document-symbols",
-                new { filePath = parameters.FilePath, symbols },
-                $"Document symbols for {Path.GetFileName(parameters.FilePath)}");
+            // Store full result if truncated
+            string? resourceUri = null;
+            if (response.WasTruncated && _resourceProvider != null)
+            {
+                resourceUri = _resourceProvider.StoreAnalysisResult("document-symbols",
+                    new { filePath = parameters.FilePath, symbols = allSymbols, totalCount = totalSymbolCount },
+                    $"All {totalSymbolCount} symbols for {Path.GetFileName(parameters.FilePath)}");
+            }
 
             return new DocumentSymbolsResult
             {
                 Found = true,
                 FilePath = parameters.FilePath,
-                TotalSymbols = CountSymbols(symbols),
-                Symbols = symbols,
-                Message = $"Found {CountSymbols(symbols)} symbols in {Path.GetFileName(parameters.FilePath)}",
+                TotalSymbols = totalSymbolCount,
+                Symbols = response.Items,
+                Message = response.WasTruncated 
+                    ? $"Found {totalSymbolCount} symbols - showing {response.ReturnedCount}"
+                    : $"Found {totalSymbolCount} symbols in {Path.GetFileName(parameters.FilePath)}",
                 Insights = insights,
                 NextActions = nextActions,
-                ResourceUri = resourceUri
+                ResourceUri = resourceUri,
+                Meta = new ToolMetadata
+                {
+                    ExecutionTime = "0ms", // TODO: Add timing
+                    Truncated = response.WasTruncated,
+                    Tokens = response.EstimatedTokens
+                }
             };
         }
         catch (Exception ex)
@@ -600,6 +654,61 @@ Not for: Cross-file symbol search (use roslyn_symbol_search), finding references
         return result;
     }
 
+    private int EstimateDocumentSymbolsTokens(List<DocumentSymbol> symbols)
+    {
+        return TokenEstimator.EstimateCollection(
+            symbols,
+            symbol => EstimateSymbolTokens(symbol, includeChildren: true),
+            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
+        );
+    }
+    
+    private int EstimateSymbolTokens(DocumentSymbol symbol, bool includeChildren)
+    {
+        var tokens = TokenEstimator.Roslyn.EstimateDocumentSymbol(symbol, recursive: false);
+        
+        if (includeChildren && symbol.Children.Any())
+        {
+            tokens += symbol.Children.Sum(child => EstimateSymbolTokens(child, true));
+        }
+        
+        return tokens;
+    }
+    
+    private List<DocumentSymbol> FlattenSymbolHierarchy(List<DocumentSymbol> symbols, int maxCount)
+    {
+        var flattened = new List<DocumentSymbol>();
+        var queue = new Queue<(DocumentSymbol symbol, int depth)>(symbols.Select(s => (s, 0)));
+        
+        while (queue.Count > 0 && flattened.Count < maxCount)
+        {
+            var (symbol, depth) = queue.Dequeue();
+            
+            // Create a copy without children for flattened view
+            var flatSymbol = new DocumentSymbol
+            {
+                Name = depth > 0 ? new string(' ', depth * 2) + symbol.Name : symbol.Name,
+                Kind = symbol.Kind,
+                Location = symbol.Location,
+                Modifiers = symbol.Modifiers,
+                TypeParameters = symbol.TypeParameters,
+                Parameters = symbol.Parameters,
+                ReturnType = symbol.ReturnType,
+                Children = new List<DocumentSymbol>() // Empty children in flattened view
+            };
+            
+            flattened.Add(flatSymbol);
+            
+            // Add children to queue for processing
+            foreach (var child in symbol.Children)
+            {
+                queue.Enqueue((child, depth + 1));
+            }
+        }
+        
+        return flattened;
+    }
+
     private List<NextAction> GenerateNextActions(List<DocumentSymbol> symbols, string filePath)
     {
         var actions = new List<NextAction>();
@@ -678,6 +787,10 @@ public class DocumentSymbolsParams
     [JsonPropertyName("includePrivate")]
     [Description("Include private symbols (default: false)")]
     public bool? IncludePrivate { get; set; }
+    
+    [JsonPropertyName("maxResults")]
+    [Description("Maximum number of symbols to return (default: 100, max: 500)")]
+    public int? MaxResults { get; set; }
 }
 
 public class DocumentSymbolsResult
@@ -691,6 +804,7 @@ public class DocumentSymbolsResult
     public List<NextAction>? NextActions { get; set; }
     public ErrorInfo? Error { get; set; }
     public string? ResourceUri { get; set; }
+    public ToolMetadata? Meta { get; set; }
 }
 
 public class DocumentSymbol

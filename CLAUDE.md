@@ -239,30 +239,86 @@ return new MyToolResult
 };
 ```
 
-#### Token Management
+#### Token Management - CRITICAL PATTERN
 
-For tools returning large collections, implement pagination:
+**IMPORTANT**: Tools MUST implement pre-estimation and progressive reduction to prevent token overflow. We spent extensive time fine-tuning this in CodeSearch and it's equally critical here. If a tool uses 10% of the context window per call, users need to clear/compact every few minutes, seriously degrading usefulness.
+
+**Key principles:**
+1. **Pre-estimate response size** BEFORE building the response
+2. **Apply safety limits** (typically 5K-10K tokens max)
+3. **Progressive reduction** when over limit
+4. **Lightweight results** with pagination hints
+5. **NextActions** to guide agents on getting more results
+
+**Implementation pattern from CodeSearch:**
 
 ```csharp
-private const int MAX_RETURNED_ITEMS = 50; // Adjust based on item size
-
-// In your tool implementation:
-var shouldTruncate = results.Count > MAX_RETURNED_ITEMS;
-var returnedResults = shouldTruncate 
-    ? results.Take(MAX_RETURNED_ITEMS).ToList() 
-    : results;
-
-// Store full results if truncated
-if (shouldTruncate && _resourceProvider != null)
+// CRITICAL: Pre-estimate BEFORE building response
+private int EstimateResponseTokens(List<ResultType> results)
 {
-    var resourceUri = _resourceProvider.StoreAnalysisResult(
-        "tool-name",
-        new { results = results },
-        $"Full results for {query}"
-    );
-    // Include resourceUri in response
+    var baseTokens = 500; // Response structure overhead
+    var perItemTokens = 100; // Adjust based on your data
+    
+    // Sample first few items for accurate estimation
+    if (results.Any())
+    {
+        var sample = results.Take(Math.Min(5, results.Count)).ToList();
+        perItemTokens = sample.Sum(item => EstimateItemTokens(item)) / sample.Count;
+    }
+    
+    return baseTokens + (results.Count * perItemTokens) + analysisOverhead;
+}
+
+// In ExecuteAsync:
+const int SAFETY_TOKEN_LIMIT = 10000; // Max 10K tokens per response
+
+// First determine candidates
+var candidateResults = results.Take(requestedMax).ToList();
+
+// Pre-estimate tokens
+var preEstimatedTokens = EstimateResponseTokens(candidateResults);
+
+// Apply progressive reduction if needed
+if (preEstimatedTokens > SAFETY_TOKEN_LIMIT)
+{
+    // Try progressively smaller counts
+    for (int count = 50; count >= 10; count -= 10)
+    {
+        var testResults = results.Take(count).ToList();
+        if (EstimateResponseTokens(testResults) <= SAFETY_TOKEN_LIMIT)
+        {
+            candidateResults = testResults;
+            break;
+        }
+    }
+    
+    // Add warning to insights
+    insights.Insert(0, $"⚠️ Response size limit applied. Showing {candidateResults.Count} of {totalResults} results.");
+}
+
+// ALWAYS provide pagination hints
+if (results.Count > candidateResults.Count)
+{
+    // Store full results in resource provider
+    var resourceUri = _resourceProvider.StoreAnalysisResult(...);
+    
+    // Add NextAction for getting more results
+    actions.Add(new NextAction
+    {
+        Id = "get_more_results",
+        Description = "Get additional results",
+        ToolName = "tool_name",
+        Parameters = new { maxResults = 500 },
+        Priority = "high"
+    });
 }
 ```
+
+This pattern ensures:
+- Tools never blow up the context window
+- Agents get useful results on first try
+- Clear guidance on how to get more data if needed
+- Graceful degradation rather than errors
 
 #### AI-Optimized Features
 

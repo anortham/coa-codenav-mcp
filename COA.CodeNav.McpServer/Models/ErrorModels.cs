@@ -54,4 +54,10 @@ public static class ErrorCodes
     public const string SEMANTIC_MODEL_UNAVAILABLE = "SEMANTIC_MODEL_UNAVAILABLE";
     public const string INTERNAL_ERROR = "INTERNAL_ERROR";
     public const string INVALID_PARAMETERS = "INVALID_PARAMETERS";
+    public const string ANALYSIS_FAILED = "ANALYSIS_FAILED";
+    public const string DIAGNOSTIC_NOT_FOUND = "DIAGNOSTIC_NOT_FOUND";
+    public const string NO_CODE_FIXES_AVAILABLE = "NO_CODE_FIXES_AVAILABLE";
+    public const string FIX_NOT_FOUND = "FIX_NOT_FOUND";
+    public const string NO_TYPE_AT_POSITION = "NO_TYPE_AT_POSITION";
+    public const string INVALID_SELECTION = "INVALID_SELECTION";
 }

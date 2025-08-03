@@ -1,8 +1,11 @@
+using COA.CodeNav.McpServer.Configuration;
 using COA.CodeNav.McpServer.Exceptions;
 using COA.CodeNav.McpServer.Infrastructure;
+using COA.CodeNav.McpServer.Utilities;
 using COA.Mcp.Protocol;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -21,6 +24,8 @@ public class CodeNavMcpServer : BackgroundService
     private readonly AttributeBasedToolDiscovery _toolDiscovery;
     private readonly IResourceRegistry _resourceRegistry;
     private readonly AnalysisResultResourceProvider _analysisResultProvider;
+    private readonly SolutionFinder _solutionFinder;
+    private readonly StartupConfiguration _startupConfig;
     private readonly JsonSerializerOptions _jsonOptions;
     private StreamWriter? _writer;
 
@@ -32,7 +37,9 @@ public class CodeNavMcpServer : BackgroundService
         ToolRegistry toolRegistry,
         AttributeBasedToolDiscovery toolDiscovery,
         IResourceRegistry resourceRegistry,
-        AnalysisResultResourceProvider analysisResultProvider)
+        AnalysisResultResourceProvider analysisResultProvider,
+        SolutionFinder solutionFinder,
+        IOptions<StartupConfiguration> startupOptions)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -42,6 +49,8 @@ public class CodeNavMcpServer : BackgroundService
         _toolDiscovery = toolDiscovery;
         _resourceRegistry = resourceRegistry;
         _analysisResultProvider = analysisResultProvider;
+        _solutionFinder = solutionFinder;
+        _startupConfig = startupOptions.Value;
 
         _jsonOptions = new JsonSerializerOptions
         {
@@ -66,6 +75,12 @@ public class CodeNavMcpServer : BackgroundService
         // Register resource providers
         _logger.LogInformation("Registering resource providers...");
         RegisterResourceProviders();
+
+        // Auto-load solution if configured
+        if (_startupConfig.AutoLoadSolution)
+        {
+            await AutoLoadSolutionAsync(stoppingToken);
+        }
 
         using var reader = new StreamReader(Console.OpenStandardInput());
         _writer = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
@@ -323,6 +338,84 @@ public class CodeNavMcpServer : BackgroundService
         foreach (var provider in providers)
         {
             _logger.LogDebug("  - Provider: {Name} (Scheme: {Scheme})", provider.Name, provider.Scheme);
+        }
+    }
+
+    private async Task AutoLoadSolutionAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogInformation("Auto-loading solution on startup...");
+
+            string? solutionPath = null;
+
+            // First, check if a specific solution path is configured
+            if (!string.IsNullOrEmpty(_startupConfig.SolutionPath))
+            {
+                solutionPath = Path.GetFullPath(_startupConfig.SolutionPath);
+                if (!File.Exists(solutionPath))
+                {
+                    _logger.LogWarning("Configured solution path not found: {Path}", solutionPath);
+                    solutionPath = null;
+                }
+            }
+
+            // If no configured path or it doesn't exist, search for one
+            if (string.IsNullOrEmpty(solutionPath))
+            {
+                _logger.LogInformation("Searching for solution file...");
+                solutionPath = _solutionFinder.FindSolution(
+                    Directory.GetCurrentDirectory(),
+                    _startupConfig.MaxSearchDepth,
+                    _startupConfig.PreferredSolutionName);
+            }
+
+            if (string.IsNullOrEmpty(solutionPath))
+            {
+                var message = "No solution file found for auto-loading";
+                if (_startupConfig.RequireSolution)
+                {
+                    _logger.LogError(message);
+                    throw new InvalidOperationException(message);
+                }
+                else
+                {
+                    _logger.LogWarning(message);
+                    _logger.LogInformation("Roslyn tools will require manual solution loading via roslyn_load_solution");
+                    return;
+                }
+            }
+
+            // Load the solution
+            _logger.LogInformation("Auto-loading solution: {Solution}", solutionPath);
+            var workspace = await _workspaceService.LoadSolutionAsync(solutionPath);
+            
+            if (workspace != null)
+            {
+                var projects = workspace.Solution.Projects.Count();
+                _logger.LogInformation("Successfully loaded solution with {ProjectCount} project(s)", projects);
+                
+                // Log some helpful information
+                var projectNames = workspace.Solution.Projects.Select(p => p.Name).Take(5).ToList();
+                if (projectNames.Any())
+                {
+                    _logger.LogInformation("Loaded projects: {Projects}{More}", 
+                        string.Join(", ", projectNames),
+                        projects > 5 ? $" and {projects - 5} more..." : "");
+                }
+            }
+            else
+            {
+                _logger.LogError("Failed to load solution: {Solution}", solutionPath);
+                if (_startupConfig.RequireSolution)
+                {
+                    throw new InvalidOperationException($"Failed to load required solution: {solutionPath}");
+                }
+            }
+        }
+        catch (Exception ex) when (!_startupConfig.RequireSolution)
+        {
+            _logger.LogError(ex, "Error during solution auto-loading, continuing without solution");
         }
     }
 }

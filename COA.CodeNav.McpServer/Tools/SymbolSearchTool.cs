@@ -1,6 +1,7 @@
 using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using COA.CodeNav.McpServer.Utilities;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
@@ -20,7 +21,7 @@ public class SymbolSearchTool : ITool
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
     
-    private const int MAX_RETURNED_SYMBOLS = 50; // Limit returned symbols to manage token usage
+    // Removed hard limit - now using dynamic token estimation
 
     public string ToolName => "roslyn_symbol_search";
     public string Description => "Search for symbols by name or pattern across the solution";
@@ -128,16 +129,22 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
 
             await Task.WhenAll(tasks);
 
-            // Apply max result limit to manage token usage
-            var maxResults = Math.Min(parameters.MaxResults ?? MAX_RETURNED_SYMBOLS, MAX_RETURNED_SYMBOLS);
+            // Sort all symbols
             var allSymbols = symbols
                 .OrderBy(s => s.Name)
                 .ThenBy(s => s.FullName)
                 .ToList();
                 
-            var resultList = allSymbols.Take(maxResults).ToList();
+            // Apply token management
+            var response = TokenEstimator.CreateTokenAwareResponse(
+                allSymbols,
+                syms => EstimateSymbolTokens(syms),
+                requestedMax: parameters.MaxResults ?? 100, // Default to 100 symbols
+                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
+                toolName: "roslyn_symbol_search"
+            );
 
-            if (!resultList.Any())
+            if (!response.Items.Any())
             {
                 return new SymbolSearchToolResult
                 {
@@ -168,25 +175,52 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                 };
             }
 
-            var insights = GenerateInsights(allSymbols, resultList, parameters);
-            var nextActions = GenerateNextActions(resultList);
-
-            var shouldTruncate = allSymbols.Count > maxResults;
-            string? resourceUri = null;
+            // Generate insights (use all symbols for accurate insights)
+            var insights = GenerateInsights(allSymbols, response.Items, parameters);
+            
+            // Add truncation message if needed
+            if (response.WasTruncated)
+            {
+                insights.Insert(0, response.GetTruncationMessage());
+            }
+            
+            // Generate next actions
+            var nextActions = GenerateNextActions(response.Items);
+            
+            // Add action to get more results if truncated
+            if (response.WasTruncated)
+            {
+                nextActions.Insert(0, new NextAction
+                {
+                    Id = "get_more_symbols",
+                    Description = "Get additional symbols",
+                    ToolName = "roslyn_symbol_search",
+                    Parameters = new
+                    {
+                        query = parameters.Query,
+                        searchType = parameters.SearchType,
+                        maxResults = Math.Min(allSymbols.Count, 500)
+                    },
+                    Priority = "high"
+                });
+            }
             
             // Store full results if truncated
-            if (shouldTruncate && _resourceProvider != null)
+            string? resourceUri = null;
+            if (response.WasTruncated && _resourceProvider != null)
             {
                 resourceUri = _resourceProvider.StoreAnalysisResult("symbol-search",
-                    new { query = parameters.Query, results = allSymbols },
-                    $"Symbol search: {parameters.Query} (full results)");
+                    new { query = parameters.Query, results = allSymbols, totalCount = allSymbols.Count },
+                    $"All {allSymbols.Count} symbols matching: {parameters.Query}");
             }
             
             return new SymbolSearchToolResult
             {
                 Success = true,
-                Message = $"Found {allSymbols.Count} symbols matching '{parameters.Query}'{(shouldTruncate ? $" (showing first {resultList.Count})" : "")}",
-                Symbols = resultList,
+                Message = response.WasTruncated 
+                    ? $"Found {allSymbols.Count} symbols matching '{parameters.Query}' (showing {response.ReturnedCount})"
+                    : $"Found {allSymbols.Count} symbols matching '{parameters.Query}'",
+                Symbols = response.Items,
                 Insights = insights,
                 Actions = nextActions,
                 ResourceUri = resourceUri,
@@ -199,19 +233,20 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                 Summary = new SummaryInfo
                 {
                     TotalFound = allSymbols.Count,
-                    Returned = resultList.Count,
+                    Returned = response.ReturnedCount,
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                 },
                 ResultsSummary = new ResultsSummary
                 {
-                    Included = resultList.Count,
+                    Included = response.ReturnedCount,
                     Total = allSymbols.Count,
-                    HasMore = shouldTruncate
+                    HasMore = response.WasTruncated
                 },
                 Meta = new ToolMetadata 
                 { 
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    Truncated = shouldTruncate
+                    Truncated = response.WasTruncated,
+                    Tokens = response.EstimatedTokens
                 }
             };
         }
@@ -443,15 +478,20 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
         return patternIndex == pattern.Length;
     }
 
+    private int EstimateSymbolTokens(List<Models.SymbolInfo> symbols)
+    {
+        return TokenEstimator.EstimateCollection(
+            symbols,
+            symbol => TokenEstimator.Roslyn.EstimateSymbol(symbol),
+            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
+        );
+    }
+    
     private List<string> GenerateInsights(List<Models.SymbolInfo> allSymbols, List<Models.SymbolInfo> returnedSymbols, SymbolSearchParams parameters)
     {
         var insights = new List<string>();
 
-        // If results were truncated, mention it
-        if (allSymbols.Count > returnedSymbols.Count)
-        {
-            insights.Add($"🔍 Showing {returnedSymbols.Count} of {allSymbols.Count} total matches");
-        }
+        // Truncation is now handled by TokenEstimator
 
         // Distribution by symbol kind
         var kindGroups = allSymbols.GroupBy(s => s.Kind).OrderByDescending(g => g.Count());
@@ -551,7 +591,7 @@ public class SymbolSearchParams
     public string? ProjectFilter { get; set; }
 
     [JsonPropertyName("maxResults")]
-    [Description("Maximum number of results to return (default: 100)")]
+    [Description("Maximum number of results to return (default: 100, max: 500)")]
     public int? MaxResults { get; set; }
 }
 

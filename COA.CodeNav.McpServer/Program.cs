@@ -66,7 +66,14 @@ var host = Host.CreateDefaultBuilder(args)
     })
     .ConfigureServices((context, services) =>
     {
+        // Register configuration
+        services.Configure<COA.CodeNav.McpServer.Configuration.WorkspaceManagerConfig>(
+            context.Configuration.GetSection("WorkspaceManager"));
+        services.Configure<COA.CodeNav.McpServer.Configuration.StartupConfiguration>(
+            context.Configuration.GetSection("Startup"));
+        
         // Register core services
+        services.AddSingleton<COA.CodeNav.McpServer.Utilities.SolutionFinder>();
         services.AddSingleton<IPathResolutionService, PathResolutionService>();
         
         // Register infrastructure services
@@ -74,7 +81,8 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddSingleton<RoslynWorkspaceService>();
         services.AddSingleton<DocumentService>();
         services.AddSingleton<SymbolCache>();
-
+        services.AddSingleton<CodeFixService>();
+        
         // Register resource services
         services.AddSingleton<IResourceRegistry, ResourceRegistry>();
         services.AddSingleton<AnalysisResultResourceProvider>();
@@ -96,6 +104,15 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddScoped<DocumentSymbolsTool>();
         services.AddScoped<GetTypeMembersTool>();
         services.AddScoped<GetDiagnosticsTool>();
+        services.AddScoped<GetWorkspaceStatisticsTool>();
+        services.AddScoped<ApplyCodeFixTool>();
+        services.AddScoped<GenerateCodeTool>();
+        services.AddScoped<AddMissingUsingsTool>();
+        services.AddScoped<FormatDocumentTool>();
+        services.AddScoped<ExtractMethodTool>();
+        services.AddScoped<CodeMetricsTool>();
+        services.AddScoped<FindUnusedCodeTool>();
+        services.AddScoped<TypeHierarchyTool>();
 
         // Register MCP server
         services.AddSingleton<CodeNavMcpServer>();

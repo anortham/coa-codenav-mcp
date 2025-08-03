@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using COA.CodeNav.McpServer.Utilities;
 using COA.Mcp.Protocol;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -20,7 +21,7 @@ public class FindAllReferencesTool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
     
-    private const int MAX_RETURNED_REFERENCES = 50; // Limit to avoid token overflow
+    // Removed hard limit - now using dynamic token estimation
 
     public FindAllReferencesTool(
         ILogger<FindAllReferencesTool> logger,
@@ -181,20 +182,40 @@ public class FindAllReferencesTool
 
             _logger.LogInformation("Found {Count} references to {SymbolName}", locations.Count, symbol.Name);
 
-            // Generate next actions
             // Sort locations for consistent results
             var sortedLocations = locations.OrderBy(l => l.FilePath).ThenBy(l => l.Line).ToList();
             var totalCount = sortedLocations.Count;
             
-            // Determine if we need to truncate
-            var shouldTruncate = totalCount > MAX_RETURNED_REFERENCES;
-            var returnedLocations = shouldTruncate 
-                ? sortedLocations.Take(MAX_RETURNED_REFERENCES).ToList()
-                : sortedLocations;
+            // Apply token management
+            var response = TokenEstimator.CreateTokenAwareResponse(
+                sortedLocations,
+                locs => EstimateReferenceTokens(locs),
+                requestedMax: parameters.MaxResults ?? 50, // Default to 50 references
+                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
+                toolName: "roslyn_find_all_references"
+            );
+            
+            // Generate insights (use all locations for accurate insights)
+            var insights = GenerateInsights(symbol, sortedLocations);
+            
+            // Add truncation message if needed
+            if (response.WasTruncated)
+            {
+                insights.Insert(0, response.GetTruncationMessage());
+            }
+            
+            // Calculate distribution on all locations
+            var distribution = new ReferenceDistribution
+            {
+                ByFile = sortedLocations.GroupBy(l => l.FilePath)
+                    .ToDictionary(g => g.Key, g => g.Count()),
+                ByKind = sortedLocations.GroupBy(l => l.Kind ?? "unknown")
+                    .ToDictionary(g => g.Key, g => g.Count())
+            };
             
             // Store full results as a resource if truncated
             string? resourceUri = null;
-            if (shouldTruncate && _resourceProvider != null)
+            if (response.WasTruncated && _resourceProvider != null)
             {
                 var fullData = new
                 {
@@ -214,30 +235,34 @@ public class FindAllReferencesTool
                 _logger.LogDebug("Stored full reference data as resource: {ResourceUri}", resourceUri);
             }
             
-            var nextActions = GenerateNextActions(symbol, returnedLocations, shouldTruncate, resourceUri);
-            var insights = GenerateInsights(symbol, sortedLocations); // Use all locations for accurate insights
+            // Generate next actions
+            var nextActions = GenerateNextActions(symbol, response.Items, response.WasTruncated, resourceUri);
             
-            // Calculate distribution on all locations
-            var distribution = new ReferenceDistribution
+            // Add action to get more results if truncated
+            if (response.WasTruncated)
             {
-                ByFile = sortedLocations.GroupBy(l => l.FilePath)
-                    .ToDictionary(g => g.Key, g => g.Count()),
-                ByKind = sortedLocations.GroupBy(l => l.Kind ?? "unknown")
-                    .ToDictionary(g => g.Key, g => g.Count())
-            };
-            
-            // Add truncation insight if needed
-            if (shouldTruncate)
-            {
-                insights.Insert(0, $"Showing first {MAX_RETURNED_REFERENCES} of {totalCount} references (full results available via resource URI)");
+                nextActions.Insert(0, new NextAction
+                {
+                    Id = "get_more_references",
+                    Description = "Get additional references",
+                    ToolName = "roslyn_find_all_references",
+                    Parameters = new
+                    {
+                        filePath = parameters.FilePath,
+                        line = parameters.Line,
+                        column = parameters.Column,
+                        maxResults = Math.Min(totalCount, 500)
+                    },
+                    Priority = "high"
+                });
             }
 
             return new FindAllReferencesToolResult
             {
                 Success = true,
-                Locations = returnedLocations,
-                Message = shouldTruncate 
-                    ? $"Found {totalCount} reference(s) - showing first {MAX_RETURNED_REFERENCES}"
+                Locations = response.Items,
+                Message = response.WasTruncated 
+                    ? $"Found {totalCount} reference(s) - showing {response.ReturnedCount}"
                     : $"Found {totalCount} reference(s)",
                 Actions = nextActions,
                 Insights = insights,
@@ -251,7 +276,7 @@ public class FindAllReferencesTool
                 Summary = new SummaryInfo
                 {
                     TotalFound = totalCount,
-                    Returned = returnedLocations.Count,
+                    Returned = response.ReturnedCount,
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
                     SymbolInfo = new SymbolSummary
                     {
@@ -263,15 +288,16 @@ public class FindAllReferencesTool
                 },
                 ResultsSummary = new ResultsSummary
                 {
-                    Included = returnedLocations.Count,
+                    Included = response.ReturnedCount,
                     Total = totalCount,
-                    HasMore = shouldTruncate
+                    HasMore = response.WasTruncated
                 },
                 Distribution = distribution,
                 Meta = new ToolMetadata 
                 { 
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    Truncated = shouldTruncate
+                    Truncated = response.WasTruncated,
+                    Tokens = response.EstimatedTokens
                 }
             };
         }
@@ -308,6 +334,15 @@ public class FindAllReferencesTool
         }
     }
 
+    private int EstimateReferenceTokens(List<Models.ReferenceLocation> references)
+    {
+        return TokenEstimator.EstimateCollection(
+            references,
+            reference => TokenEstimator.Roslyn.EstimateReference(reference),
+            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
+        );
+    }
+    
     private List<NextAction> GenerateNextActions(ISymbol symbol, List<Models.ReferenceLocation> locations, bool wasTruncated, string? resourceUri)
     {
         var actions = new List<NextAction>();
@@ -438,7 +473,7 @@ public class FindAllReferencesTool
         var insights = new List<string>();
         
         // Basic symbol info
-        insights.Add($"Symbol '{symbol.Name}' is a {GetFriendlySymbolKind(symbol)}");
+        insights.Add($"Symbol '{symbol.Name}' is a {SymbolUtilities.GetFriendlySymbolKind(symbol)}");
         
         // File distribution
         var fileCount = locations.Select(l => l.FilePath).Distinct().Count();
@@ -485,21 +520,6 @@ public class FindAllReferencesTool
         return insights;
     }
     
-    private string GetFriendlySymbolKind(ISymbol symbol)
-    {
-        return symbol.Kind switch
-        {
-            SymbolKind.Method => symbol is IMethodSymbol m && m.MethodKind == MethodKind.Constructor ? "constructor" : "method",
-            SymbolKind.Property => "property",
-            SymbolKind.Field => "field",
-            SymbolKind.Event => "event",
-            SymbolKind.NamedType => symbol is INamedTypeSymbol t ? t.TypeKind.ToString().ToLower() : "type",
-            SymbolKind.Namespace => "namespace",
-            SymbolKind.Parameter => "parameter",
-            SymbolKind.Local => "local variable",
-            _ => symbol.Kind.ToString().ToLower()
-        };
-    }
 }
 
 public class FindAllReferencesParams
@@ -515,6 +535,10 @@ public class FindAllReferencesParams
     [JsonPropertyName("column")]
     [Description("Column number (1-based)")]
     public required int Column { get; set; }
+    
+    [JsonPropertyName("maxResults")]
+    [Description("Maximum number of references to return (default: 50, max: 500)")]
+    public int? MaxResults { get; set; }
 }
 
 // Result classes have been moved to Models/ToolResults.cs and Models/CodeElementModels.cs

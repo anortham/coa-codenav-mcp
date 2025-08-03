@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using COA.CodeNav.McpServer.Utilities;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -152,7 +153,7 @@ Not for: Static analysis (use other tools), finding implementations (use roslyn_
                 methodSymbol.ToDisplayString(), parameters.Direction);
 
             // Trace the call stack
-            var paths = new List<CallPath>();
+            var allPaths = new List<CallPath>();
             var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
             
             if (parameters.Direction == "forward")
@@ -160,44 +161,98 @@ Not for: Static analysis (use other tools), finding implementations (use roslyn_
                 // Trace calls made by this method
                 var path = await TraceForwardAsync(methodSymbol, document, parameters.MaxDepth ?? 10, visited, cancellationToken);
                 if (path != null)
-                    paths.Add(path);
+                    allPaths.Add(path);
             }
             else // backward
             {
                 // Find all callers of this method
                 var callers = await FindCallersAsync(methodSymbol, document.Project.Solution, cancellationToken);
-                foreach (var caller in callers.Take(10)) // Limit to prevent explosion
+                foreach (var caller in callers.Take(20)) // Get more initially, then apply token limit
                 {
                     var path = await TraceBackwardAsync(caller, methodSymbol, document.Project.Solution, parameters.MaxDepth ?? 10, visited, cancellationToken);
                     if (path != null)
-                        paths.Add(path);
+                        allPaths.Add(path);
                 }
             }
+            
+            // Apply token management
+            var response = TokenEstimator.CreateTokenAwareResponse(
+                allPaths,
+                paths => EstimateCallPathsTokens(paths, parameters.IncludeFramework),
+                requestedMax: parameters.MaxPaths ?? 10, // Default to 10 paths
+                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
+                toolName: "roslyn_trace_call_stack"
+            );
 
-            // Generate insights
-            var insights = GenerateInsights(paths, methodSymbol);
-            var keyFindings = GenerateKeyFindings(paths, methodSymbol);
+            // Generate insights (use all paths for accurate insights)
+            var insights = GenerateInsights(allPaths, methodSymbol);
+            
+            // Add truncation message if needed
+            if (response.WasTruncated)
+            {
+                insights.Insert(0, response.GetTruncationMessage());
+            }
+            
+            var keyFindings = GenerateKeyFindings(response.Items, methodSymbol);
             var nextActions = GenerateNextActions(methodSymbol, parameters);
+            
+            // Add action to get more results if truncated
+            if (response.WasTruncated)
+            {
+                nextActions.Insert(0, new NextAction
+                {
+                    Id = "get_more_paths",
+                    Description = "Get additional call paths",
+                    ToolName = "roslyn_trace_call_stack",
+                    Parameters = new
+                    {
+                        filePath = parameters.FilePath,
+                        line = parameters.Line,
+                        column = parameters.Column,
+                        direction = parameters.Direction,
+                        maxPaths = Math.Min(allPaths.Count, 50),
+                        maxDepth = parameters.MaxDepth
+                    },
+                    Priority = "high"
+                });
+            }
 
-            // Store result
-            var resourceUri = _resourceProvider?.StoreAnalysisResult("call-stack-trace", 
-                new { method = methodSymbol.ToDisplayString(), paths, direction = parameters.Direction }, 
-                $"Call stack trace for {methodSymbol.Name}");
+            // Store full result if truncated
+            string? resourceUri = null;
+            if (response.WasTruncated && _resourceProvider != null)
+            {
+                resourceUri = _resourceProvider.StoreAnalysisResult("call-stack-trace", 
+                    new { 
+                        method = methodSymbol.ToDisplayString(), 
+                        paths = allPaths, 
+                        totalPaths = allPaths.Count,
+                        direction = parameters.Direction 
+                    }, 
+                    $"All {allPaths.Count} call paths for {methodSymbol.Name}");
+            }
 
             var result = new TraceCallStackResult
             {
                 Success = true,
                 StartMethod = methodSymbol.ToDisplayString(),
                 Direction = parameters.Direction,
-                Paths = paths,
+                Paths = response.Items,
                 Insights = insights,
                 KeyFindings = keyFindings,
                 NextActions = nextActions,
                 ResourceUri = resourceUri,
-                Message = $"Traced {paths.Count} path(s) from {methodSymbol.Name}"
+                Message = response.WasTruncated 
+                    ? $"Traced {allPaths.Count} path(s) from {methodSymbol.Name} (showing {response.ReturnedCount})"
+                    : $"Traced {allPaths.Count} path(s) from {methodSymbol.Name}",
+                Meta = new ToolMetadata
+                {
+                    ExecutionTime = "0ms", // TODO: Add timing
+                    Truncated = response.WasTruncated,
+                    Tokens = response.EstimatedTokens
+                }
             };
 
-            _logger.LogInformation("Call stack trace completed: Found {PathCount} paths", paths.Count);
+            _logger.LogInformation("Call stack trace completed: Found {PathCount} paths", allPaths.Count);
             return result;
         }
         catch (Exception ex)
@@ -552,6 +607,26 @@ Not for: Static analysis (use other tools), finding implementations (use roslyn_
         return findings;
     }
 
+    private int EstimateCallPathsTokens(List<CallPath> paths, bool includeFramework)
+    {
+        return TokenEstimator.EstimateCollection(
+            paths,
+            path => {
+                var pathTokens = 100; // Base for path metadata
+                pathTokens += path.Steps.Sum(step => {
+                    var stepTokens = TokenEstimator.Roslyn.EstimateCallFrame(step, includeFramework);
+                    // Add extra for calls list
+                    stepTokens += step.Calls.Count * 50;
+                    // Add extra for conditions
+                    stepTokens += step.Conditions.Sum(c => TokenEstimator.EstimateString(c));
+                    return stepTokens;
+                });
+                return pathTokens;
+            },
+            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
+        );
+    }
+    
     private List<NextAction> GenerateNextActions(IMethodSymbol method, TraceCallStackParams parameters)
     {
         var actions = new List<NextAction>();
@@ -619,6 +694,10 @@ public class TraceCallStackParams
     [JsonPropertyName("includeFramework")]
     [Description("Include framework method calls (default: false)")]
     public bool IncludeFramework { get; set; } = false;
+    
+    [JsonPropertyName("maxPaths")]
+    [Description("Maximum number of paths to return (default: 10, max: 50)")]
+    public int? MaxPaths { get; set; }
 }
 
 public class TraceCallStackResult
@@ -652,6 +731,9 @@ public class TraceCallStackResult
     
     [JsonPropertyName("resourceUri")]
     public string? ResourceUri { get; set; }
+    
+    [JsonPropertyName("meta")]
+    public ToolMetadata? Meta { get; set; }
 }
 
 public class CallPath

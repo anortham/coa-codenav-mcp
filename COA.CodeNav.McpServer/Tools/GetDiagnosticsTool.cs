@@ -19,6 +19,11 @@ public class GetDiagnosticsTool : ITool
     private readonly ILogger<GetDiagnosticsTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
+    
+    // Token management constants
+    private const int MAX_DIAGNOSTICS_PER_RESPONSE = 50;
+    private const int ESTIMATED_TOKENS_PER_DIAGNOSTIC = 100;
+    private const int MAX_RESPONSE_TOKENS = 5000;
 
     public string ToolName => "roslyn_get_diagnostics";
     public string Description => "Get compilation errors, warnings, and analyzer diagnostics";
@@ -213,21 +218,110 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
             // Generate next actions
             var nextActions = GenerateNextActions(allDiagnostics);
 
-            // Store result
-            var resourceUri = _resourceProvider?.StoreAnalysisResult("diagnostics",
-                new { diagnostics = allDiagnostics, grouped = groupedDiagnostics },
-                $"Diagnostics for {parameters.Scope ?? "solution"}");
+            // Apply token management using CodeSearch pattern
+            var totalDiagnostics = allDiagnostics.Count;
+            var requestedMaxResults = parameters.MaxResults ?? MAX_DIAGNOSTICS_PER_RESPONSE;
+            
+            // First, determine the actual number to return based on request
+            var maxResults = Math.Min(requestedMaxResults, 500); // Hard limit of 500
+            var candidateDiagnostics = totalDiagnostics > maxResults 
+                ? allDiagnostics.Take(maxResults).ToList()
+                : allDiagnostics;
+            
+            // Pre-estimate response size with these candidates
+            var preEstimatedTokens = EstimateDiagnosticResponseTokens(candidateDiagnostics);
+            var safetyLimitApplied = false;
+            List<DiagnosticInfo> returnedDiagnostics;
+            
+            // Apply safety limit if needed (similar to CodeSearch's 5000 token limit)
+            const int SAFETY_TOKEN_LIMIT = 10000; // Conservative limit to protect context window
+            if (preEstimatedTokens > SAFETY_TOKEN_LIMIT)
+            {
+                _logger.LogWarning("Pre-estimated response ({Tokens} tokens) exceeds safety threshold. Applying progressive reduction.", preEstimatedTokens);
+                
+                // Progressive reduction strategy
+                var safeDiagnosticCount = 30; // Start with a safe default
+                
+                // Try to find optimal count
+                for (int testCount = 50; testCount >= 10; testCount -= 10)
+                {
+                    var testDiagnostics = allDiagnostics.Take(testCount).ToList();
+                    var testTokens = EstimateDiagnosticResponseTokens(testDiagnostics);
+                    if (testTokens <= SAFETY_TOKEN_LIMIT)
+                    {
+                        safeDiagnosticCount = testCount;
+                        break;
+                    }
+                }
+                
+                returnedDiagnostics = allDiagnostics.Take(safeDiagnosticCount).ToList();
+                safetyLimitApplied = true;
+                maxResults = safeDiagnosticCount;
+            }
+            else
+            {
+                returnedDiagnostics = candidateDiagnostics;
+            }
+            
+            var shouldTruncate = totalDiagnostics > returnedDiagnostics.Count;
 
-            // Count diagnostics by severity
+            // Always store full results in resource provider for retrieval
+            var resourceUri = _resourceProvider?.StoreAnalysisResult("diagnostics",
+                new { 
+                    diagnostics = allDiagnostics, 
+                    grouped = groupedDiagnostics,
+                    query = parameters,
+                    timestamp = DateTime.UtcNow
+                },
+                $"Full diagnostics for {parameters.Scope ?? "solution"} ({totalDiagnostics} total)");
+
+            // Count diagnostics by severity (from full set)
             var errorCount = allDiagnostics.Count(d => d.Severity == "Error");
             var warningCount = allDiagnostics.Count(d => d.Severity == "Warning");
             var infoCount = allDiagnostics.Count(d => d.Severity == "Info");
+
+            // Add insight about truncation if applicable
+            if (shouldTruncate)
+            {
+                if (safetyLimitApplied)
+                {
+                    insights.Insert(0, $"⚠️ Response size limit applied ({preEstimatedTokens} tokens). Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics.");
+                }
+                else
+                {
+                    insights.Insert(0, $"Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics to manage token usage");
+                }
+                if (resourceUri != null)
+                {
+                    insights.Add($"Full results available at resource: {resourceUri}");
+                    var totalPages = (int)Math.Ceiling((double)totalDiagnostics / 100); // Resource provider uses 100 items per page
+                    if (totalPages > 1)
+                    {
+                        insights.Add($"Resource contains {totalPages} pages (100 diagnostics per page). Access pages: {resourceUri}/page/1 to {resourceUri}/page/{totalPages}");
+                    }
+                }
+                
+                // Add action to get more results
+                nextActions.Insert(0, new NextAction
+                {
+                    Id = "get_more_results",
+                    Description = $"Get more diagnostics (up to 500)",
+                    ToolName = "roslyn_get_diagnostics",
+                    Parameters = new
+                    {
+                        scope = parameters.Scope ?? "solution",
+                        filePath = parameters.FilePath,
+                        maxResults = Math.Min(totalDiagnostics, 500)
+                    },
+                    Priority = "high"
+                });
+            }
 
             return new GetDiagnosticsToolResult
             {
                 Success = true,
                 Message = FormatSummaryMessage(allDiagnostics),
-                Diagnostics = parameters.GroupBy != null ? null : allDiagnostics,
+                Diagnostics = parameters.GroupBy != null ? null : returnedDiagnostics,
                 Query = new DiagnosticsQuery
                 {
                     Scope = parameters.Scope ?? "solution",
@@ -238,7 +332,7 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                 Summary = new DiagnosticsSummary
                 {
                     TotalFound = allDiagnostics.Count,
-                    Returned = allDiagnostics.Count,
+                    Returned = returnedDiagnostics.Count,
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
                     ErrorCount = errorCount,
                     WarningCount = warningCount,
@@ -246,9 +340,9 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                 },
                 ResultsSummary = new ResultsSummary
                 {
-                    Included = allDiagnostics.Count,
-                    Total = allDiagnostics.Count,
-                    HasMore = false
+                    Included = returnedDiagnostics.Count,
+                    Total = totalDiagnostics,
+                    HasMore = shouldTruncate
                 },
                 Distribution = new DiagnosticsDistribution
                 {
@@ -264,7 +358,8 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                 Actions = nextActions,
                 Meta = new ToolMetadata
                 {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    Truncated = shouldTruncate
                 },
                 ResourceUri = resourceUri
             };
@@ -734,6 +829,62 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
 
         return actions;
     }
+    
+    private int EstimateDiagnosticResponseTokens(List<DiagnosticInfo> diagnostics)
+    {
+        // Base tokens for response structure (metadata, insights, actions, etc.)
+        var baseTokens = 500;
+        
+        // Estimate per-diagnostic tokens
+        // Each diagnostic includes: id, severity, message, category, source, 
+        // location (with full file paths), tags array, properties, etc.
+        var perDiagnosticTokens = 0;
+        
+        if (diagnostics.Any())
+        {
+            // Sample first few diagnostics for more accurate estimation
+            var sample = diagnostics.Take(Math.Min(5, diagnostics.Count)).ToList();
+            
+            foreach (var diagnostic in sample)
+            {
+                // Base structure
+                var tokens = 50;
+                
+                // Message (major contributor)
+                tokens += (diagnostic.Message?.Length ?? 0) / 4;
+                
+                // File paths (appear multiple times in response)
+                if (diagnostic.Location != null)
+                {
+                    tokens += (diagnostic.Location.FilePath?.Length ?? 0) / 2;
+                }
+                
+                // Tags
+                tokens += (diagnostic.Tags?.Count ?? 0) * 5;
+                
+                // Properties (can be large)
+                if (diagnostic.Properties != null)
+                {
+                    tokens += diagnostic.Properties.Count * 20;
+                }
+                
+                perDiagnosticTokens += tokens;
+            }
+            
+            // Average from sample
+            perDiagnosticTokens = perDiagnosticTokens / sample.Count;
+        }
+        else
+        {
+            // Conservative default if no diagnostics
+            perDiagnosticTokens = 300;
+        }
+        
+        // Distribution and analysis add significant overhead
+        var analysisTokens = 300;
+        
+        return baseTokens + (diagnostics.Count * perDiagnosticTokens) + analysisTokens;
+    }
 }
 
 public class GetDiagnosticsParams
@@ -781,4 +932,8 @@ public class GetDiagnosticsParams
     [JsonPropertyName("groupBy")]
     [Description("Group diagnostics by: 'File', 'Severity', 'Category', 'Source'")]
     public string? GroupBy { get; set; }
+    
+    [JsonPropertyName("maxResults")]
+    [Description("Maximum number of diagnostics to return (default: 50, max: 500)")]
+    public int? MaxResults { get; set; }
 }

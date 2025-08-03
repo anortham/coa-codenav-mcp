@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using COA.CodeNav.McpServer.Utilities;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
@@ -506,7 +507,7 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
         var insights = new List<string>();
 
         // Basic symbol info
-        insights.Add($"'{symbol.Name}' is a {GetFriendlySymbolKind(symbol)}");
+        insights.Add($"'{symbol.Name}' is a {SymbolUtilities.GetFriendlySymbolKind(symbol)}");
 
         // Accessibility
         if (symbol.DeclaredAccessibility != Accessibility.NotApplicable)
@@ -552,21 +553,6 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
         return insights;
     }
 
-    private string GetFriendlySymbolKind(ISymbol symbol)
-    {
-        return symbol.Kind switch
-        {
-            SymbolKind.Method => symbol is IMethodSymbol m && m.MethodKind == MethodKind.Constructor ? "constructor" : "method",
-            SymbolKind.Property => "property",
-            SymbolKind.Field => "field",
-            SymbolKind.Event => "event",
-            SymbolKind.NamedType => symbol is INamedTypeSymbol t ? t.TypeKind.ToString().ToLower() : "type",
-            SymbolKind.Namespace => "namespace",
-            SymbolKind.Parameter => "parameter",
-            SymbolKind.Local => "local variable",
-            _ => symbol.Kind.ToString().ToLower()
-        };
-    }
     
     private string? TruncateDocumentation(string? documentation, int maxLength)
     {

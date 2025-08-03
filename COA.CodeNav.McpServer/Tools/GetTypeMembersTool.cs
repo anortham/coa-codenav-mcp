@@ -1,6 +1,7 @@
 using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using COA.CodeNav.McpServer.Utilities;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -178,10 +179,10 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
             }
 
             // Get all members
-            var members = new List<TypeMemberInfo>();
-            var allMembers = typeSymbol.GetMembers();
+            var allMembers = new List<TypeMemberInfo>();
+            var allSymbolMembers = typeSymbol.GetMembers();
 
-            foreach (var member in allMembers)
+            foreach (var member in allSymbolMembers)
             {
                 // Skip compiler-generated members unless requested
                 if (!parameters.IncludeCompilerGenerated.GetValueOrDefault() && IsCompilerGenerated(member))
@@ -191,10 +192,10 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
                 if (!ShouldIncludeMember(member, parameters))
                     continue;
 
-                var memberInfo = CreateMemberInfo(member);
+                var memberInfo = CreateMemberInfo(member, parameters.IncludeDocumentation ?? true);
                 if (memberInfo != null)
                 {
-                    members.Add(memberInfo);
+                    allMembers.Add(memberInfo);
                 }
             }
 
@@ -212,12 +213,12 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
                         if (IsOverriddenInDerived(member, typeSymbol))
                             continue;
 
-                        var memberInfo = CreateMemberInfo(member);
+                        var memberInfo = CreateMemberInfo(member, parameters.IncludeDocumentation ?? true);
                         if (memberInfo != null)
                         {
                             memberInfo.IsInherited = true;
                             memberInfo.DeclaringType = baseType.ToDisplayString();
-                            members.Add(memberInfo);
+                            allMembers.Add(memberInfo);
                         }
                     }
                     baseType = baseType.BaseType;
@@ -231,43 +232,98 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
                         if (!ShouldIncludeMember(member, parameters))
                             continue;
 
-                        var memberInfo = CreateMemberInfo(member);
+                        var memberInfo = CreateMemberInfo(member, parameters.IncludeDocumentation ?? true);
                         if (memberInfo != null)
                         {
                             memberInfo.IsInherited = true;
                             memberInfo.DeclaringType = iface.ToDisplayString();
                             memberInfo.IsInterfaceMember = true;
-                            members.Add(memberInfo);
+                            allMembers.Add(memberInfo);
                         }
                     }
                 }
             }
 
             // Sort members
-            members = SortMembers(members, parameters.SortBy ?? "Kind");
+            allMembers = SortMembers(allMembers, parameters.SortBy ?? "Kind");
+            
+            // Apply token management
+            var response = TokenEstimator.CreateTokenAwareResponse(
+                allMembers,
+                members => EstimateTypeMemberTokens(members, parameters.IncludeDocumentation ?? true),
+                requestedMax: parameters.MaxResults ?? 100, // Default to 100 members
+                safetyLimit: parameters.IncludeDocumentation ?? true 
+                    ? TokenEstimator.DEFAULT_SAFETY_LIMIT 
+                    : TokenEstimator.DEFAULT_SAFETY_LIMIT * 2, // Allow more without docs
+                toolName: "roslyn_get_type_members"
+            );
 
-            // Generate insights
-            var insights = GenerateInsights(typeSymbol, members);
+            // Generate insights (use all members for accurate insights)
+            var insights = GenerateInsights(typeSymbol, allMembers);
+            
+            // Add truncation message if needed
+            if (response.WasTruncated)
+            {
+                insights.Insert(0, response.GetTruncationMessage());
+                
+                // Suggest excluding documentation if it was included
+                if (parameters.IncludeDocumentation ?? true)
+                {
+                    insights.Add("💡 TIP: Set includeDocumentation=false to see more members within token limits");
+                }
+            }
 
             // Generate next actions
-            var nextActions = GenerateNextActions(typeSymbol, members);
+            var nextActions = GenerateNextActions(typeSymbol, response.Items);
+            
+            // Add action to get more results if truncated
+            if (response.WasTruncated)
+            {
+                nextActions.Insert(0, new NextAction
+                {
+                    Id = "get_more_members",
+                    Description = "Get additional members",
+                    ToolName = "roslyn_get_type_members",
+                    Parameters = new
+                    {
+                        filePath = parameters.FilePath,
+                        line = parameters.Line,
+                        column = parameters.Column,
+                        maxResults = Math.Min(allMembers.Count, 500),
+                        includeDocumentation = false // Suggest without docs for more results
+                    },
+                    Priority = "high"
+                });
+            }
 
-            // Store result
-            var resourceUri = _resourceProvider?.StoreAnalysisResult("type-members",
-                new { type = typeSymbol.ToDisplayString(), members },
-                $"Members of {typeSymbol.Name}");
+            // Store full result if truncated
+            string? resourceUri = null;
+            if (response.WasTruncated && _resourceProvider != null)
+            {
+                resourceUri = _resourceProvider.StoreAnalysisResult("type-members",
+                    new { type = typeSymbol.ToDisplayString(), members = allMembers, totalCount = allMembers.Count },
+                    $"All {allMembers.Count} members of {typeSymbol.Name}");
+            }
 
             return new GetTypeMembersResult
             {
                 Found = true,
                 TypeName = typeSymbol.ToDisplayString(),
                 TypeKind = typeSymbol.TypeKind.ToString(),
-                TotalMembers = members.Count,
-                Members = members,
-                Message = $"Found {members.Count} members in '{typeSymbol.Name}'",
+                TotalMembers = allMembers.Count,
+                Members = response.Items,
+                Message = response.WasTruncated 
+                    ? $"Found {allMembers.Count} members - showing {response.ReturnedCount}"
+                    : $"Found {allMembers.Count} members in '{typeSymbol.Name}'",
                 Insights = insights,
                 NextActions = nextActions,
-                ResourceUri = resourceUri
+                ResourceUri = resourceUri,
+                Meta = new ToolMetadata
+                {
+                    ExecutionTime = "0ms", // TODO: Add timing
+                    Truncated = response.WasTruncated,
+                    Tokens = response.EstimatedTokens
+                }
             };
         }
         catch (Exception ex)
@@ -347,7 +403,7 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
         };
     }
 
-    private TypeMemberInfo? CreateMemberInfo(ISymbol member)
+    private TypeMemberInfo? CreateMemberInfo(ISymbol member, bool includeDocumentation = true)
     {
         var info = new TypeMemberInfo
         {
@@ -359,7 +415,7 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
             IsVirtual = member.IsVirtual,
             IsOverride = member.IsOverride,
             IsSealed = member.IsSealed,
-            Documentation = GetDocumentation(member)
+            Documentation = includeDocumentation ? GetDocumentation(member) : null
         };
 
         // Get location if available
@@ -693,6 +749,24 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
         return insights;
     }
 
+    private int EstimateTypeMemberTokens(List<TypeMemberInfo> members, bool includeDocumentation)
+    {
+        return TokenEstimator.EstimateCollection(
+            members,
+            member => {
+                var tokens = TokenEstimator.Roslyn.EstimateTypeMember(member);
+                if (!includeDocumentation && member.Documentation != null)
+                {
+                    // Subtract documentation tokens if excluded
+                    // Documentation is now a single string in TypeMemberInfo
+                    tokens -= TokenEstimator.EstimateString(member.Documentation) / 2;
+                }
+                return Math.Max(tokens, 50); // Minimum 50 tokens per member
+            },
+            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
+        );
+    }
+
     private List<NextAction> GenerateNextActions(INamedTypeSymbol typeSymbol, List<TypeMemberInfo> members)
     {
         var actions = new List<NextAction>();
@@ -796,6 +870,10 @@ public class GetTypeMembersParams
     [JsonPropertyName("includeCompilerGenerated")]
     [Description("Include compiler-generated members (default: false)")]
     public bool? IncludeCompilerGenerated { get; set; }
+    
+    [JsonPropertyName("includeDocumentation")]
+    [Description("Include XML documentation (default: true). Set to false to see more members within token limits.")]
+    public bool? IncludeDocumentation { get; set; }
 
     [JsonPropertyName("memberKinds")]
     [Description("Filter by member kinds: 'Method', 'Property', 'Field', 'Event', 'Constructor', 'NestedType'")]
@@ -804,6 +882,10 @@ public class GetTypeMembersParams
     [JsonPropertyName("sortBy")]
     [Description("Sort members by: 'Name', 'Kind', 'Accessibility' (default: 'Kind')")]
     public string? SortBy { get; set; }
+    
+    [JsonPropertyName("maxResults")]
+    [Description("Maximum number of members to return (default: 100, max: 500)")]
+    public int? MaxResults { get; set; }
 }
 
 public class GetTypeMembersResult
@@ -820,6 +902,7 @@ public class GetTypeMembersResult
     public List<NextAction>? NextActions { get; set; }
     public ErrorInfo? Error { get; set; }
     public string? ResourceUri { get; set; }
+    public ToolMetadata? Meta { get; set; }
 }
 
 public class TypeMemberInfo

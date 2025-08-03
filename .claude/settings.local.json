@@ -21,7 +21,24 @@
       "mcp__codenav__roslyn_get_type_members",
       "mcp__codenav__roslyn_get_diagnostics",
       "mcp__codenav__roslyn_rename_symbol",
-      "mcp__codenav__roslyn_hover"
+      "mcp__codenav__roslyn_hover",
+      "mcp__codesearch__pattern_detector",
+      "mcp__codesearch__file_size_analysis",
+      "mcp__codenav__roslyn_get_workspace_statistics",
+      "Bash(dotnet new:*)",
+      "Bash(dotnet sln add:*)",
+      "Bash(dotnet add reference:*)",
+      "Bash(dotnet add package:*)",
+      "Bash(dotnet test:*)",
+      "Bash(find:*)",
+      "mcp__codenav__roslyn_apply_code_fix",
+      "Bash(mcp__codenav__roslyn_load_solution:*)",
+      "mcp__codenav__roslyn_generate_code",
+      "mcp__codesearch__unified_memory",
+      "mcp__codesearch__store_memory",
+      "mcp__codesearch__load_context",
+      "mcp__codesearch__search_memories",
+      "mcp__codesearch__recent_files"
     ],
     "deny": []
   }

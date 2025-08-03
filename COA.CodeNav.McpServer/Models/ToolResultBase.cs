@@ -70,6 +70,9 @@ public class QueryInfo
     [JsonPropertyName("targetSymbol")]
     public string? TargetSymbol { get; set; }
 
+    [JsonPropertyName("generationType")]
+    public string? GenerationType { get; set; }
+
     [JsonPropertyName("additionalParams")]
     public Dictionary<string, object>? AdditionalParams { get; set; }
 }

@@ -22,3 +22,4 @@ public class NextAction
     [JsonPropertyName("priority")]
     public string Priority { get; set; } = "medium";
 }
+

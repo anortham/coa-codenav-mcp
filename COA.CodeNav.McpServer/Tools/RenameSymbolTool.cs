@@ -1,6 +1,7 @@
 using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using COA.CodeNav.McpServer.Utilities;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Rename;
@@ -275,7 +276,32 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
             }
 
             // Get changes
-            var changes = await GetChangesAsync(solution, renameResult, cancellationToken);
+            var allChanges = await GetChangesAsync(solution, renameResult, cancellationToken);
+            
+            // Apply token management for preview
+            var changes = allChanges;
+            bool wasTruncated = false;
+            
+            if (parameters.Preview)
+            {
+                // Estimate tokens for the changes
+                var estimatedTokens = EstimateFileChangesTokens(allChanges);
+                
+                if (estimatedTokens > TokenEstimator.DEFAULT_SAFETY_LIMIT)
+                {
+                    // Apply progressive reduction
+                    var response = TokenEstimator.CreateTokenAwareResponse(
+                        allChanges,
+                        changesSubset => EstimateFileChangesTokens(changesSubset),
+                        requestedMax: parameters.MaxChangedFiles ?? 50, // Default to 50 files
+                        safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
+                        toolName: "roslyn_rename_symbol"
+                    );
+                    
+                    changes = response.Items;
+                    wasTruncated = response.WasTruncated;
+                }
+            }
             
             if (parameters.Preview)
             {
@@ -290,8 +316,8 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                     Conflicts = conflicts,
                     Preview = true,
                     Applied = false,
-                    Insights = GenerateInsights(symbol, changes, conflicts),
-                    Actions = GenerateNextActions(symbol, parameters, changes),
+                    Insights = GenerateInsights(symbol, changes, conflicts, wasTruncated, allChanges.Count),
+                    Actions = GenerateNextActions(symbol, parameters, changes, allChanges),
                     Query = new QueryInfo
                     {
                         FilePath = parameters.FilePath,
@@ -300,7 +326,7 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                     },
                     Summary = new SummaryInfo
                     {
-                        TotalFound = changes.Count,
+                        TotalFound = allChanges.Count,
                         Returned = changes.Count,
                         ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
                         SymbolInfo = new SymbolSummary
@@ -313,7 +339,8 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                     },
                     Meta = new ToolMetadata 
                     { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                        Truncated = wasTruncated
                     }
                 };
 
@@ -321,6 +348,23 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                 {
                     var resourceUri = _resourceProvider.StoreAnalysisResult("rename-preview", previewResult);
                     previewResult.ResourceUri = resourceUri;
+                    
+                    // Store full changes if truncated
+                    if (wasTruncated)
+                    {
+                        var fullResult = new RenameSymbolToolResult
+                        {
+                            Success = true,
+                            Message = $"Full preview: All {allChanges.Count} files",
+                            Changes = allChanges,
+                            Conflicts = conflicts,
+                            Preview = true,
+                            Applied = false
+                        };
+                        var fullUri = _resourceProvider.StoreAnalysisResult("rename-preview-full", fullResult);
+                        // Store the full results URI in insights
+                        previewResult.Insights.Add($"Full results available at: {fullUri}");
+                    }
                 }
 
                 return previewResult;
@@ -342,12 +386,12 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
             var result = new RenameSymbolToolResult
             {
                 Success = true,
-                Message = $"Successfully renamed '{symbol.Name}' to '{parameters.NewName}' in {changes.Count} file(s)",
-                Changes = changes,
+                Message = $"Successfully renamed '{symbol.Name}' to '{parameters.NewName}' in {allChanges.Count} file(s)",
+                Changes = allChanges, // Show all changes when applied
                 Conflicts = conflicts,
                 Preview = false,
                 Applied = true,
-                Insights = GenerateInsights(symbol, changes, conflicts),
+                Insights = GenerateInsights(symbol, allChanges, conflicts, false, allChanges.Count),
                 Actions = new List<NextAction>
                 {
                     new NextAction
@@ -522,15 +566,35 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
 
         return changes;
     }
+    
+    private int EstimateFileChangesTokens(List<FileChange> changes)
+    {
+        return TokenEstimator.EstimateCollection(
+            changes,
+            change => {
+                var tokens = 100; // Base structure per file
+                tokens += TokenEstimator.EstimateString(change.FilePath);
+                tokens += change.Changes.Count * 80; // Estimate per text change
+                return tokens;
+            },
+            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
+        );
+    }
 
-    private List<string> GenerateInsights(ISymbol symbol, List<FileChange> changes, List<RenameConflict> conflicts)
+    private List<string> GenerateInsights(ISymbol symbol, List<FileChange> changes, List<RenameConflict> conflicts, bool wasTruncated = false, int totalCount = 0)
     {
         var insights = new List<string>();
+        
+        if (wasTruncated)
+        {
+            insights.Add($"⚠️ Showing {changes.Count} of {totalCount} files to manage response size");
+        }
 
-        insights.Add($"Renaming {GetFriendlySymbolKind(symbol)} '{symbol.Name}'");
+        insights.Add($"Renaming {SymbolUtilities.GetFriendlySymbolKind(symbol)} '{symbol.Name}'");
 
         var totalChanges = changes.Sum(c => c.Changes.Count);
-        insights.Add($"{totalChanges} text changes across {changes.Count} file(s)");
+        var displayCount = wasTruncated ? totalCount : changes.Count;
+        insights.Add($"{totalChanges} text changes across {displayCount} file(s)");
 
         if (conflicts.Any())
             insights.Add($"⚠️ {conflicts.Count} potential conflict(s) detected");
@@ -544,7 +608,7 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
         return insights;
     }
 
-    private List<NextAction> GenerateNextActions(ISymbol symbol, RenameSymbolParams parameters, List<FileChange> changes)
+    private List<NextAction> GenerateNextActions(ISymbol symbol, RenameSymbolParams parameters, List<FileChange> changes, List<FileChange>? allChanges = null)
     {
         var actions = new List<NextAction>();
 
@@ -565,6 +629,27 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
                 },
                 Priority = "high"
             });
+            
+            // If truncated, add option to see all changes
+            if (allChanges != null && allChanges.Count > changes.Count)
+            {
+                actions.Add(new NextAction
+                {
+                    Id = "see_all_changes",
+                    Description = $"Preview all {allChanges.Count} file changes",
+                    ToolName = "roslyn_rename_symbol",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = parameters.FilePath,
+                        ["line"] = parameters.Line,
+                        ["column"] = parameters.Column,
+                        ["newName"] = parameters.NewName,
+                        ["preview"] = true,
+                        ["maxChangedFiles"] = allChanges.Count
+                    },
+                    Priority = "medium"
+                });
+            }
         }
 
         actions.Add(new NextAction
@@ -586,23 +671,6 @@ Not for: File renaming (use file system tools), namespace-only renames (use dedi
         return actions;
     }
 
-    private string GetFriendlySymbolKind(ISymbol symbol)
-    {
-        return symbol switch
-        {
-            IMethodSymbol method when method.MethodKind == MethodKind.Constructor => "constructor",
-            IMethodSymbol method when method.MethodKind == MethodKind.PropertyGet => "property getter",
-            IMethodSymbol method when method.MethodKind == MethodKind.PropertySet => "property setter",
-            IMethodSymbol => "method",
-            IPropertySymbol => "property",
-            IFieldSymbol => "field",
-            IEventSymbol => "event",
-            INamedTypeSymbol namedType => namedType.TypeKind.ToString().ToLower(),
-            IParameterSymbol => "parameter",
-            ILocalSymbol => "local variable",
-            _ => symbol.Kind.ToString().ToLower()
-        };
-    }
 }
 
 public class RenameSymbolParams
@@ -642,6 +710,10 @@ public class RenameSymbolParams
     [JsonPropertyName("renameFile")]
     [COA.CodeNav.McpServer.Attributes.Description("Rename file if renaming type (default: false)")]
     public bool? RenameFile { get; set; }
+    
+    [JsonPropertyName("maxChangedFiles")]
+    [COA.CodeNav.McpServer.Attributes.Description("Maximum number of changed files to return in preview (default: 50)")]
+    public int? MaxChangedFiles { get; set; }
 }
 
 // Result classes have been moved to COA.CodeNav.McpServer.Models namespace

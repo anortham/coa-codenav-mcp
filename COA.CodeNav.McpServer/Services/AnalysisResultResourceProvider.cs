@@ -2,6 +2,7 @@ using COA.Mcp.Protocol;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Linq;
 
 namespace COA.CodeNav.McpServer.Services;
 
@@ -82,7 +83,8 @@ public class AnalysisResultResourceProvider : IResourceProvider
 
         try
         {
-            // Extract ID from URI format: codenav-analysis://type/id
+            // Extract ID and optional page from URI format: 
+            // codenav-analysis://type/id or codenav-analysis://type/id/page/1
             var parts = uri.Split('/');
             if (parts.Length < 4)
             {
@@ -91,7 +93,19 @@ public class AnalysisResultResourceProvider : IResourceProvider
             }
 
             var id = parts[3]; // parts[0]=codenav-analysis:, parts[1]=empty, parts[2]=type, parts[3]=id
-            _logger.LogDebug("Extracted ID '{Id}' from URI '{Uri}'", id, uri);
+            var page = 1;
+            var pageSize = 100; // Default page size for paginated results
+            
+            // Check for pagination parameters
+            if (parts.Length >= 6 && parts[4] == "page")
+            {
+                if (int.TryParse(parts[5], out var parsedPage))
+                {
+                    page = Math.Max(1, parsedPage);
+                }
+            }
+            
+            _logger.LogDebug("Extracted ID '{Id}' from URI '{Uri}', page {Page}", id, uri, page);
 
             if (!_analysisResults.TryGetValue(id, out var data))
             {
@@ -102,18 +116,98 @@ public class AnalysisResultResourceProvider : IResourceProvider
             // Update last accessed time
             data.LastAccessed = DateTime.UtcNow;
 
+            // Check if result needs pagination
+            object resultData = data.Result;
+            int? totalItems = null;
+            int? totalPages = null;
+            
+            // Handle pagination for known collection types
+            if (data.Result is IDictionary<string, object> dict)
+            {
+                // For diagnostics results
+                if (dict.TryGetValue("diagnostics", out var diagnosticsObj) && diagnosticsObj is IList<object> diagnosticsList)
+                {
+                    totalItems = diagnosticsList.Count;
+                    totalPages = (int)Math.Ceiling((double)totalItems / pageSize);
+                    
+                    if (totalItems > pageSize)
+                    {
+                        var skip = (page - 1) * pageSize;
+                        var pagedDiagnostics = diagnosticsList.Skip(skip).Take(pageSize).ToList();
+                        
+                        // Create paginated result
+                        resultData = new Dictionary<string, object>(dict)
+                        {
+                            ["diagnostics"] = pagedDiagnostics,
+                            ["_pagination"] = new
+                            {
+                                page = page,
+                                pageSize = pageSize,
+                                totalItems = totalItems,
+                                totalPages = totalPages,
+                                hasNext = page < totalPages,
+                                hasPrevious = page > 1,
+                                nextUri = page < totalPages ? $"{uri.Split("/page/")[0]}/page/{page + 1}" : null,
+                                previousUri = page > 1 ? $"{uri.Split("/page/")[0]}/page/{page - 1}" : null,
+                                firstUri = $"{uri.Split("/page/")[0]}/page/1",
+                                lastUri = $"{uri.Split("/page/")[0]}/page/{totalPages}"
+                            }
+                        };
+                    }
+                }
+                // For find-all-references results
+                else if (dict.TryGetValue("allLocations", out var locationsObj) && locationsObj is IList<object> locationsList)
+                {
+                    totalItems = locationsList.Count;
+                    totalPages = (int)Math.Ceiling((double)totalItems / pageSize);
+                    
+                    if (totalItems > pageSize)
+                    {
+                        var skip = (page - 1) * pageSize;
+                        var pagedLocations = locationsList.Skip(skip).Take(pageSize).ToList();
+                        
+                        // Create paginated result
+                        resultData = new Dictionary<string, object>(dict)
+                        {
+                            ["allLocations"] = pagedLocations,
+                            ["_pagination"] = new
+                            {
+                                page = page,
+                                pageSize = pageSize,
+                                totalItems = totalItems,
+                                totalPages = totalPages,
+                                hasNext = page < totalPages,
+                                hasPrevious = page > 1,
+                                nextUri = page < totalPages ? $"{uri.Split("/page/")[0]}/page/{page + 1}" : null,
+                                previousUri = page > 1 ? $"{uri.Split("/page/")[0]}/page/{page - 1}" : null,
+                                firstUri = $"{uri.Split("/page/")[0]}/page/1",
+                                lastUri = $"{uri.Split("/page/")[0]}/page/{totalPages}"
+                            }
+                        };
+                    }
+                }
+            }
+
             // Build response with AI-friendly structure
             var response = new
             {
                 uri = uri,
                 type = data.Type,
                 created = data.CreatedAt,
-                result = data.Result,
+                result = resultData,
                 meta = new
                 {
                     accessCount = data.AccessCount++,
                     lastAccessed = data.LastAccessed,
-                    age = DateTime.UtcNow - data.CreatedAt
+                    age = DateTime.UtcNow - data.CreatedAt,
+                    pagination = totalItems > pageSize ? new
+                    {
+                        enabled = true,
+                        page = page,
+                        pageSize = pageSize,
+                        totalItems = totalItems,
+                        totalPages = totalPages
+                    } : null
                 }
             };
 
