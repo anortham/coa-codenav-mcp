@@ -37,7 +37,7 @@ public class AddMissingUsingsTool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_add_missing_usings")]
+    [McpServerTool(Name = "csharp_add_missing_usings")]
     [Description(@"Add missing using directives for unresolved types.
 Returns: Updated file with required using statements.
 Prerequisites: File must have unresolved type references.
@@ -60,7 +60,7 @@ AI benefit: Quickly fix common compilation errors.")]
                     {
                         "Ensure the file path is correct and absolute",
                         "Verify the file exists in the loaded solution/project",
-                        "Load a solution using roslyn_load_solution or project using roslyn_load_project"
+                        "Load a solution using csharp_load_solution or project using csharp_load_project"
                     },
                     parameters,
                     startTime);
@@ -251,7 +251,7 @@ AI benefit: Quickly fix common compilation errors.")]
                 {
                     "Check the server logs for detailed error information",
                     "Verify the file has valid C# syntax",
-                    "Try running roslyn_get_diagnostics first to see all errors"
+                    "Try running csharp_get_diagnostics first to see all errors"
                 },
                 parameters,
                 startTime);
@@ -413,7 +413,7 @@ AI benefit: Quickly fix common compilation errors.")]
             {
                 Id = "search_type",
                 Description = $"Search for type '{firstUnresolved.TypeName}' in solution",
-                ToolName = "roslyn_symbol_search",
+                ToolName = "csharp_symbol_search",
                 Parameters = new { query = firstUnresolved.TypeName },
                 Priority = "medium"
             });
@@ -423,7 +423,7 @@ AI benefit: Quickly fix common compilation errors.")]
         {
             Id = "format_document",
             Description = "Format document to organize usings",
-            ToolName = "roslyn_format_document",
+            ToolName = "csharp_format_document",
             Parameters = new { filePath = parameters.FilePath },
             Priority = "low"
         });
@@ -432,7 +432,7 @@ AI benefit: Quickly fix common compilation errors.")]
         {
             Id = "get_diagnostics",
             Description = "Check for remaining compilation errors",
-            ToolName = "roslyn_get_diagnostics",
+            ToolName = "csharp_get_diagnostics",
             Parameters = new { filePath = parameters.FilePath },
             Priority = "medium"
         });
@@ -469,7 +469,7 @@ AI benefit: Quickly fix common compilation errors.")]
                     {
                         new SuggestedAction
                         {
-                            Tool = "roslyn_get_diagnostics",
+                            Tool = "csharp_get_diagnostics",
                             Description = "Check all diagnostics for the file",
                             Parameters = new { filePath = parameters.FilePath }
                         }
@@ -498,7 +498,7 @@ public class AddMissingUsingsParams
 
 public class AddMissingUsingsResult : ToolResultBase
 {
-    public override string Operation => "roslyn_add_missing_usings";
+    public override string Operation => "csharp_add_missing_usings";
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

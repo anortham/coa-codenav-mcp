@@ -24,7 +24,7 @@ public class LoadProjectTool
         _workspaceService = workspaceService;
     }
 
-    [McpServerTool(Name = "roslyn_load_project")]
+    [McpServerTool(Name = "csharp_load_project")]
     [Description("Load a C# project file into the Roslyn workspace")]
     public async Task<LoadProjectResult> ExecuteAsync(LoadProjectParams parameters, CancellationToken cancellationToken = default)
     {

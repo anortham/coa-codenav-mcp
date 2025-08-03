@@ -35,7 +35,7 @@ public class FindAllReferencesTool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_find_all_references")]
+    [McpServerTool(Name = "csharp_find_all_references")]
     [Description("Find all references to a symbol at a given position in a file")]
     public async Task<object> ExecuteAsync(FindAllReferencesParams parameters, CancellationToken cancellationToken = default)
     {
@@ -377,7 +377,7 @@ public class FindAllReferencesTool
                 {
                     Id = "goto_containing_type",
                     Description = $"Go to containing type '{containingType.Name}'",
-                    ToolName = "roslyn_goto_definition",
+                    ToolName = "csharp_goto_definition",
                     Parameters = new
                     {
                         filePath = lineSpan.Path,

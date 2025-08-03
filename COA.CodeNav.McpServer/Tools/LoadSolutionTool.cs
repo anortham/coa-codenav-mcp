@@ -24,7 +24,7 @@ public class LoadSolutionTool
         _workspaceService = workspaceService;
     }
 
-    [McpServerTool(Name = "roslyn_load_solution")]
+    [McpServerTool(Name = "csharp_load_solution")]
     [Description("Load a C# solution file into the Roslyn workspace")]
     public async Task<LoadSolutionResult> ExecuteAsync(LoadSolutionParams parameters, CancellationToken cancellationToken = default)
     {

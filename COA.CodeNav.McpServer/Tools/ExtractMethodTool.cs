@@ -33,7 +33,7 @@ public class ExtractMethodTool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_extract_method")]
+    [McpServerTool(Name = "csharp_extract_method")]
     [Description(@"Extract selected code into a new method.
 Returns: Refactored code with new method and updated call site.
 Prerequisites: Valid code selection that can be extracted.
@@ -56,7 +56,7 @@ AI benefit: Helps maintain clean code architecture.")]
                     {
                         "Ensure the file path is correct and absolute",
                         "Verify the file exists in the loaded solution/project",
-                        "Load a solution using roslyn_load_solution or project using roslyn_load_project"
+                        "Load a solution using csharp_load_solution or project using csharp_load_project"
                     },
                     parameters,
                     startTime);
@@ -93,7 +93,7 @@ AI benefit: Helps maintain clean code architecture.")]
                     {
                         "Try reloading the solution",
                         "Check if the document has valid C# syntax",
-                        "Run roslyn_get_diagnostics to check for errors"
+                        "Run csharp_get_diagnostics to check for errors"
                     },
                     parameters,
                     startTime);
@@ -670,7 +670,7 @@ AI benefit: Helps maintain clean code architecture.")]
             {
                 Id = "add_documentation",
                 Description = $"Add XML documentation to '{methodName}'",
-                ToolName = "roslyn_generate_code",
+                ToolName = "csharp_generate_code",
                 Parameters = new 
                 { 
                     filePath = parameters.FilePath,
@@ -683,7 +683,7 @@ AI benefit: Helps maintain clean code architecture.")]
             {
                 Id = "rename_method",
                 Description = "Rename the extracted method if needed",
-                ToolName = "roslyn_rename_symbol",
+                ToolName = "csharp_rename_symbol",
                 Parameters = new
                 {
                     filePath = parameters.FilePath,
@@ -695,7 +695,7 @@ AI benefit: Helps maintain clean code architecture.")]
             {
                 Id = "find_similar",
                 Description = "Find similar code that could use this method",
-                ToolName = "roslyn_find_all_references",
+                ToolName = "csharp_find_all_references",
                 Parameters = new
                 {
                     filePath = parameters.FilePath,
@@ -707,7 +707,7 @@ AI benefit: Helps maintain clean code architecture.")]
             {
                 Id = "format_document",
                 Description = "Format the document",
-                ToolName = "roslyn_format_document",
+                ToolName = "csharp_format_document",
                 Parameters = new { filePath = parameters.FilePath },
                 Priority = "low"
             }
@@ -750,7 +750,7 @@ AI benefit: Helps maintain clean code architecture.")]
                     {
                         new SuggestedAction
                         {
-                            Tool = "roslyn_get_diagnostics",
+                            Tool = "csharp_get_diagnostics",
                             Description = "Check for compilation errors",
                             Parameters = new { filePath = parameters.FilePath }
                         }
@@ -819,7 +819,7 @@ public class ExtractMethodParams
 
 public class ExtractMethodResult : ToolResultBase
 {
-    public override string Operation => "roslyn_extract_method";
+    public override string Operation => "csharp_extract_method";
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

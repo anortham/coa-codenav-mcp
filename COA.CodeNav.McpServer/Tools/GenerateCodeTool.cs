@@ -26,7 +26,7 @@ public class GenerateCodeTool : ITool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_generate_code";
+    public string ToolName => "csharp_generate_code";
     public string Description => "Generate code for common patterns (constructors, properties, interface implementations)";
 
     public GenerateCodeTool(
@@ -41,13 +41,13 @@ public class GenerateCodeTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_generate_code")]
+    [McpServerTool(Name = "csharp_generate_code")]
     [Description(@"Generate code for common patterns (constructors, properties, interface implementations).
 Returns: Generated code with insertion points.
-Prerequisites: Position must be inside a type declaration. Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Position must be inside a type declaration. Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if generation fails.
 Use cases: Generate constructors from fields, properties from fields, interface implementations.
-Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use roslyn_apply_code_fix).")]
+Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use csharp_apply_code_fix).")]
     public async Task<object> ExecuteAsync(GenerateCodeParams parameters, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("GenerateCode request received: FilePath={FilePath}, Line={Line}, Column={Column}, GenerationType={GenerationType}", 
@@ -98,14 +98,14 @@ Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use
                             Steps = new List<string>
                             {
                                 "Ensure the cursor is inside a class, struct, or interface declaration",
-                                "Use roslyn_document_symbols to find type declarations in the file",
+                                "Use csharp_document_symbols to find type declarations in the file",
                                 "Position the cursor inside the type body, not on the declaration line"
                             },
                             SuggestedActions = new List<SuggestedAction>
                             {
                                 new SuggestedAction
                                 {
-                                    Tool = "roslyn_document_symbols",
+                                    Tool = "csharp_document_symbols",
                                     Description = "Find type declarations in this file",
                                     Parameters = new { filePath = parameters.FilePath, symbolKinds = new[] { "Class", "Interface", "Struct" } }
                                 }
@@ -227,7 +227,7 @@ Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use
                     {
                         Id = "add_field",
                         Description = "Add a field to the type first",
-                        ToolName = "roslyn_generate_code",
+                        ToolName = "csharp_generate_code",
                         Parameters = new { /* would need field generation */ },
                         Priority = "high"
                     }
@@ -396,7 +396,7 @@ Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use
                     {
                         Id = "find_interfaces",
                         Description = "Find interfaces this type implements",
-                        ToolName = "roslyn_get_type_members",
+                        ToolName = "csharp_get_type_members",
                         Parameters = new { filePath = parameters.FilePath, line = parameters.Line, column = parameters.Column },
                         Priority = "medium"
                     }
@@ -1067,7 +1067,7 @@ Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use
         {
             Id = "generate_properties",
             Description = "Generate properties for private fields",
-            ToolName = "roslyn_generate_code",
+            ToolName = "csharp_generate_code",
             Parameters = new 
             { 
                 filePath = parameters.FilePath,
@@ -1084,7 +1084,7 @@ Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use
             {
                 Id = "generate_equals",
                 Description = "Generate equality members",
-                ToolName = "roslyn_generate_code",
+                ToolName = "csharp_generate_code",
                 Parameters = new
                 {
                     filePath = parameters.FilePath,
@@ -1126,7 +1126,7 @@ Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use
             {
                 Id = "generate_constructor",
                 Description = "Generate constructor to initialize properties",
-                ToolName = "roslyn_generate_code",
+                ToolName = "csharp_generate_code",
                 Parameters = new
                 {
                     filePath = parameters.FilePath,
@@ -1170,7 +1170,7 @@ Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use
             {
                 Id = "find_implementations",
                 Description = "Find other implementations for reference",
-                ToolName = "roslyn_find_implementations",
+                ToolName = "csharp_find_implementations",
                 Parameters = new
                 {
                     filePath = parameters.FilePath,
@@ -1234,7 +1234,7 @@ Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use
             {
                 Steps = new List<string>
                 {
-                    "Load a solution or project first using roslyn_load_solution or roslyn_load_project",
+                    "Load a solution or project first using csharp_load_solution or csharp_load_project",
                     "Verify the workspace was loaded successfully",
                     "Try the operation again"
                 },
@@ -1242,7 +1242,7 @@ Not for: Complex refactorings (use dedicated refactoring tools), code fixes (use
                 {
                     new SuggestedAction
                     {
-                        Tool = "roslyn_load_solution",
+                        Tool = "csharp_load_solution",
                         Description = "Load a C# solution",
                         Parameters = new { solutionPath = "path/to/solution.sln" }
                     }
@@ -1370,7 +1370,7 @@ public class GenerateCodeParams
 /// </summary>
 public class GenerateCodeToolResult : ToolResultBase
 {
-    public override string Operation => "roslyn_generate_code";
+    public override string Operation => "csharp_generate_code";
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

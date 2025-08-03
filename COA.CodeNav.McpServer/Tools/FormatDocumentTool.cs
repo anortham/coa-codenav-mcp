@@ -33,7 +33,7 @@ public class FormatDocumentTool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_format_document")]
+    [McpServerTool(Name = "csharp_format_document")]
     [Description(@"Format code according to project settings and .editorconfig.
 Returns: Formatted code following project conventions.
 Prerequisites: Valid C# document.
@@ -56,7 +56,7 @@ AI benefit: Ensures generated/modified code matches project style.")]
                     {
                         "Ensure the file path is correct and absolute",
                         "Verify the file exists in the loaded solution/project",
-                        "Load a solution using roslyn_load_solution or project using roslyn_load_project"
+                        "Load a solution using csharp_load_solution or project using csharp_load_project"
                     },
                     parameters,
                     startTime);
@@ -176,7 +176,7 @@ AI benefit: Ensures generated/modified code matches project style.")]
                 {
                     "Check the server logs for detailed error information",
                     "Verify the file has valid C# syntax",
-                    "Try running roslyn_get_diagnostics first to check for errors"
+                    "Try running csharp_get_diagnostics first to check for errors"
                 },
                 parameters,
                 startTime);
@@ -402,7 +402,7 @@ AI benefit: Ensures generated/modified code matches project style.")]
             {
                 Id = "check_diagnostics",
                 Description = "Check for any compilation errors",
-                ToolName = "roslyn_get_diagnostics",
+                ToolName = "csharp_get_diagnostics",
                 Parameters = new { filePath = parameters.FilePath },
                 Priority = "high"
             }
@@ -414,7 +414,7 @@ AI benefit: Ensures generated/modified code matches project style.")]
             {
                 Id = "organize_usings",
                 Description = "Format with using organization",
-                ToolName = "roslyn_format_document",
+                ToolName = "csharp_format_document",
                 Parameters = new { filePath = parameters.FilePath, organizeUsings = true },
                 Priority = "medium"
             });
@@ -424,7 +424,7 @@ AI benefit: Ensures generated/modified code matches project style.")]
         {
             Id = "add_missing_usings",
             Description = "Add any missing using directives",
-            ToolName = "roslyn_add_missing_usings",
+            ToolName = "csharp_add_missing_usings",
             Parameters = new { filePath = parameters.FilePath },
             Priority = "medium"
         });
@@ -473,7 +473,7 @@ AI benefit: Ensures generated/modified code matches project style.")]
                     {
                         new SuggestedAction
                         {
-                            Tool = "roslyn_get_diagnostics",
+                            Tool = "csharp_get_diagnostics",
                             Description = "Check for compilation errors",
                             Parameters = new { filePath = parameters.FilePath }
                         }
@@ -510,7 +510,7 @@ public class FormatDocumentParams
 
 public class FormatDocumentResult : ToolResultBase
 {
-    public override string Operation => "roslyn_format_document";
+    public override string Operation => "csharp_format_document";
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

@@ -25,7 +25,7 @@ public class GetDiagnosticsTool : ITool
     private const int ESTIMATED_TOKENS_PER_DIAGNOSTIC = 100;
     private const int MAX_RESPONSE_TOKENS = 5000;
 
-    public string ToolName => "roslyn_get_diagnostics";
+    public string ToolName => "csharp_get_diagnostics";
     public string Description => "Get compilation errors, warnings, and analyzer diagnostics";
 
     public GetDiagnosticsTool(
@@ -38,13 +38,13 @@ public class GetDiagnosticsTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_get_diagnostics")]
+    [McpServerTool(Name = "csharp_get_diagnostics")]
     [Description(@"Get compilation errors, warnings, and analyzer diagnostics for files, projects, or the entire solution.
 Returns: List of diagnostics with severity, location, and suggested fixes.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if workspace is not loaded.
 Use cases: Finding compilation errors, checking code quality, identifying warnings, running analyzers.
-Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols (use roslyn_symbol_search).")]
+Not for: Code metrics (use future csharp_code_metrics), finding specific symbols (use csharp_symbol_search).")]
     public async Task<object> ExecuteAsync(GetDiagnosticsParams parameters, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("GetDiagnostics request received: Scope={Scope}, FilePath={FilePath}", 
@@ -72,15 +72,15 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                         {
                             Steps = new List<string>
                             {
-                                "Load a solution using roslyn_load_solution",
-                                "Or load a project using roslyn_load_project",
+                                "Load a solution using csharp_load_solution",
+                                "Or load a project using csharp_load_project",
                                 "Then retry getting diagnostics"
                             },
                             SuggestedActions = new List<SuggestedAction>
                             {
                                 new SuggestedAction
                                 {
-                                    Tool = "roslyn_load_solution",
+                                    Tool = "csharp_load_solution",
                                     Description = "Load a solution file",
                                     Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                                 }
@@ -306,7 +306,7 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
                 {
                     Id = "get_more_results",
                     Description = $"Get more diagnostics (up to 500)",
-                    ToolName = "roslyn_get_diagnostics",
+                    ToolName = "csharp_get_diagnostics",
                     Parameters = new
                     {
                         scope = parameters.Scope ?? "solution",
@@ -778,7 +778,7 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
             {
                 Id = "goto_first_error",
                 Description = $"Go to first error: {firstError.Id}",
-                ToolName = "roslyn_goto_definition",
+                ToolName = "csharp_goto_definition",
                 Parameters = new
                 {
                     filePath = firstError.Location.FilePath,
@@ -800,7 +800,7 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
             {
                 Id = "view_worst_file",
                 Description = $"View file with most issues: {Path.GetFileName(worstFile.Key!)}",
-                ToolName = "roslyn_document_symbols",
+                ToolName = "csharp_document_symbols",
                 Parameters = new
                 {
                     filePath = worstFile.Key
@@ -817,7 +817,7 @@ Not for: Code metrics (use future roslyn_code_metrics), finding specific symbols
             {
                 Id = $"filter_{category.ToLower()}",
                 Description = $"Show only {category} diagnostics",
-                ToolName = "roslyn_get_diagnostics",
+                ToolName = "csharp_get_diagnostics",
                 Parameters = new
                 {
                     categoryFilter = category,

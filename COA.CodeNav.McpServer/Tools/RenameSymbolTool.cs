@@ -29,10 +29,10 @@ public class RenameSymbolTool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_rename_symbol")]
+    [McpServerTool(Name = "csharp_rename_symbol")]
     [COA.CodeNav.McpServer.Attributes.Description(@"Rename a symbol across the entire solution with conflict detection and preview.
 Returns: List of affected files, conflict information, and preview of changes.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if rename would cause conflicts.
 Use cases: Rename classes, methods, properties, variables across entire codebase.
 Not for: File renaming (use file system tools), namespace-only renames (use dedicated namespace tool).")]

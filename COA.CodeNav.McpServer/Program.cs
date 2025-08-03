@@ -113,6 +113,11 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddScoped<CodeMetricsTool>();
         services.AddScoped<FindUnusedCodeTool>();
         services.AddScoped<TypeHierarchyTool>();
+        services.AddScoped<CallHierarchyTool>();
+        services.AddScoped<FindAllOverridesTool>();
+        services.AddScoped<SolutionWideFindReplaceTool>();
+        services.AddScoped<CodeCloneDetectionTool>();
+        services.AddScoped<DependencyAnalysisTool>();
 
         // Register MCP server
         services.AddSingleton<CodeNavMcpServer>();

@@ -20,7 +20,7 @@ public class TypeHierarchyTool : ITool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_type_hierarchy";
+    public string ToolName => "csharp_type_hierarchy";
     public string Description => "View inheritance hierarchy and interface implementations for types";
 
     public TypeHierarchyTool(
@@ -35,10 +35,10 @@ public class TypeHierarchyTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_type_hierarchy")]
+    [McpServerTool(Name = "csharp_type_hierarchy")]
     [Description(@"View the complete type hierarchy including base classes, derived types, and interface implementations.
 Returns: Hierarchical view of type relationships with inheritance chains and implementations.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if type is not found.
 Use cases: Understanding inheritance relationships, finding all implementations, exploring type hierarchies.
 AI benefit: Provides complete view of type relationships for better code understanding.")]
@@ -66,7 +66,7 @@ AI benefit: Provides complete view of type relationships for better code underst
                             {
                                 "Verify the file path is correct and absolute",
                                 "Ensure the solution or project containing this file is loaded",
-                                "Use roslyn_load_solution or roslyn_load_project if needed"
+                                "Use csharp_load_solution or csharp_load_project if needed"
                             }
                         }
                     },
@@ -607,7 +607,7 @@ AI benefit: Provides complete view of type relationships for better code underst
         {
             Id = "find_type_references",
             Description = $"Find all references to '{typeSymbol.Name}'",
-            ToolName = "roslyn_find_all_references",
+            ToolName = "csharp_find_all_references",
             Parameters = new
             {
                 filePath = parameters.FilePath,
@@ -627,7 +627,7 @@ AI benefit: Provides complete view of type relationships for better code underst
                 {
                     Id = "analyze_derived",
                     Description = $"Analyze derived type '{firstDerived.Name}'",
-                    ToolName = "roslyn_type_hierarchy",
+                    ToolName = "csharp_type_hierarchy",
                     Parameters = new
                     {
                         filePath = firstDerived.Location.FilePath,
@@ -647,7 +647,7 @@ AI benefit: Provides complete view of type relationships for better code underst
             {
                 Id = "explore_interface",
                 Description = $"Explore interface '{firstInterface.Name}'",
-                ToolName = "roslyn_get_type_members",
+                ToolName = "csharp_get_type_members",
                 Parameters = new
                 {
                     filePath = firstInterface.Location!.FilePath,
@@ -665,7 +665,7 @@ AI benefit: Provides complete view of type relationships for better code underst
             {
                 Id = "check_usage",
                 Description = "Check if this sealed type is unused",
-                ToolName = "roslyn_find_unused_code",
+                ToolName = "csharp_find_unused_code",
                 Parameters = new
                 {
                     scope = "file",
@@ -707,7 +707,7 @@ public class TypeHierarchyParams
 
 public class TypeHierarchyResult : ToolResultBase
 {
-    public override string Operation => "roslyn_type_hierarchy";
+    public override string Operation => "csharp_type_hierarchy";
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

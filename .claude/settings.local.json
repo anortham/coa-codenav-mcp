@@ -38,7 +38,16 @@
       "mcp__codesearch__store_memory",
       "mcp__codesearch__load_context",
       "mcp__codesearch__search_memories",
-      "mcp__codesearch__recent_files"
+      "mcp__codesearch__recent_files",
+      "mcp__codesearch__semantic_search",
+      "mcp__codenav__csharp_load_solution",
+      "mcp__codenav__csharp_call_hierarchy",
+      "mcp__codenav__csharp_find_all_overrides",
+      "mcp__codenav__csharp_symbol_search",
+      "mcp__codenav__csharp_solution_wide_find_replace",
+      "mcp__codenav__csharp_code_clone_detection",
+      "mcp__codenav__csharp_dependency_analysis",
+      "mcp__codenav__csharp_find_implementations"
     ],
     "deny": []
   }

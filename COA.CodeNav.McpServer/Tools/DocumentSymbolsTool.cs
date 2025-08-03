@@ -20,7 +20,7 @@ public class DocumentSymbolsTool : ITool
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_document_symbols";
+    public string ToolName => "csharp_document_symbols";
     public string Description => "Extract symbol hierarchy from a document";
 
     public DocumentSymbolsTool(
@@ -33,13 +33,13 @@ public class DocumentSymbolsTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_document_symbols")]
+    [McpServerTool(Name = "csharp_document_symbols")]
     [Description(@"Extract the symbol hierarchy from a C# document.
 Returns: Hierarchical list of symbols with their locations, kinds, and modifiers.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if document is not found.
 Use cases: Document outline, navigation, understanding file structure, finding symbols in a file.
-Not for: Cross-file symbol search (use roslyn_symbol_search), finding references (use roslyn_find_all_references).")]
+Not for: Cross-file symbol search (use csharp_symbol_search), finding references (use csharp_find_all_references).")]
     public async Task<object> ExecuteAsync(DocumentSymbolsParams parameters, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("DocumentSymbols request received: FilePath={FilePath}", parameters.FilePath);
@@ -68,13 +68,13 @@ Not for: Cross-file symbol search (use roslyn_symbol_search), finding references
                             {
                                 "Ensure the file path is correct and absolute",
                                 "Verify the solution/project containing this file is loaded",
-                                "Use roslyn_load_solution or roslyn_load_project to load the containing project"
+                                "Use csharp_load_solution or csharp_load_project to load the containing project"
                             },
                             SuggestedActions = new List<SuggestedAction>
                             {
                                 new SuggestedAction
                                 {
-                                    Tool = "roslyn_load_solution",
+                                    Tool = "csharp_load_solution",
                                     Description = "Load the solution containing this file",
                                     Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                                 }
@@ -135,7 +135,7 @@ Not for: Cross-file symbol search (use roslyn_symbol_search), finding references
                 symbols => EstimateDocumentSymbolsTokens(symbols),
                 requestedMax: parameters.MaxResults ?? 100, // Default to 100 symbols
                 safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                toolName: "roslyn_document_symbols"
+                toolName: "csharp_document_symbols"
             );
 
             // Generate insights (use all symbols for accurate insights)
@@ -162,7 +162,7 @@ Not for: Cross-file symbol search (use roslyn_symbol_search), finding references
                 {
                     Id = "get_more_symbols",
                     Description = "Get additional symbols",
-                    ToolName = "roslyn_document_symbols",
+                    ToolName = "csharp_document_symbols",
                     Parameters = new
                     {
                         filePath = parameters.FilePath,
@@ -727,7 +727,7 @@ Not for: Cross-file symbol search (use roslyn_symbol_search), finding references
                 {
                     Id = $"goto_{type.Name.ToLower()}",
                     Description = $"Go to {type.Name} definition",
-                    ToolName = "roslyn_goto_definition",
+                    ToolName = "csharp_goto_definition",
                     Parameters = new
                     {
                         filePath = type.Location.FilePath,
@@ -741,7 +741,7 @@ Not for: Cross-file symbol search (use roslyn_symbol_search), finding references
                 {
                     Id = $"find_refs_{type.Name.ToLower()}",
                     Description = $"Find references to {type.Name}",
-                    ToolName = "roslyn_find_all_references",
+                    ToolName = "csharp_find_all_references",
                     Parameters = new
                     {
                         filePath = type.Location.FilePath,
@@ -760,7 +760,7 @@ Not for: Cross-file symbol search (use roslyn_symbol_search), finding references
             {
                 Id = "search_symbols",
                 Description = "Search for specific symbols in solution",
-                ToolName = "roslyn_symbol_search",
+                ToolName = "csharp_symbol_search",
                 Parameters = new
                 {
                     query = "*",

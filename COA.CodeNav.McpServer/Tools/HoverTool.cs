@@ -21,7 +21,7 @@ public class HoverTool : ITool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_hover";
+    public string ToolName => "csharp_hover";
     public string Description => "Get hover information for a symbol at a given position";
 
     public HoverTool(
@@ -36,13 +36,13 @@ public class HoverTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_hover")]
+    [McpServerTool(Name = "csharp_hover")]
     [Description(@"Get hover information (quick info) for a symbol at a given position.
 Returns: Symbol signature, documentation, type information, and parameter details.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if symbol cannot be resolved.
 Use cases: View method signatures, read XML documentation, understand parameter types, check return types.
-Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_find_all_references).")]
+Not for: Navigation (use csharp_goto_definition), finding usages (use csharp_find_all_references).")]
     public async Task<object> ExecuteAsync(HoverParams parameters, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Hover request received: FilePath={FilePath}, Line={Line}, Column={Column}", 
@@ -74,13 +74,13 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
                             {
                                 "Ensure the file path is correct and absolute",
                                 "Verify the solution/project containing this file is loaded",
-                                "Use roslyn_load_solution or roslyn_load_project to load the containing project"
+                                "Use csharp_load_solution or csharp_load_project to load the containing project"
                             },
                             SuggestedActions = new List<SuggestedAction>
                             {
                                 new SuggestedAction
                                 {
-                                    Tool = "roslyn_load_solution",
+                                    Tool = "csharp_load_solution",
                                     Description = "Load the solution containing this file",
                                     Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                                 }
@@ -474,7 +474,7 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
         {
             Id = "goto_definition",
             Description = $"Go to definition of '{symbol.Name}'",
-            ToolName = "roslyn_goto_definition",
+            ToolName = "csharp_goto_definition",
             Parameters = new
             {
                 filePath = parameters.FilePath,
@@ -489,7 +489,7 @@ Not for: Navigation (use roslyn_goto_definition), finding usages (use roslyn_fin
         {
             Id = "find_references",
             Description = $"Find all references to '{symbol.Name}'",
-            ToolName = "roslyn_find_all_references",
+            ToolName = "csharp_find_all_references",
             Parameters = new
             {
                 filePath = parameters.FilePath,

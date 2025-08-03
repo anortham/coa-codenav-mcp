@@ -21,7 +21,7 @@ public class GoToDefinitionTool : ITool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_goto_definition";
+    public string ToolName => "csharp_goto_definition";
     public string Description => "Navigate to the definition of a symbol at a given position in a file";
 
     public GoToDefinitionTool(
@@ -36,13 +36,13 @@ public class GoToDefinitionTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_goto_definition")]
+    [McpServerTool(Name = "csharp_goto_definition")]
     [Description(@"Navigate to the definition of a symbol at a given position in a file.
 Returns: Symbol location with file path, line, and column numbers; includes insights and next actions.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes (DOCUMENT_NOT_FOUND, NO_SYMBOL_AT_POSITION) with recovery steps.
 Use cases: Jump to class/method definitions, explore type declarations, navigate to property definitions.
-Not for: Finding usages (use roslyn_find_all_references), searching by name (use future symbol search tool).")]
+Not for: Finding usages (use csharp_find_all_references), searching by name (use csharp_symbol_search).")]
     public async Task<object> ExecuteAsync(GoToDefinitionParams parameters, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("GoToDefinition request received: FilePath={FilePath}, Line={Line}, Column={Column}", 

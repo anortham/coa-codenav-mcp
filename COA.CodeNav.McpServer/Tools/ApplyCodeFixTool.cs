@@ -35,10 +35,10 @@ public class ApplyCodeFixTool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_apply_code_fix")]
+    [McpServerTool(Name = "csharp_apply_code_fix")]
     [Description(@"Apply a code fix for a diagnostic at a specific location.
 Returns: Modified code with the fix applied, affected files list.
-Prerequisites: Call roslyn_get_diagnostics first to get available fixes.
+Prerequisites: Call csharp_get_diagnostics first to get available fixes.
 Error handling: Returns specific error codes with recovery steps if fix cannot be applied.
 Use cases: Fix compilation errors, apply analyzer suggestions, resolve warnings.
 Not for: Manual code edits (use other tools), refactorings without diagnostics.")]
@@ -59,7 +59,7 @@ Not for: Manual code edits (use other tools), refactorings without diagnostics."
                     {
                         "Ensure the file path is correct and absolute",
                         "Verify the file exists in the loaded solution/project",
-                        "Load a solution using roslyn_load_solution or project using roslyn_load_project"
+                        "Load a solution using csharp_load_solution or project using csharp_load_project"
                     },
                     parameters,
                     startTime);
@@ -107,7 +107,7 @@ Not for: Manual code edits (use other tools), refactorings without diagnostics."
                             {
                                 Steps = new List<string>
                                 {
-                                    "Run roslyn_get_diagnostics to see available diagnostics",
+                                    "Run csharp_get_diagnostics to see available diagnostics",
                                     "Verify the diagnostic ID is correct",
                                     "Check if the diagnostic still exists at this location"
                                 }
@@ -141,7 +141,7 @@ Not for: Manual code edits (use other tools), refactorings without diagnostics."
                         {
                             Steps = new List<string>
                             {
-                                "Run roslyn_get_diagnostics to find diagnostics in the file",
+                                "Run csharp_get_diagnostics to find diagnostics in the file",
                                 "Check if the line and column are correct",
                                 "Ensure there are actually issues to fix at this location"
                             }
@@ -299,7 +299,7 @@ Not for: Manual code edits (use other tools), refactorings without diagnostics."
                         changesSubset => EstimateFileChangesTokens(changesSubset),
                         requestedMax: parameters.MaxChangedFiles ?? 50,
                         safetyLimit: COA.CodeNav.McpServer.Utilities.TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                        toolName: "roslyn_apply_code_fix"
+                        toolName: "csharp_apply_code_fix"
                     );
                     
                     displayChanges = response.Items;
@@ -468,7 +468,7 @@ Not for: Manual code edits (use other tools), refactorings without diagnostics."
             actions.Add(new NextAction
             {
                 Id = "see-all-changes",
-                ToolName = "roslyn_apply_code_fix",
+                ToolName = "csharp_apply_code_fix",
                 Description = $"Preview all {allChanges.Count} file changes",
                 Parameters = new
                 {
@@ -488,7 +488,7 @@ Not for: Manual code edits (use other tools), refactorings without diagnostics."
         actions.Add(new NextAction
         {
             Id = "check-diagnostics",
-            ToolName = "roslyn_get_diagnostics",
+            ToolName = "csharp_get_diagnostics",
             Description = "Check for remaining diagnostics in the file",
             Parameters = new
             {
@@ -503,7 +503,7 @@ Not for: Manual code edits (use other tools), refactorings without diagnostics."
             actions.Add(new NextAction
             {
                 Id = "format-document",
-                ToolName = "roslyn_format_document",
+                ToolName = "csharp_format_document",
                 Description = "Format the modified file(s)",
                 Parameters = new
                 {
@@ -563,7 +563,7 @@ public class ApplyCodeFixParams
 
 public class ApplyCodeFixToolResult : ToolResultBase
 {
-    public override string Operation => "roslyn_apply_code_fix";
+    public override string Operation => "csharp_apply_code_fix";
 
     [JsonPropertyName("fixTitle")]
     public string? FixTitle { get; set; }

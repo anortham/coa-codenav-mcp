@@ -22,7 +22,7 @@ public class TraceCallStackTool : ITool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_trace_call_stack";
+    public string ToolName => "csharp_trace_call_stack";
     public string Description => "Trace execution paths through code from entry points to implementations";
 
     public TraceCallStackTool(
@@ -37,13 +37,13 @@ public class TraceCallStackTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_trace_call_stack")]
+    [McpServerTool(Name = "csharp_trace_call_stack")]
     [Description(@"Trace execution paths through code from entry points to implementations.
 Returns: Complete call chains with conditions, branches, and insights about code flow.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if starting point cannot be found.
 Use cases: Understanding API flows, tracing event handlers, debugging call chains, analyzing code paths.
-Not for: Static analysis (use other tools), finding implementations (use roslyn_find_implementations).")]
+Not for: Static analysis (use other tools), finding implementations (use csharp_find_implementations).")]
     public async Task<object> ExecuteAsync(TraceCallStackParams parameters, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("TraceCallStack request: FilePath={FilePath}, Line={Line}, Column={Column}, Direction={Direction}", 
@@ -72,7 +72,7 @@ Not for: Static analysis (use other tools), finding implementations (use roslyn_
                             {
                                 "Ensure the file path is correct and absolute",
                                 "Verify the solution/project containing this file is loaded",
-                                "Use roslyn_load_solution or roslyn_load_project to load the containing project"
+                                "Use csharp_load_solution or csharp_load_project to load the containing project"
                             }
                         }
                     }
@@ -181,7 +181,7 @@ Not for: Static analysis (use other tools), finding implementations (use roslyn_
                 paths => EstimateCallPathsTokens(paths, parameters.IncludeFramework),
                 requestedMax: parameters.MaxPaths ?? 10, // Default to 10 paths
                 safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                toolName: "roslyn_trace_call_stack"
+                toolName: "csharp_trace_call_stack"
             );
 
             // Generate insights (use all paths for accurate insights)
@@ -203,7 +203,7 @@ Not for: Static analysis (use other tools), finding implementations (use roslyn_
                 {
                     Id = "get_more_paths",
                     Description = "Get additional call paths",
-                    ToolName = "roslyn_trace_call_stack",
+                    ToolName = "csharp_trace_call_stack",
                     Parameters = new
                     {
                         filePath = parameters.FilePath,
@@ -638,7 +638,7 @@ Not for: Static analysis (use other tools), finding implementations (use roslyn_
             Description = parameters.Direction == "forward" 
                 ? "Trace who calls this method" 
                 : "Trace what this method calls",
-            ToolName = "roslyn_trace_call_stack",
+            ToolName = "csharp_trace_call_stack",
             Parameters = new
             {
                 filePath = parameters.FilePath,
@@ -655,7 +655,7 @@ Not for: Static analysis (use other tools), finding implementations (use roslyn_
         {
             Id = "find_references",
             Description = $"Find all references to '{method.Name}'",
-            ToolName = "roslyn_find_all_references",
+            ToolName = "csharp_find_all_references",
             Parameters = new
             {
                 filePath = parameters.FilePath,

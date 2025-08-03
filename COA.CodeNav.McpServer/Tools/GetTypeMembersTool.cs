@@ -22,7 +22,7 @@ public class GetTypeMembersTool : ITool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_get_type_members";
+    public string ToolName => "csharp_get_type_members";
     public string Description => "List all members of a type with their signatures and documentation";
 
     public GetTypeMembersTool(
@@ -37,13 +37,13 @@ public class GetTypeMembersTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_get_type_members")]
+    [McpServerTool(Name = "csharp_get_type_members")]
     [Description(@"List all members of a type including methods, properties, fields, and events with their documentation.
 Returns: Detailed list of type members with signatures, documentation, and metadata.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if type is not found.
 Use cases: Exploring type APIs, understanding type structure, generating documentation, finding specific members.
-Not for: Finding implementations (use roslyn_find_implementations), searching across types (use roslyn_symbol_search).")]
+Not for: Finding implementations (use csharp_find_implementations), searching across types (use csharp_symbol_search).")]
     public async Task<object> ExecuteAsync(GetTypeMembersParams parameters, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("GetTypeMembers request received: FilePath={FilePath}, Line={Line}, Column={Column}", 
@@ -73,13 +73,13 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
                             {
                                 "Ensure the file path is correct and absolute",
                                 "Verify the solution/project containing this file is loaded",
-                                "Use roslyn_load_solution or roslyn_load_project to load the containing project"
+                                "Use csharp_load_solution or csharp_load_project to load the containing project"
                             },
                             SuggestedActions = new List<SuggestedAction>
                             {
                                 new SuggestedAction
                                 {
-                                    Tool = "roslyn_load_solution",
+                                    Tool = "csharp_load_solution",
                                     Description = "Load the solution containing this file",
                                     Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                                 }
@@ -255,7 +255,7 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
                 safetyLimit: parameters.IncludeDocumentation ?? true 
                     ? TokenEstimator.DEFAULT_SAFETY_LIMIT 
                     : TokenEstimator.DEFAULT_SAFETY_LIMIT * 2, // Allow more without docs
-                toolName: "roslyn_get_type_members"
+                toolName: "csharp_get_type_members"
             );
 
             // Generate insights (use all members for accurate insights)
@@ -283,7 +283,7 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
                 {
                     Id = "get_more_members",
                     Description = "Get additional members",
-                    ToolName = "roslyn_get_type_members",
+                    ToolName = "csharp_get_type_members",
                     Parameters = new
                     {
                         filePath = parameters.FilePath,
@@ -782,7 +782,7 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
                 {
                     Id = "find_implementations",
                     Description = $"Find implementations of {typeSymbol.Name}",
-                    ToolName = "roslyn_find_implementations",
+                    ToolName = "csharp_find_implementations",
                     Parameters = new
                     {
                         filePath = lineSpan.Path,
@@ -805,7 +805,7 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
             {
                 Id = $"trace_{method.Name.ToLower()}",
                 Description = $"Trace calls to {method.Name}",
-                ToolName = "roslyn_trace_call_stack",
+                ToolName = "csharp_trace_call_stack",
                 Parameters = new
                 {
                     filePath = method.Location!.FilePath,
@@ -826,7 +826,7 @@ Not for: Finding implementations (use roslyn_find_implementations), searching ac
             {
                 Id = "find_type_usage",
                 Description = $"Find where {typeSymbol.Name} is used",
-                ToolName = "roslyn_find_all_references",
+                ToolName = "csharp_find_all_references",
                 Parameters = new
                 {
                     filePath = lineSpan.Path,

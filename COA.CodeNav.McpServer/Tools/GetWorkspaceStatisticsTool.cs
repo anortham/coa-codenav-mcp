@@ -20,7 +20,7 @@ public class GetWorkspaceStatisticsTool
         _workspaceManager = workspaceManager;
     }
 
-    [McpServerTool(Name = "roslyn_get_workspace_statistics")]
+    [McpServerTool(Name = "csharp_get_workspace_statistics")]
     [Description(@"Get statistics about currently loaded workspaces and resource usage.
 Returns: Workspace count, memory usage, idle times, and access patterns.
 Use cases: Monitoring resource usage, debugging workspace issues, understanding cache behavior.")]
@@ -192,7 +192,7 @@ Use cases: Monitoring resource usage, debugging workspace issues, understanding 
             {
                 Id = "load_solution",
                 Description = "Load a solution to start working",
-                ToolName = "roslyn_load_solution",
+                ToolName = "csharp_load_solution",
                 Parameters = new
                 {
                     solutionPath = "<path-to-your-solution.sln>"
@@ -219,7 +219,7 @@ Use cases: Monitoring resource usage, debugging workspace issues, understanding 
         {
             Id = "refresh_stats",
             Description = "Refresh workspace statistics",
-            ToolName = "roslyn_get_workspace_statistics",
+            ToolName = "csharp_get_workspace_statistics",
             Parameters = new { },
             Priority = "low"
         });
@@ -235,7 +235,7 @@ public class GetWorkspaceStatisticsParams
 
 public class GetWorkspaceStatisticsResult : ToolResultBase
 {
-    public override string Operation => "roslyn_get_workspace_statistics";
+    public override string Operation => "csharp_get_workspace_statistics";
     
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

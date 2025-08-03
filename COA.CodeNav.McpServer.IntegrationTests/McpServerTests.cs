@@ -109,8 +109,8 @@ public class McpServerTests
                 var toolAttribute = method.GetCustomAttribute<McpServerToolAttribute>();
                 var toolName = toolAttribute!.Name;
                 
-                // Tool names should start with "roslyn_"
-                toolName.Should().StartWith("roslyn_", $"Tool {toolName} should follow naming convention");
+                // Tool names should start with "csharp_"
+                toolName.Should().StartWith("csharp_", $"Tool {toolName} should follow naming convention");
                 
                 // Tool names should be lowercase with underscores
                 toolName.Should().MatchRegex("^[a-z_]+$", $"Tool {toolName} should use lowercase and underscores only");

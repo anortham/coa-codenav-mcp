@@ -20,7 +20,7 @@ public class FindImplementationsTool : ITool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_find_implementations";
+    public string ToolName => "csharp_find_implementations";
     public string Description => "Find all implementations of an interface or abstract/virtual member";
 
     public FindImplementationsTool(
@@ -35,13 +35,13 @@ public class FindImplementationsTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_find_implementations")]
+    [McpServerTool(Name = "csharp_find_implementations")]
     [Description(@"Find all implementations of interfaces and overrides of virtual/abstract methods.
 Returns: List of implementing types/members with their locations and metadata.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if symbol is not found.
 Use cases: Finding concrete implementations, discovering derived classes, locating overrides.
-Not for: Finding references (use roslyn_find_all_references), finding base types (use roslyn_goto_definition).")]
+Not for: Finding references (use csharp_find_all_references), finding base types (use csharp_goto_definition).")]
     public async Task<object> ExecuteAsync(FindImplementationsParams parameters, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("FindImplementations request received: FilePath={FilePath}, Line={Line}, Column={Column}", 
@@ -73,13 +73,13 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
                             {
                                 "Ensure the file path is correct and absolute",
                                 "Verify the solution/project containing this file is loaded",
-                                "Use roslyn_load_solution or roslyn_load_project to load the containing project"
+                                "Use csharp_load_solution or csharp_load_project to load the containing project"
                             },
                             SuggestedActions = new List<SuggestedAction>
                             {
                                 new SuggestedAction
                                 {
-                                    Tool = "roslyn_load_solution",
+                                    Tool = "csharp_load_solution",
                                     Description = "Load the solution containing this file",
                                     Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                                 }
@@ -531,7 +531,7 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
                 {
                     Id = $"goto_impl_{impl.ImplementingType?.Replace(".", "_").ToLower()}",
                     Description = $"Go to {impl.ImplementingType}",
-                    ToolName = "roslyn_goto_definition",
+                    ToolName = "csharp_goto_definition",
                     Parameters = new
                     {
                         filePath = impl.Location.FilePath,
@@ -553,7 +553,7 @@ Not for: Finding references (use roslyn_find_all_references), finding base types
                 {
                     Id = "find_usage",
                     Description = $"Find usages of implementations",
-                    ToolName = "roslyn_find_all_references",
+                    ToolName = "csharp_find_all_references",
                     Parameters = new
                     {
                         filePath = firstImpl.Location.FilePath,

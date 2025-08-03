@@ -22,7 +22,7 @@ public class FindUnusedCodeTool : ITool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_find_unused_code";
+    public string ToolName => "csharp_find_unused_code";
     public string Description => "Find unused classes, methods, properties, and fields in the codebase";
 
     public FindUnusedCodeTool(
@@ -37,10 +37,10 @@ public class FindUnusedCodeTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_find_unused_code")]
+    [McpServerTool(Name = "csharp_find_unused_code")]
     [Description(@"Find unused code elements in the codebase including classes, methods, properties, and fields.
 Returns: List of potentially unused code elements with their locations and types.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if workspace is not loaded.
 Use cases: Code cleanup, reducing technical debt, identifying dead code, improving maintainability.
 AI benefit: Helps identify code that can be safely removed to reduce complexity.")]
@@ -66,8 +66,8 @@ AI benefit: Helps identify code that can be safely removed to reduce complexity.
                         {
                             Steps = new List<string>
                             {
-                                "Load a solution using roslyn_load_solution",
-                                "Or load a project using roslyn_load_project"
+                                "Load a solution using csharp_load_solution",
+                                "Or load a project using csharp_load_project"
                             }
                         }
                     },
@@ -535,7 +535,7 @@ AI benefit: Helps identify code that can be safely removed to reduce complexity.
             {
                 Id = "analyze_file_metrics",
                 Description = $"Analyze code metrics for file with {fileWithMost.Count()} unused items",
-                ToolName = "roslyn_code_metrics",
+                ToolName = "csharp_code_metrics",
                 Parameters = new
                 {
                     filePath = fileWithMost.Key,
@@ -553,7 +553,7 @@ AI benefit: Helps identify code that can be safely removed to reduce complexity.
             {
                 Id = "verify_public_usage",
                 Description = $"Verify external usage of public {publicUnused.Kind.ToLower()} '{publicUnused.Name}'",
-                ToolName = "roslyn_find_all_references",
+                ToolName = "csharp_find_all_references",
                 Parameters = new
                 {
                     filePath = publicUnused.Location?.FilePath,
@@ -595,7 +595,7 @@ public class FindUnusedCodeParams
 
 public class FindUnusedCodeResult : ToolResultBase
 {
-    public override string Operation => "roslyn_find_unused_code";
+    public override string Operation => "csharp_find_unused_code";
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

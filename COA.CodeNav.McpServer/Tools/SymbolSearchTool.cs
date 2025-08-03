@@ -23,7 +23,7 @@ public class SymbolSearchTool : ITool
     
     // Removed hard limit - now using dynamic token estimation
 
-    public string ToolName => "roslyn_symbol_search";
+    public string ToolName => "csharp_symbol_search";
     public string Description => "Search for symbols by name or pattern across the solution";
 
     public SymbolSearchTool(
@@ -36,13 +36,13 @@ public class SymbolSearchTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_symbol_search")]
+    [McpServerTool(Name = "csharp_symbol_search")]
     [Description(@"Search for symbols by name or pattern across the entire solution.
 Returns: List of matching symbols with their locations, types, and metadata.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if no workspace is loaded.
 Use cases: Finding symbols by name/pattern, discovering types, locating methods, exploring namespaces.
-Not for: Finding references to a symbol (use roslyn_find_all_references), navigating to definition (use roslyn_goto_definition).")]
+Not for: Finding references to a symbol (use csharp_find_all_references), navigating to definition (use csharp_goto_definition).")]
     public async Task<object> ExecuteAsync(SymbolSearchParams parameters, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("SymbolSearch request received: Query={Query}, SearchType={SearchType}, SymbolKinds={SymbolKinds}", 
@@ -70,15 +70,15 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                         {
                             Steps = new List<string>
                             {
-                                "Load a solution using roslyn_load_solution",
-                                "Or load a project using roslyn_load_project",
+                                "Load a solution using csharp_load_solution",
+                                "Or load a project using csharp_load_project",
                                 "Then retry the symbol search"
                             },
                             SuggestedActions = new List<SuggestedAction>
                             {
                                 new SuggestedAction
                                 {
-                                    Tool = "roslyn_load_solution",
+                                    Tool = "csharp_load_solution",
                                     Description = "Load a solution file",
                                     Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                                 }
@@ -141,7 +141,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                 syms => EstimateSymbolTokens(syms),
                 requestedMax: parameters.MaxResults ?? 100, // Default to 100 symbols
                 safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                toolName: "roslyn_symbol_search"
+                toolName: "csharp_symbol_search"
             );
 
             if (!response.Items.Any())
@@ -194,7 +194,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                 {
                     Id = "get_more_symbols",
                     Description = "Get additional symbols",
-                    ToolName = "roslyn_symbol_search",
+                    ToolName = "csharp_symbol_search",
                     Parameters = new
                     {
                         query = parameters.Query,
@@ -534,7 +534,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                 {
                     Id = $"goto_{symbol.Name.ToLower()}",
                     Description = $"Go to definition of '{symbol.Name}'",
-                    ToolName = "roslyn_goto_definition",
+                    ToolName = "csharp_goto_definition",
                     Parameters = new
                     {
                         filePath = symbol.Location.FilePath,
@@ -548,7 +548,7 @@ Not for: Finding references to a symbol (use roslyn_find_all_references), naviga
                 {
                     Id = $"refs_{symbol.Name.ToLower()}",
                     Description = $"Find references to '{symbol.Name}'",
-                    ToolName = "roslyn_find_all_references",
+                    ToolName = "csharp_find_all_references",
                     Parameters = new
                     {
                         filePath = symbol.Location.FilePath,

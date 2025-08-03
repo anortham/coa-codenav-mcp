@@ -21,7 +21,7 @@ public class CodeMetricsTool : ITool
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "roslyn_code_metrics";
+    public string ToolName => "csharp_code_metrics";
     public string Description => "Calculate code metrics including cyclomatic complexity, lines of code, and maintainability index";
 
     public CodeMetricsTool(
@@ -36,10 +36,10 @@ public class CodeMetricsTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "roslyn_code_metrics")]
+    [McpServerTool(Name = "csharp_code_metrics")]
     [Description(@"Calculate code metrics for methods, classes, and files.
 Returns: Cyclomatic complexity, lines of code, maintainability index, and depth of inheritance.
-Prerequisites: Call roslyn_load_solution or roslyn_load_project first.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if file is not found.
 Use cases: Code quality assessment, identifying complex methods, refactoring candidates, technical debt analysis.
 AI benefit: Provides quantitative metrics for prioritizing code improvements.")]
@@ -67,7 +67,7 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.")]
                             {
                                 "Verify the file path is correct and absolute",
                                 "Ensure the solution or project containing this file is loaded",
-                                "Use roslyn_load_solution or roslyn_load_project if needed"
+                                "Use csharp_load_solution or csharp_load_project if needed"
                             }
                         }
                     },
@@ -491,7 +491,7 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.")]
             {
                 Id = "refactor_complex",
                 Description = $"Extract methods from '{mostComplex.Name}' (complexity: {mostComplex.CyclomaticComplexity})",
-                ToolName = "roslyn_extract_method",
+                ToolName = "csharp_extract_method",
                 Parameters = new
                 {
                     filePath = parameters.FilePath,
@@ -526,7 +526,7 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.")]
             {
                 Id = "find_similar_complexity",
                 Description = "Find other methods with similar complexity",
-                ToolName = "roslyn_symbol_search",
+                ToolName = "csharp_symbol_search",
                 Parameters = new
                 {
                     query = "*",
@@ -583,7 +583,7 @@ public class MetricsThresholds
 
 public class CodeMetricsResult : ToolResultBase
 {
-    public override string Operation => "roslyn_code_metrics";
+    public override string Operation => "csharp_code_metrics";
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
