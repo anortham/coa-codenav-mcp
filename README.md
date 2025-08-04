@@ -23,31 +23,28 @@ A powerful MCP (Model Context Protocol) server providing advanced C# code analys
 
 ### Quick Install
 
-#### Option 1: Download Release (Recommended)
-
-1. Download the latest release from [GitHub Releases](https://github.com/your-org/coa-codenav-mcp/releases)
-2. Extract to your preferred location
-3. Configure your AI assistant (see Configuration section)
-
-#### Option 2: Build from Source
+#### Build from Source
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/coa-codenav-mcp.git
+# Clone and build
+git clone https://github.com/anortham/coa-codenav-mcp.git
 cd coa-codenav-mcp
+dotnet build -c Release
 
-# Build the project
-dotnet build --configuration Release
+# Add to Claude Code
+# Windows
+claude mcp add codenav "C:\path\to\coa-codenav-mcp\COA.CodeNav.McpServer\bin\Release\net9.0\COA.CodeNav.McpServer.exe"
 
-# Run tests (optional)
-dotnet test
+# macOS/Linux
+claude mcp add codenav ~/coa-codenav-mcp/COA.CodeNav.McpServer/bin/Release/net9.0/COA.CodeNav.McpServer
 ```
 
-### Configuration for Claude Desktop
+### Manual Configuration for Claude Desktop
 
-Add to your Claude configuration file:
+If you prefer manual configuration, add to your Claude configuration file:
 
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
 ```json
 {
   "mcpServers": {
@@ -59,6 +56,7 @@ Add to your Claude configuration file:
 ```
 
 **macOS/Linux:** `~/.config/Claude/claude_desktop_config.json`
+
 ```json
 {
   "mcpServers": {
@@ -73,26 +71,29 @@ Add to your Claude configuration file:
 
 ### Quick Reference
 
-| Tool | Purpose | Example Usage |
-|------|---------|---------------|
-| `csharp_load_solution` | Load VS solution | "Load MyApp.sln" |
-| `csharp_goto_definition` | Jump to definition | "Go to UserService definition" |
-| `csharp_find_all_references` | Find usages | "Where is ProcessOrder used?" |
-| `csharp_symbol_search` | Search symbols | "Find all *Service classes" |
-| `csharp_get_diagnostics` | Get errors/warnings | "Show me all errors" |
-| `csharp_rename_symbol` | Rename across solution | "Rename UserService to UserManager" |
+| Tool                         | Purpose                | Example Usage                       |
+| ---------------------------- | ---------------------- | ----------------------------------- |
+| `csharp_load_solution`       | Load VS solution       | "Load MyApp.sln"                    |
+| `csharp_goto_definition`     | Jump to definition     | "Go to UserService definition"      |
+| `csharp_find_all_references` | Find usages            | "Where is ProcessOrder used?"       |
+| `csharp_symbol_search`       | Search symbols         | "Find all \*Service classes"        |
+| `csharp_get_diagnostics`     | Get errors/warnings    | "Show me all errors"                |
+| `csharp_rename_symbol`       | Rename across solution | "Rename UserService to UserManager" |
 
 ### Workspace Management
 
 #### `csharp_load_solution`
+
 Load a complete Visual Studio solution for analysis.
 
 **When to use:**
+
 - "Load the MyApp.sln solution"
 - "Open the solution file in C:\Projects\MyApp"
 - "I want to analyze this C# solution"
 
 **Example:**
+
 ```json
 {
   "solutionPath": "C:\\Projects\\MyApp\\MyApp.sln",
@@ -101,14 +102,17 @@ Load a complete Visual Studio solution for analysis.
 ```
 
 #### `csharp_load_project`
+
 Load a single C# project file.
 
 **When to use:**
+
 - "Load just the MyApp.Core project"
 - "Open the csproj file"
 - "I only need to analyze this one project"
 
 **Example:**
+
 ```json
 {
   "projectPath": "C:\\Projects\\MyApp\\MyApp.Core\\MyApp.Core.csproj"
@@ -116,9 +120,11 @@ Load a single C# project file.
 ```
 
 #### `csharp_get_workspace_statistics`
+
 Get statistics about loaded workspaces and resource usage.
 
 **When to use:**
+
 - "Show workspace memory usage"
 - "How many workspaces are loaded?"
 - "Check workspace performance"
@@ -126,14 +132,17 @@ Get statistics about loaded workspaces and resource usage.
 ### Code Navigation
 
 #### `csharp_goto_definition`
+
 Navigate to the definition of a symbol at a specific position.
 
 **When to use:**
+
 - "Where is UserService defined?"
 - "Show me the definition of ProcessOrder method"
 - "Jump to where this class is declared"
 
 **Example:**
+
 ```json
 {
   "filePath": "Program.cs",
@@ -143,19 +152,23 @@ Navigate to the definition of a symbol at a specific position.
 ```
 
 **Response includes:**
+
 - Exact location of definition
 - Symbol type and signature
 - Next actions (find references, implementations, etc.)
 
 #### `csharp_find_all_references`
+
 Find all references to a symbol across the entire codebase.
 
 **When to use:**
+
 - "Where is UserService used?"
 - "Find all calls to ProcessOrder"
 - "Show me all references to this variable"
 
 **Example:**
+
 ```json
 {
   "filePath": "Services/UserService.cs",
@@ -166,22 +179,27 @@ Find all references to a symbol across the entire codebase.
 ```
 
 **Features:**
+
 - Groups results by file
 - Shows usage context
 - Handles large result sets with pagination
 
 #### `csharp_find_implementations`
+
 Find all implementations of interfaces and overrides of virtual/abstract methods.
 
 **When to use:**
+
 - "What classes implement IRepository?"
 - "Show me all implementations of this interface"
 - "What overrides ProcessOrder?"
 
 #### `csharp_hover`
+
 Get detailed information about a symbol including signature, documentation, and type info.
 
 **When to use:**
+
 - "What does this method do?"
 - "Show me the documentation for ProcessOrder"
 - "What parameters does this function take?"
@@ -189,24 +207,28 @@ Get detailed information about a symbol including signature, documentation, and 
 ### Code Search & Discovery
 
 #### `csharp_symbol_search`
+
 Search for symbols by name or pattern across the entire solution.
 
 **When to use:**
+
 - "Find all classes with 'Service' in the name"
 - "Search for methods starting with 'Process'"
 - "Find the UserController class"
 - "Show me all interfaces in the Data namespace"
 
 **Search types:**
+
 - `contains` - Partial match anywhere in name (default)
 - `exact` - Exact name match
 - `startswith` - Name starts with query
-- `endswith` - Name ends with query  
-- `wildcard` - Support * and ? wildcards
+- `endswith` - Name ends with query
+- `wildcard` - Support \* and ? wildcards
 - `regex` - Full regex patterns
 - `fuzzy` - Fuzzy matching for typos
 
 **Example:**
+
 ```json
 {
   "query": "User*Service",
@@ -218,17 +240,21 @@ Search for symbols by name or pattern across the entire solution.
 ```
 
 #### `csharp_document_symbols`
+
 Extract the complete symbol hierarchy from a file.
 
 **When to use:**
+
 - "Show me the structure of this file"
 - "What methods are in UserService.cs?"
 - "Give me an outline of this class"
 
 #### `csharp_get_type_members`
+
 List all members of a type including methods, properties, fields, and events.
 
 **When to use:**
+
 - "What methods does UserService have?"
 - "Show me all properties of Order class"
 - "List members including inherited ones"
@@ -236,35 +262,41 @@ List all members of a type including methods, properties, fields, and events.
 ### Code Analysis
 
 #### `csharp_get_diagnostics`
+
 Get compilation errors, warnings, and analyzer diagnostics.
 
 **When to use:**
+
 - "Show me all errors in the solution"
 - "What warnings do I have?"
 - "Check for nullable reference warnings"
 - "Find code quality issues"
 
 **Example:**
+
 ```json
 {
   "scope": "solution",
   "severities": ["Error", "Warning"],
   "includeAnalyzers": true,
-  "idFilter": "CS8",  // Filter for specific diagnostic IDs
+  "idFilter": "CS8", // Filter for specific diagnostic IDs
   "maxResults": 50
 }
 ```
 
 #### `csharp_code_metrics`
+
 Calculate code complexity and maintainability metrics.
 
 **When to use:**
+
 - "Calculate complexity of this method"
 - "Find methods that are too complex"
 - "Show maintainability index for this class"
 - "Identify refactoring candidates"
 
 **Metrics provided:**
+
 - **Cyclomatic Complexity** - Number of code paths
 - **Lines of Code** - Logical lines of code
 - **Maintainability Index** - 0-100 score (higher is better)
@@ -272,18 +304,22 @@ Calculate code complexity and maintainability metrics.
 - **Class Coupling** - Number of coupled classes
 
 #### `csharp_find_unused_code`
+
 Find potentially unused code elements including classes, methods, properties, and fields.
 
 **When to use:**
+
 - "Find dead code in the project"
 - "Show me unused private methods"
 - "Clean up unused classes"
 - "Identify code that can be removed"
 
 #### `csharp_type_hierarchy`
+
 View the complete type hierarchy including base classes, derived types, and interface implementations.
 
 **When to use:**
+
 - "Show inheritance hierarchy of UserService"
 - "What classes derive from BaseController?"
 - "View the complete type hierarchy"
@@ -292,19 +328,23 @@ View the complete type hierarchy including base classes, derived types, and inte
 ### Code Flow Analysis
 
 #### `csharp_trace_call_stack`
+
 Trace execution paths through code from entry points to implementations.
 
 **When to use:**
+
 - "Show me how ProcessOrder gets called"
 - "Trace execution from Main to this method"
 - "What calls ValidateUser?"
 - "Follow the call chain backwards"
 
 **Directions:**
+
 - `forward` - Follow calls made by the method
 - `backward` - Find callers of the method
 
 **Example:**
+
 ```json
 {
   "filePath": "Services/OrderService.cs",
@@ -318,14 +358,17 @@ Trace execution paths through code from entry points to implementations.
 ### Code Refactoring & Generation
 
 #### `csharp_rename_symbol`
+
 Rename symbols across the entire solution with conflict detection and preview.
 
 **When to use:**
+
 - "Rename UserService to UserManager"
 - "Change this variable name everywhere"
 - "Refactor: rename ProcessOrder to ExecuteOrder"
 
 **Features:**
+
 - Preview changes before applying
 - Conflict detection
 - Optional file renaming for types
@@ -333,6 +376,7 @@ Rename symbols across the entire solution with conflict detection and preview.
 - Rename overloads together
 
 **Example:**
+
 ```json
 {
   "filePath": "UserService.cs",
@@ -346,23 +390,28 @@ Rename symbols across the entire solution with conflict detection and preview.
 ```
 
 #### `csharp_apply_code_fix`
+
 Apply available code fixes for diagnostics at a specific location.
 
 **When to use:**
+
 - "Fix this compilation error"
 - "Apply the suggested fix for CS0219"
 - "Resolve this nullable warning"
 
 #### `csharp_generate_code`
+
 Generate code for common patterns and boilerplate.
 
 **When to use:**
+
 - "Generate a constructor from fields"
 - "Create properties for these fields"
 - "Implement this interface"
 - "Generate equals and hash code"
 
 **Generation types:**
+
 - `constructor` - Generate constructor from fields/properties
 - `properties` - Generate properties from fields
 - `interface` - Implement interface members
@@ -370,14 +419,17 @@ Generate code for common patterns and boilerplate.
 - `disposable` - Implement IDisposable pattern
 
 #### `csharp_extract_method`
+
 Extract selected code into a new method.
 
 **When to use:**
+
 - "Extract this code into a method"
 - "Refactor: extract method called 'ValidateInput'"
 - "Create a method from lines 50-75"
 
 **Example:**
+
 ```json
 {
   "filePath": "OrderService.cs",
@@ -389,17 +441,21 @@ Extract selected code into a new method.
 ```
 
 #### `csharp_add_missing_usings`
+
 Add missing using directives for unresolved types.
 
 **When to use:**
+
 - "Fix missing imports"
 - "Add required using statements"
 - "Resolve unresolved type references"
 
 #### `csharp_format_document`
+
 Format code according to project settings and .editorconfig.
 
 **When to use:**
+
 - "Format this file"
 - "Fix indentation"
 - "Clean up code formatting"
@@ -424,7 +480,7 @@ Found several authentication components. Let me examine the main service structu
 
 The authentication system consists of:
 1. `AuthenticationService` - Main service handling login/logout
-2. `IAuthenticationProvider` - Interface for different auth providers  
+2. `IAuthenticationProvider` - Interface for different auth providers
 3. `JwtAuthProvider` - JWT token implementation
 4. `AuthController` - REST API endpoints
 
@@ -475,7 +531,7 @@ Let me fix these:
 
 Fixed:
 1. Added missing using for IUserRepository
-2. The property is 'Email' not 'EmailAddress' 
+2. The property is 'Email' not 'EmailAddress'
 3. Need to inject ILogger in the constructor
 ```
 
@@ -494,12 +550,12 @@ Code Review Results:
 
 1. **Complexity**: Method 'ProcessOrder' has high complexity (12)
    - Recommend extracting validation logic
-   
+
 2. **Unused Code**: Found 2 unused private methods
    - CalculateDiscount() - line 145
    - ValidateStock() - line 203
-   
-3. **Code Warnings**: 
+
+3. **Code Warnings**:
    - CS8602: Possible null reference in line 87
    - CS1998: Async method lacks await in SaveOrder()
 
@@ -532,6 +588,7 @@ Code Review Results:
 ### Token Management
 
 All tools implement smart token management:
+
 - Pre-estimate response size before building
 - Apply safety limits (5K-10K tokens)
 - Progressive reduction when over limit
@@ -543,21 +600,25 @@ All tools implement smart token management:
 ### Common Issues
 
 **"Workspace not loaded" error**
+
 - Ensure you've called `csharp_load_solution` or `csharp_load_project` first
 - Check the solution/project path is correct
 - Verify the solution builds successfully in Visual Studio
 
 **"Symbol not found" errors**
+
 - Make sure the file is part of the loaded solution/project
 - Check that the line and column numbers are correct (1-based)
 - Ensure the code compiles without errors
 
 **Performance issues**
+
 - Use `csharp_get_workspace_statistics` to check memory usage
 - Consider loading individual projects instead of large solutions
 - Enable response summarization for large results
 
 **"Response truncated" messages**
+
 - This is normal for large results
 - Use the provided next actions to get more results
 - Consider using more specific queries
@@ -565,12 +626,9 @@ All tools implement smart token management:
 ### Logging
 
 Logs are written to:
+
 - Windows: `%LOCALAPPDATA%\COA.CodeNav.McpServer\logs`
 - Linux/macOS: `~/.local/share/COA.CodeNav.McpServer/logs`
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
 ### Development Setup
 
@@ -588,6 +646,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 5. Follow the established result schema pattern
 
 Example tool implementation:
+
 ```csharp
 [McpServerToolType]
 public class MyNewTool
@@ -611,7 +670,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - Built on [Microsoft's Roslyn](https://github.com/dotnet/roslyn) compiler platform
-- Uses the [COA.Mcp.Protocol](https://github.com/your-org/coa-mcp-protocol) library for MCP communication
+- Uses the COA.Mcp.Protocol library for MCP communication
 - Inspired by Visual Studio's code navigation features
 - Thanks to all contributors and users!
 
@@ -637,5 +696,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 6. **Refactor**: "Rename UserService to UserManager"
 
 ---
-
-For more information, issues, or contributions, visit our [GitHub repository](https://github.com/your-org/coa-codenav-mcp).

@@ -47,7 +47,8 @@
       "mcp__codenav__csharp_solution_wide_find_replace",
       "mcp__codenav__csharp_code_clone_detection",
       "mcp__codenav__csharp_dependency_analysis",
-      "mcp__codenav__csharp_find_implementations"
+      "mcp__codenav__csharp_find_implementations",
+      "Bash(dotnet run:*)"
     ],
     "deny": []
   }
