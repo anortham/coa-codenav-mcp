@@ -24,6 +24,12 @@ namespace COA.CodeNav.McpServer.Attributes
         /// If not specified, the method name will be used.
         /// </summary>
         public string? Name { get; set; }
+
+        /// <summary>
+        /// Gets or sets the category of the tool for better organization and discovery.
+        /// Common categories: Navigation, Search, Analysis, Refactoring, CodeGeneration, Diagnostics.
+        /// </summary>
+        public string? Category { get; set; }
     }
 
     /// <summary>

@@ -8,7 +8,7 @@ public class StartupConfiguration
     /// <summary>
     /// Whether to automatically load a solution on startup
     /// </summary>
-    public bool AutoLoadSolution { get; set; } = true;
+    public bool AutoLoadSolution { get; set; } = false;
 
     /// <summary>
     /// Path to the solution file to load on startup.

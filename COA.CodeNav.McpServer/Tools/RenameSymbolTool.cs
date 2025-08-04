@@ -29,7 +29,7 @@ public class RenameSymbolTool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_rename_symbol")]
+    [McpServerTool(Name = "csharp_rename_symbol", Category = "Refactoring")]
     [COA.CodeNav.McpServer.Attributes.Description(@"Rename a symbol across the entire solution with conflict detection and preview.
 Returns: List of affected files, conflict information, and preview of changes.
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
@@ -692,23 +692,23 @@ public class RenameSymbolParams
     public required string NewName { get; set; }
     
     [JsonPropertyName("preview")]
-    [COA.CodeNav.McpServer.Attributes.Description("Preview changes without applying (default: true)")]
+    [COA.CodeNav.McpServer.Attributes.Description("Preview changes without applying. true = show preview (default), false = apply immediately")]
     public bool Preview { get; set; } = true;
     
     [JsonPropertyName("renameOverloads")]
-    [COA.CodeNav.McpServer.Attributes.Description("Rename overloaded methods (default: true)")]
+    [COA.CodeNav.McpServer.Attributes.Description("Rename overloaded methods. true = rename all overloads (default), false = rename only this method")]
     public bool? RenameOverloads { get; set; }
     
     [JsonPropertyName("renameInStrings")]
-    [COA.CodeNav.McpServer.Attributes.Description("Rename in string literals (default: false)")]
+    [COA.CodeNav.McpServer.Attributes.Description("Rename in string literals. true = include strings, false = skip strings (default)")]
     public bool? RenameInStrings { get; set; }
     
     [JsonPropertyName("renameInComments")]
-    [COA.CodeNav.McpServer.Attributes.Description("Rename in comments (default: true)")]
+    [COA.CodeNav.McpServer.Attributes.Description("Rename in comments. true = include comments (default), false = skip comments")]
     public bool? RenameInComments { get; set; }
     
     [JsonPropertyName("renameFile")]
-    [COA.CodeNav.McpServer.Attributes.Description("Rename file if renaming type (default: false)")]
+    [COA.CodeNav.McpServer.Attributes.Description("Rename file if renaming type. true = rename file to match type name, false = keep current filename (default)")]
     public bool? RenameFile { get; set; }
     
     [JsonPropertyName("maxChangedFiles")]

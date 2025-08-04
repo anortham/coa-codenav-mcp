@@ -1349,7 +1349,7 @@ public class GenerateCodeParams
     public required string GenerationType { get; set; }
 
     [JsonPropertyName("includeInherited")]
-    [Description("Include inherited members when generating code (default: false)")]
+    [Description("Include inherited members when generating code. true = include base class members, false = current class only (default)")]
     public bool? IncludeInherited { get; set; }
 
     [JsonPropertyName("propertyStyle")]

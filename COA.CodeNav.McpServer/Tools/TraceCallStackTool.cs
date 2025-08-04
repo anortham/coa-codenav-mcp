@@ -692,7 +692,7 @@ public class TraceCallStackParams
     public int? MaxDepth { get; set; }
     
     [JsonPropertyName("includeFramework")]
-    [Description("Include framework method calls (default: false)")]
+    [Description("Include framework method calls. true = include .NET framework methods, false = user code only (default)")]
     public bool IncludeFramework { get; set; } = false;
     
     [JsonPropertyName("maxPaths")]

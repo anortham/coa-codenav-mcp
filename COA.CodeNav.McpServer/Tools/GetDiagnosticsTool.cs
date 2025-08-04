@@ -38,7 +38,7 @@ public class GetDiagnosticsTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_get_diagnostics")]
+    [McpServerTool(Name = "csharp_get_diagnostics", Category = "Diagnostics")]
     [Description(@"Get compilation errors, warnings, and analyzer diagnostics for files, projects, or the entire solution.
 Returns: List of diagnostics with severity, location, and suggested fixes.
 Prerequisites: Call csharp_load_solution or csharp_load_project first.

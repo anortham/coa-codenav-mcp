@@ -35,7 +35,7 @@ public class FindAllReferencesTool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_find_all_references")]
+    [McpServerTool(Name = "csharp_find_all_references", Category = "Search")]
     [Description("Find all references to a symbol at a given position in a file")]
     public async Task<object> ExecuteAsync(FindAllReferencesParams parameters, CancellationToken cancellationToken = default)
     {

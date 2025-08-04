@@ -48,7 +48,15 @@
       "mcp__codenav__csharp_code_clone_detection",
       "mcp__codenav__csharp_dependency_analysis",
       "mcp__codenav__csharp_find_implementations",
-      "Bash(dotnet run:*)"
+      "Bash(dotnet run:*)",
+      "mcp__codesearch__get_latest_checkpoint",
+      "mcp__codenav__csharp_find_all_references",
+      "mcp__codenav__csharp_goto_definition",
+      "mcp__codesearch__store_checkpoint",
+      "mcp__codesearch__backup_memories",
+      "mcp__codesearch__restore_memories",
+      "Bash(dir:*)",
+      "mcp__codesearch__log_diagnostics"
     ],
     "deny": []
   }

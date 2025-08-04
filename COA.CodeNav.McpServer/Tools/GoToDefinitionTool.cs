@@ -36,7 +36,7 @@ public class GoToDefinitionTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_goto_definition")]
+    [McpServerTool(Name = "csharp_goto_definition", Category = "Navigation")]
     [Description(@"Navigate to the definition of a symbol at a given position in a file.
 Returns: Symbol location with file path, line, and column numbers; includes insights and next actions.
 Prerequisites: Call csharp_load_solution or csharp_load_project first.

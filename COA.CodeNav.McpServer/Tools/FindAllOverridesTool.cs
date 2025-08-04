@@ -851,11 +851,11 @@ public class FindAllOverridesParams
     public int Column { get; set; }
     
     [JsonPropertyName("includeInterfaces")]
-    [Description("Include interface implementations (default: true)")]
+    [Description("Include interface implementations. true = include interface implementations (default), false = only overrides")]
     public bool IncludeInterfaces { get; set; } = true;
     
     [JsonPropertyName("includeBase")]
-    [Description("Include base method chain for overrides (default: true)")]
+    [Description("Include base method chain for overrides. true = show full inheritance chain (default), false = direct overrides only")]
     public bool IncludeBase { get; set; } = true;
     
     [JsonPropertyName("maxResults")]
