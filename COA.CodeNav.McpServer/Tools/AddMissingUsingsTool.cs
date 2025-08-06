@@ -1,4 +1,5 @@
 using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
 using Microsoft.CodeAnalysis;
@@ -498,7 +499,7 @@ public class AddMissingUsingsParams
 
 public class AddMissingUsingsResult : ToolResultBase
 {
-    public override string Operation => "csharp_add_missing_usings";
+    public override string Operation => ToolNames.AddMissingUsings;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

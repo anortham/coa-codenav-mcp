@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Utilities;
@@ -583,7 +584,7 @@ public class MetricsThresholds
 
 public class CodeMetricsResult : ToolResultBase
 {
-    public override string Operation => "csharp_code_metrics";
+    public override string Operation => ToolNames.CodeMetrics;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

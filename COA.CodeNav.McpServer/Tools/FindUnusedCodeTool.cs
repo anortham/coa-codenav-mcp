@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Utilities;
@@ -595,7 +596,7 @@ public class FindUnusedCodeParams
 
 public class FindUnusedCodeResult : ToolResultBase
 {
-    public override string Operation => "csharp_find_unused_code";
+    public override string Operation => ToolNames.FindUnusedCode;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

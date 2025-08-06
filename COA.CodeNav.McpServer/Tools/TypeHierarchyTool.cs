@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Utilities;
@@ -647,7 +648,7 @@ AI benefit: Provides complete view of type relationships for better code underst
             {
                 Id = "explore_interface",
                 Description = $"Explore interface '{firstInterface.Name}'",
-                ToolName = "csharp_get_type_members",
+                ToolName = ToolNames.GetTypeMembers,
                 Parameters = new
                 {
                     filePath = firstInterface.Location!.FilePath,
@@ -707,7 +708,7 @@ public class TypeHierarchyParams
 
 public class TypeHierarchyResult : ToolResultBase
 {
-    public override string Operation => "csharp_type_hierarchy";
+    public override string Operation => ToolNames.TypeHierarchy;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

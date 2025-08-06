@@ -1,4 +1,5 @@
 using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
 using Microsoft.CodeAnalysis;
@@ -510,7 +511,7 @@ public class FormatDocumentParams
 
 public class FormatDocumentResult : ToolResultBase
 {
-    public override string Operation => "csharp_format_document";
+    public override string Operation => ToolNames.FormatDocument;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }

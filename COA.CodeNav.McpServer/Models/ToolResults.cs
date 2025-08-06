@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using COA.CodeNav.McpServer.Constants;
 
 namespace COA.CodeNav.McpServer.Models;
 
@@ -7,7 +8,7 @@ namespace COA.CodeNav.McpServer.Models;
 /// </summary>
 public class GoToDefinitionToolResult : ToolResultBase
 {
-    public override string Operation => "roslyn_goto_definition";
+    public override string Operation => ToolNames.GoToDefinition;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
@@ -30,7 +31,7 @@ public class GoToDefinitionToolResult : ToolResultBase
 /// </summary>
 public class FindAllReferencesToolResult : ToolResultBase
 {
-    public override string Operation => "roslyn_find_all_references";
+    public override string Operation => ToolNames.FindAllReferences;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
@@ -65,7 +66,7 @@ public class ReferenceDistribution
 /// </summary>
 public class HoverToolResult : ToolResultBase
 {
-    public override string Operation => "roslyn_hover";
+    public override string Operation => ToolNames.Hover;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
@@ -85,7 +86,7 @@ public class HoverToolResult : ToolResultBase
 /// </summary>
 public class RenameSymbolToolResult : ToolResultBase
 {
-    public override string Operation => "roslyn_rename_symbol";
+    public override string Operation => ToolNames.RenameSymbol;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
@@ -114,7 +115,7 @@ public class RenameSymbolToolResult : ToolResultBase
 /// </summary>
 public class SymbolSearchToolResult : ToolResultBase
 {
-    public override string Operation => "roslyn_symbol_search";
+    public override string Operation => ToolNames.SymbolSearch;
 
     [JsonPropertyName("query")]
     public SymbolSearchQuery? Query { get; set; }
@@ -167,7 +168,7 @@ public class SymbolDistribution
 /// </summary>
 public class FindImplementationsToolResult : ToolResultBase
 {
-    public override string Operation => "roslyn_find_implementations";
+    public override string Operation => ToolNames.FindImplementations;
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
@@ -202,7 +203,7 @@ public class ImplementationDistribution
 /// </summary>
 public class GetDiagnosticsToolResult : ToolResultBase
 {
-    public override string Operation => "roslyn_get_diagnostics";
+    public override string Operation => ToolNames.GetDiagnostics;
 
     [JsonPropertyName("query")]
     public DiagnosticsQuery? Query { get; set; }

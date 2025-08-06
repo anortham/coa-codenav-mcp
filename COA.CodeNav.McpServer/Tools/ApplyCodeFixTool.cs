@@ -1,4 +1,5 @@
 using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
 using Microsoft.CodeAnalysis;
@@ -563,7 +564,7 @@ public class ApplyCodeFixParams
 
 public class ApplyCodeFixToolResult : ToolResultBase
 {
-    public override string Operation => "csharp_apply_code_fix";
+    public override string Operation => ToolNames.ApplyCodeFix;
 
     [JsonPropertyName("fixTitle")]
     public string? FixTitle { get; set; }

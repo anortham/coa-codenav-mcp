@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
 using Microsoft.Extensions.Logging;
@@ -235,7 +236,7 @@ public class GetWorkspaceStatisticsParams
 
 public class GetWorkspaceStatisticsResult : ToolResultBase
 {
-    public override string Operation => "csharp_get_workspace_statistics";
+    public override string Operation => ToolNames.GetWorkspaceStatistics;
     
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
