@@ -1,35 +1,43 @@
-using System.Text.Json.Serialization;
-using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
-using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.Interfaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
+using DataAnnotations = System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace COA.CodeNav.McpServer.Tools;
 
 /// <summary>
 /// MCP tool that calculates code metrics for methods, classes, and files
 /// </summary>
-[McpServerToolType]
-public class CodeMetricsTool : ITool
+public class CodeMetricsTool : McpToolBase<CodeMetricsParams, CodeMetricsResult>
 {
     private readonly ILogger<CodeMetricsTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_code_metrics";
-    public string Description => "Calculate code metrics including cyclomatic complexity, lines of code, and maintainability index";
+    public override string Name => "csharp_code_metrics";
+    public override string Description => @"Calculate code metrics for methods, classes, and files.
+Returns: Cyclomatic complexity, lines of code, maintainability index, and depth of inheritance.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if file is not found.
+Use cases: Code quality assessment, identifying complex methods, refactoring candidates, technical debt analysis.
+AI benefit: Provides quantitative metrics for prioritizing code improvements.";
 
     public CodeMetricsTool(
         ILogger<CodeMetricsTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -37,395 +45,297 @@ public class CodeMetricsTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_code_metrics")]
-    [Description(@"Calculate code metrics for methods, classes, and files.
-Returns: Cyclomatic complexity, lines of code, maintainability index, and depth of inheritance.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if file is not found.
-Use cases: Code quality assessment, identifying complex methods, refactoring candidates, technical debt analysis.
-AI benefit: Provides quantitative metrics for prioritizing code improvements.")]
-    public async Task<object> ExecuteAsync(CodeMetricsParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<CodeMetricsResult> ExecuteInternalAsync(
+        CodeMetricsParams parameters,
+        CancellationToken cancellationToken)
     {
-        var startTime = DateTime.UtcNow;
         _logger.LogDebug("CodeMetrics request: FilePath={FilePath}, Scope={Scope}", 
             parameters.FilePath, parameters.Scope);
 
-        try
+        var startTime = DateTime.UtcNow;
+
+        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            var document = await _documentService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
+            return new CodeMetricsResult
             {
-                return new CodeMetricsResult
+                Success = false,
+                Message = $"Document not found: {parameters.FilePath}",
+                Error = new ErrorInfo
                 {
-                    Success = false,
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
                     Message = $"Document not found: {parameters.FilePath}",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.DOCUMENT_NOT_FOUND,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
+                            "Verify the file path is correct and absolute",
+                            "Ensure the solution or project containing this file is loaded",
+                            "Use csharp_load_solution or csharp_load_project if needed"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
                             {
-                                "Verify the file path is correct and absolute",
-                                "Ensure the solution or project containing this file is loaded",
-                                "Use csharp_load_solution or csharp_load_project if needed"
+                                Tool = "csharp_load_solution",
+                                Description = "Load the solution containing this file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                             }
                         }
-                    },
-                    Query = new QueryInfo { FilePath = parameters.FilePath },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
-                };
-            }
+                }
+            };
+        }
 
-            var tree = await document.GetSyntaxTreeAsync(cancellationToken);
-            if (tree == null)
+        var tree = await document.GetSyntaxTreeAsync(cancellationToken);
+        if (tree == null)
+        {
+            return new CodeMetricsResult
             {
-                return new CodeMetricsResult
+                Success = false,
+                Message = "Failed to get syntax tree",
+                Error = new ErrorInfo
                 {
-                    Success = false,
+                    Code = ErrorCodes.INTERNAL_ERROR,
                     Message = "Failed to get syntax tree",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.INTERNAL_ERROR,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
-                            {
-                                "Check if the file contains valid C# code",
-                                "Try reloading the solution"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo { FilePath = parameters.FilePath },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            var root = await tree.GetRootAsync(cancellationToken);
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-
-            var metrics = new List<CodeMetricInfo>();
-            var insights = new List<string>();
-            var actions = new List<NextAction>();
-
-            // Calculate metrics based on scope
-            switch (parameters.Scope?.ToLower())
-            {
-                case "method":
-                    if (parameters.Line.HasValue && parameters.Column.HasValue)
-                    {
-                        var position = tree.GetText().Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
-                            parameters.Line.Value - 1, parameters.Column.Value - 1));
-                        var method = root.FindToken(position).Parent?.AncestorsAndSelf()
-                            .OfType<MethodDeclarationSyntax>().FirstOrDefault();
-                        
-                        if (method != null)
-                        {
-                            var metric = CalculateMethodMetrics(method, semanticModel);
-                            metrics.Add(metric);
+                            "Check if the file contains valid C# code",
+                            "Try reloading the solution"
                         }
                     }
-                    else
-                    {
-                        // Calculate for all methods in file
-                        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
-                        foreach (var method in methods)
-                        {
-                            var metric = CalculateMethodMetrics(method, semanticModel);
-                            metrics.Add(metric);
-                        }
-                    }
-                    break;
+                }
+            };
+        }
 
-                case "class":
-                    var classes = root.DescendantNodes().OfType<TypeDeclarationSyntax>();
-                    foreach (var classDecl in classes)
-                    {
-                        var metric = CalculateTypeMetrics(classDecl, semanticModel);
-                        metrics.Add(metric);
-                    }
-                    break;
+        var root = await tree.GetRootAsync(cancellationToken);
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
 
-                default: // "file" or unspecified
-                    var fileMetric = CalculateFileMetrics(root, semanticModel, document.FilePath ?? "Unknown");
-                    metrics.Add(fileMetric);
+        var metrics = new List<CodeMetricInfo>();
+
+        // Calculate metrics based on scope
+        switch (parameters.Scope?.ToLower() ?? "file")
+        {
+            case "method":
+                if (parameters.Line.HasValue && parameters.Column.HasValue)
+                {
+                    var position = tree.GetText().Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
+                        parameters.Line.Value - 1, parameters.Column.Value - 1));
+                    var method = root.FindToken(position).Parent?.AncestorsAndSelf()
+                        .OfType<MethodDeclarationSyntax>().FirstOrDefault();
                     
-                    // Also include method-level metrics for insights
-                    var fileMethods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
-                    foreach (var method in fileMethods)
+                    if (method != null)
                     {
                         var metric = CalculateMethodMetrics(method, semanticModel);
                         metrics.Add(metric);
                     }
-                    break;
-            }
-
-            // Pre-estimate tokens
-            var estimatedTokens = EstimateResponseTokens(metrics);
-            var shouldTruncate = estimatedTokens > 10000;
-            
-            if (shouldTruncate && metrics.Count > 50)
-            {
-                // Sort by complexity and take top 50
-                metrics = metrics.OrderByDescending(m => m.CyclomaticComplexity).Take(50).ToList();
-                insights.Insert(0, $"⚠️ Response size limit applied. Showing top 50 most complex items of {metrics.Count} total.");
-            }
-
-            // Generate insights
-            GenerateInsights(metrics, insights);
-
-            // Generate next actions
-            GenerateNextActions(metrics, actions, parameters);
-
-            var result = new CodeMetricsResult
-            {
-                Success = true,
-                Message = $"Calculated metrics for {metrics.Count} items in {parameters.FilePath}",
-                Query = new QueryInfo 
-                { 
-                    FilePath = parameters.FilePath,
-                    Position = (parameters.Line.HasValue && parameters.Column.HasValue) 
-                        ? new PositionInfo { Line = parameters.Line.Value, Column = parameters.Column.Value }
-                        : null,
-                    AdditionalParams = new Dictionary<string, object> { ["scope"] = parameters.Scope ?? "file" }
-                },
-                Metrics = metrics,
-                Summary = new CodeMetricsSummary
-                {
-                    TotalItems = metrics.Count,
-                    AverageComplexity = metrics.Any() ? metrics.Average(m => m.CyclomaticComplexity) : 0,
-                    MaxComplexity = metrics.Any() ? metrics.Max(m => m.CyclomaticComplexity) : 0,
-                    TotalLinesOfCode = metrics.Sum(m => m.LinesOfCode),
-                    AverageMaintainabilityIndex = metrics.Any(m => m.MaintainabilityIndex.HasValue) 
-                        ? metrics.Where(m => m.MaintainabilityIndex.HasValue).Average(m => m.MaintainabilityIndex!.Value) 
-                        : null
-                },
-                Distribution = new MetricsDistribution
-                {
-                    ComplexityRanges = new Dictionary<string, int>
-                    {
-                        ["Low (1-5)"] = metrics.Count(m => m.CyclomaticComplexity <= 5),
-                        ["Medium (6-10)"] = metrics.Count(m => m.CyclomaticComplexity > 5 && m.CyclomaticComplexity <= 10),
-                        ["High (11-20)"] = metrics.Count(m => m.CyclomaticComplexity > 10 && m.CyclomaticComplexity <= 20),
-                        ["Very High (>20)"] = metrics.Count(m => m.CyclomaticComplexity > 20)
-                    },
-                    MaintainabilityRanges = new Dictionary<string, int>
-                    {
-                        ["Good (>70)"] = metrics.Count(m => m.MaintainabilityIndex > 70),
-                        ["Moderate (50-70)"] = metrics.Count(m => m.MaintainabilityIndex >= 50 && m.MaintainabilityIndex <= 70),
-                        ["Poor (<50)"] = metrics.Count(m => m.MaintainabilityIndex < 50)
-                    }
-                },
-                Insights = insights,
-                Actions = actions,
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    Truncated = shouldTruncate,
-                    Tokens = estimatedTokens
                 }
-            };
+                else
+                {
+                    // Calculate for all methods in file
+                    var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+                    foreach (var method in methods)
+                    {
+                        var metric = CalculateMethodMetrics(method, semanticModel);
+                        metrics.Add(metric);
+                    }
+                }
+                break;
 
-            // Store full results if truncated
-            if (shouldTruncate && _resourceProvider != null)
-            {
-                result.ResourceUri = _resourceProvider.StoreAnalysisResult(
-                    "code_metrics",
-                    result,
-                    document.FilePath ?? "unknown");
-            }
+            case "class":
+                var classes = root.DescendantNodes().OfType<TypeDeclarationSyntax>();
+                foreach (var classDecl in classes)
+                {
+                    var metric = CalculateTypeMetrics(classDecl, semanticModel);
+                    metrics.Add(metric);
+                }
+                break;
 
-            return result;
+            default: // "file"
+                var fileMetric = CalculateFileMetrics(root, parameters.FilePath, semanticModel);
+                metrics.Add(fileMetric);
+                break;
         }
-        catch (Exception ex)
+
+        // Generate insights and next actions
+        var insights = GenerateInsights(metrics);
+        var nextActions = GenerateNextActions(metrics, parameters);
+        var analysis = GenerateAnalysis(metrics);
+
+        return new CodeMetricsResult
         {
-            _logger.LogError(ex, "Error calculating code metrics");
-            return new CodeMetricsResult
+            Success = true,
+            Message = $"Code metrics calculated for {metrics.Count} item(s)",
+            Query = new QueryInfo
             {
-                Success = false,
-                Message = $"Error calculating code metrics: {ex.Message}",
-                Error = new ErrorInfo
-                {
-                    Code = ErrorCodes.INTERNAL_ERROR,
-                    Recovery = new RecoveryInfo
-                    {
-                        Steps = new List<string>
-                        {
-                            "Check the server logs for detailed error information",
-                            "Verify the file contains valid C# code",
-                            "Try reloading the solution"
-                        }
-                    }
-                },
-                Query = new QueryInfo { FilePath = parameters.FilePath },
-                Meta = new ToolMetadata 
-                { 
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                }
-            };
-        }
+                FilePath = parameters.FilePath,
+                Position = parameters.Line.HasValue && parameters.Column.HasValue 
+                    ? new PositionInfo { Line = parameters.Line.Value, Column = parameters.Column.Value }
+                    : null
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = metrics.Count,
+                Returned = metrics.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            },
+            Metrics = metrics,
+            Analysis = analysis,
+            Insights = insights,
+            Actions = nextActions,
+            Meta = new ToolExecutionMetadata
+            {
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            }
+        };
     }
 
     private CodeMetricInfo CalculateMethodMetrics(MethodDeclarationSyntax method, SemanticModel? semanticModel)
     {
+        var methodSymbol = semanticModel?.GetDeclaredSymbol(method);
+        var location = method.GetLocation();
+        var lineSpan = location.GetLineSpan();
+
         var complexity = CalculateCyclomaticComplexity(method);
-        var loc = CalculateLinesOfCode(method);
-        var mi = CalculateMaintainabilityIndex(complexity, loc, GetHalsteadVolume(method));
-        
+        var linesOfCode = CalculateLinesOfCode(method);
+        var maintainabilityIndex = CalculateMaintainabilityIndex(complexity, linesOfCode);
+
         return new CodeMetricInfo
         {
-            Name = method.Identifier.Text,
-            Type = "Method",
-            CyclomaticComplexity = complexity,
-            LinesOfCode = loc,
-            MaintainabilityIndex = mi,
-            Location = new MetricLocationInfo
+            Name = method.Identifier.ValueText,
+            FullName = methodSymbol?.ToDisplayString() ?? method.Identifier.ValueText,
+            Kind = "Method",
+            Location = new LocationInfo
             {
-                StartLine = method.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
-                EndLine = method.GetLocation().GetLineSpan().EndLinePosition.Line + 1
-            }
+                FilePath = lineSpan.Path,
+                Line = lineSpan.StartLinePosition.Line + 1,
+                Column = lineSpan.StartLinePosition.Character + 1,
+                EndLine = lineSpan.EndLinePosition.Line + 1,
+                EndColumn = lineSpan.EndLinePosition.Character + 1
+            },
+            CyclomaticComplexity = complexity,
+            LinesOfCode = linesOfCode,
+            MaintainabilityIndex = maintainabilityIndex,
+            DepthOfInheritance = GetDepthOfInheritance(methodSymbol?.ContainingType),
+            CouplingBetweenObjects = CalculateCoupling(method, semanticModel),
+            LackOfCohesion = 0 // Not applicable for methods
         };
     }
 
     private CodeMetricInfo CalculateTypeMetrics(TypeDeclarationSyntax type, SemanticModel? semanticModel)
     {
-        var methods = type.DescendantNodes().OfType<MethodDeclarationSyntax>();
-        var totalComplexity = methods.Sum(m => CalculateCyclomaticComplexity(m));
-        var loc = CalculateLinesOfCode(type);
-        var methodCount = methods.Count();
-        var avgComplexity = methodCount > 0 ? totalComplexity / (double)methodCount : 1;
-        
-        // Calculate depth of inheritance
-        var depthOfInheritance = 0;
-        if (semanticModel != null)
-        {
-            var symbol = semanticModel.GetDeclaredSymbol(type) as INamedTypeSymbol;
-            depthOfInheritance = CalculateDepthOfInheritance(symbol);
-        }
-        
+        var typeSymbol = semanticModel?.GetDeclaredSymbol(type) as INamedTypeSymbol;
+        var location = type.GetLocation();
+        var lineSpan = location.GetLineSpan();
+
+        var methods = type.DescendantNodes().OfType<MethodDeclarationSyntax>().ToList();
+        var avgComplexity = methods.Any() ? (int)methods.Average(m => CalculateCyclomaticComplexity(m)) : 1;
+        var totalLines = CalculateLinesOfCode(type);
+        var maintainabilityIndex = CalculateMaintainabilityIndex(avgComplexity, totalLines);
+
         return new CodeMetricInfo
         {
-            Name = type.Identifier.Text,
-            Type = type is ClassDeclarationSyntax ? "Class" : 
-                  type is InterfaceDeclarationSyntax ? "Interface" : 
-                  type is StructDeclarationSyntax ? "Struct" : "Type",
-            CyclomaticComplexity = (int)Math.Ceiling(avgComplexity),
-            LinesOfCode = loc,
-            DepthOfInheritance = depthOfInheritance,
-            MethodCount = methodCount,
-            Location = new MetricLocationInfo
+            Name = type.Identifier.ValueText,
+            FullName = typeSymbol?.ToDisplayString() ?? type.Identifier.ValueText,
+            Kind = type.Keyword.ValueText, // class, interface, struct, etc.
+            Location = new LocationInfo
             {
-                StartLine = type.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
-                EndLine = type.GetLocation().GetLineSpan().EndLinePosition.Line + 1
-            }
+                FilePath = lineSpan.Path,
+                Line = lineSpan.StartLinePosition.Line + 1,
+                Column = lineSpan.StartLinePosition.Character + 1,
+                EndLine = lineSpan.EndLinePosition.Line + 1,
+                EndColumn = lineSpan.EndLinePosition.Character + 1
+            },
+            CyclomaticComplexity = avgComplexity,
+            LinesOfCode = totalLines,
+            MaintainabilityIndex = maintainabilityIndex,
+            DepthOfInheritance = GetDepthOfInheritance(typeSymbol),
+            CouplingBetweenObjects = CalculateTypeCoupling(type, semanticModel),
+            LackOfCohesion = CalculateLackOfCohesion(type)
         };
     }
 
-    private CodeMetricInfo CalculateFileMetrics(SyntaxNode root, SemanticModel? semanticModel, string filePath)
+    private CodeMetricInfo CalculateFileMetrics(SyntaxNode root, string filePath, SemanticModel? semanticModel)
     {
-        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
-        var types = root.DescendantNodes().OfType<TypeDeclarationSyntax>();
+        var types = root.DescendantNodes().OfType<TypeDeclarationSyntax>().ToList();
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>().ToList();
         
-        var totalComplexity = methods.Sum(m => CalculateCyclomaticComplexity(m));
-        var loc = CalculateLinesOfCode(root);
-        var methodCount = methods.Count();
-        var avgComplexity = methodCount > 0 ? totalComplexity / (double)methodCount : 1;
-        
+        var avgComplexity = methods.Any() ? (int)methods.Average(m => CalculateCyclomaticComplexity(m)) : 1;
+        var totalLines = CalculateLinesOfCode(root);
+        var maintainabilityIndex = CalculateMaintainabilityIndex(avgComplexity, totalLines);
+
         return new CodeMetricInfo
         {
             Name = Path.GetFileName(filePath),
-            Type = "File",
-            CyclomaticComplexity = (int)Math.Ceiling(avgComplexity),
-            LinesOfCode = loc,
-            MethodCount = methodCount,
-            TypeCount = types.Count()
+            FullName = filePath,
+            Kind = "File",
+            Location = new LocationInfo
+            {
+                FilePath = filePath,
+                Line = 1,
+                Column = 1,
+                EndLine = totalLines,
+                EndColumn = 1
+            },
+            CyclomaticComplexity = avgComplexity,
+            LinesOfCode = totalLines,
+            MaintainabilityIndex = maintainabilityIndex,
+            DepthOfInheritance = types.Any() ? types.Max(t => GetDepthOfInheritance(semanticModel?.GetDeclaredSymbol(t) as INamedTypeSymbol)) : 0,
+            CouplingBetweenObjects = CalculateFileCoupling(root, semanticModel),
+            LackOfCohesion = 0 // Not meaningful at file level
         };
     }
 
     private int CalculateCyclomaticComplexity(SyntaxNode node)
     {
-        var complexity = 1; // Base complexity
+        int complexity = 1; // Base complexity
 
-        // Add complexity for control flow statements
-        complexity += node.DescendantNodes().Count(n => n is IfStatementSyntax);
-        complexity += node.DescendantNodes().Count(n => n is WhileStatementSyntax);
-        complexity += node.DescendantNodes().Count(n => n is ForStatementSyntax);
-        complexity += node.DescendantNodes().Count(n => n is ForEachStatementSyntax);
-        complexity += node.DescendantNodes().Count(n => n is DoStatementSyntax);
-        complexity += node.DescendantNodes().Count(n => n is SwitchStatementSyntax);
-        complexity += node.DescendantNodes().OfType<SwitchExpressionArmSyntax>().Count();
-        complexity += node.DescendantNodes().Count(n => n is CatchClauseSyntax);
-        complexity += node.DescendantNodes().Count(n => n is ConditionalExpressionSyntax);
-        complexity += node.DescendantNodes().Count(n => n is BinaryExpressionSyntax binaryExpr &&
-            (binaryExpr.IsKind(SyntaxKind.LogicalAndExpression) || binaryExpr.IsKind(SyntaxKind.LogicalOrExpression)));
+        // Count decision points
+        var decisionKinds = new[]
+        {
+            SyntaxKind.IfStatement,
+            SyntaxKind.ElseClause,
+            SyntaxKind.WhileStatement,
+            SyntaxKind.ForStatement,
+            SyntaxKind.ForEachStatement,
+            SyntaxKind.DoStatement,
+            SyntaxKind.SwitchSection,
+            SyntaxKind.CaseSwitchLabel,
+            SyntaxKind.CatchClause,
+            SyntaxKind.ConditionalExpression,
+            SyntaxKind.LogicalAndExpression,
+            SyntaxKind.LogicalOrExpression
+        };
+        
+        var decisionNodes = node.DescendantNodes().Where(n => decisionKinds.Contains(n.Kind()));
 
-        // Add complexity for case labels in switch statements
-        complexity += node.DescendantNodes().OfType<CaseSwitchLabelSyntax>().Count();
+        complexity += decisionNodes.Count();
 
         return complexity;
     }
 
     private int CalculateLinesOfCode(SyntaxNode node)
     {
-        var text = node.GetText();
-        var lines = text.Lines.Count;
-        
-        // Subtract blank lines and comment-only lines
-        var codeLines = 0;
-        foreach (var line in text.Lines)
-        {
-            var lineText = line.ToString().Trim();
-            if (!string.IsNullOrWhiteSpace(lineText) && 
-                !lineText.StartsWith("//") && 
-                !lineText.StartsWith("/*") && 
-                !lineText.StartsWith("*"))
-            {
-                codeLines++;
-            }
-        }
-        
-        return codeLines;
+        var span = node.GetLocation().GetLineSpan();
+        return span.EndLinePosition.Line - span.StartLinePosition.Line + 1;
     }
 
-    private double? CalculateMaintainabilityIndex(int cyclomaticComplexity, int linesOfCode, double halsteadVolume)
+    private int CalculateMaintainabilityIndex(int cyclomaticComplexity, int linesOfCode)
     {
-        if (linesOfCode == 0) return 100.0;
-        
-        // Microsoft's formula for Maintainability Index
-        // MI = MAX(0, (171 - 5.2 * ln(Halstead Volume) - 0.23 * (Cyclomatic Complexity) - 16.2 * ln(Lines of Code)) * 100 / 171)
-        var mi = Math.Max(0, (171 - 5.2 * Math.Log(halsteadVolume) - 0.23 * cyclomaticComplexity - 16.2 * Math.Log(linesOfCode)) * 100 / 171);
-        
-        return Math.Round(mi, 2);
+        // Simplified maintainability index calculation
+        // Real formula uses Halstead Volume which is more complex
+        var rawIndex = 171 - 5.2 * Math.Log(cyclomaticComplexity) - 0.23 * cyclomaticComplexity - 16.2 * Math.Log(linesOfCode);
+        var normalizedIndex = Math.Max(0, Math.Min(100, rawIndex));
+        return (int)normalizedIndex;
     }
 
-    private double GetHalsteadVolume(SyntaxNode node)
-    {
-        // Simplified Halstead Volume calculation
-        // In a real implementation, this would count unique operators and operands
-        var operators = node.DescendantTokens().Count(t => t.IsKind(SyntaxKind.PlusToken) || 
-            t.IsKind(SyntaxKind.MinusToken) || t.IsKind(SyntaxKind.AsteriskToken) || 
-            t.IsKind(SyntaxKind.SlashToken) || t.IsKind(SyntaxKind.EqualsToken));
-        
-        var operands = node.DescendantTokens().Count(t => t.IsKind(SyntaxKind.IdentifierToken) || 
-            t.IsKind(SyntaxKind.NumericLiteralToken) || t.IsKind(SyntaxKind.StringLiteralToken));
-        
-        var vocabulary = Math.Max(operators + operands, 1);
-        var length = Math.Max(operators + operands, 1);
-        
-        return length * Math.Log2(vocabulary);
-    }
-
-    private int CalculateDepthOfInheritance(INamedTypeSymbol? typeSymbol)
+    private int GetDepthOfInheritance(INamedTypeSymbol? typeSymbol)
     {
         if (typeSymbol == null) return 0;
-        
-        var depth = 0;
+
+        int depth = 0;
         var current = typeSymbol.BaseType;
         
         while (current != null && current.SpecialType != SpecialType.System_Object)
@@ -433,170 +343,206 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.")]
             depth++;
             current = current.BaseType;
         }
-        
+
         return depth;
     }
 
-    private int EstimateResponseTokens(List<CodeMetricInfo> metrics)
+    private int CalculateCoupling(SyntaxNode node, SemanticModel? semanticModel)
     {
-        var baseTokens = 800; // Base response structure
-        var perMetricTokens = 150; // Per metric item
+        if (semanticModel == null) return 0;
+
+        var referencedTypes = new HashSet<string>();
         
-        return baseTokens + (metrics.Count * perMetricTokens);
+        foreach (var identifierName in node.DescendantNodes().OfType<IdentifierNameSyntax>())
+        {
+            var symbolInfo = semanticModel.GetSymbolInfo(identifierName);
+            if (symbolInfo.Symbol?.ContainingType != null)
+            {
+                referencedTypes.Add(symbolInfo.Symbol.ContainingType.ToDisplayString());
+            }
+        }
+
+        return referencedTypes.Count;
     }
 
-    private void GenerateInsights(List<CodeMetricInfo> metrics, List<string> insights)
+    private int CalculateTypeCoupling(TypeDeclarationSyntax type, SemanticModel? semanticModel)
     {
-        if (!metrics.Any()) return;
-
-        // Complexity insights
-        var highComplexity = metrics.Where(m => m.CyclomaticComplexity > 10).ToList();
-        if (highComplexity.Any())
-        {
-            insights.Add($"🔴 Found {highComplexity.Count} items with high complexity (>10): {string.Join(", ", highComplexity.Take(3).Select(m => m.Name))}");
-        }
-
-        // Maintainability insights
-        var poorMaintainability = metrics.Where(m => m.MaintainabilityIndex < 50).ToList();
-        if (poorMaintainability.Any())
-        {
-            insights.Add($"⚠️ {poorMaintainability.Count} items have poor maintainability (<50): Consider refactoring");
-        }
-
-        // Size insights
-        var largeMethods = metrics.Where(m => m.Type == "Method" && m.LinesOfCode > 50).ToList();
-        if (largeMethods.Any())
-        {
-            insights.Add($"📏 {largeMethods.Count} methods exceed 50 lines: {string.Join(", ", largeMethods.Take(3).Select(m => m.Name))}");
-        }
-
-        // Positive insights
-        var wellMaintained = metrics.Where(m => m.MaintainabilityIndex > 70).ToList();
-        if (wellMaintained.Any())
-        {
-            insights.Add($"✅ {wellMaintained.Count} items have good maintainability (>70)");
-        }
-
-        // Summary insight
-        var avgComplexity = metrics.Average(m => m.CyclomaticComplexity);
-        insights.Add($"📊 Average complexity: {avgComplexity:F1} - {(avgComplexity <= 5 ? "Good" : avgComplexity <= 10 ? "Moderate" : "High")}");
+        return CalculateCoupling(type, semanticModel);
     }
 
-    private void GenerateNextActions(List<CodeMetricInfo> metrics, List<NextAction> actions, CodeMetricsParams parameters)
+    private int CalculateFileCoupling(SyntaxNode root, SemanticModel? semanticModel)
     {
-        // Suggest refactoring for high complexity items
+        return CalculateCoupling(root, semanticModel);
+    }
+
+    private int CalculateLackOfCohesion(TypeDeclarationSyntax type)
+    {
+        // Simplified LCOM calculation
+        var methods = type.DescendantNodes().OfType<MethodDeclarationSyntax>().ToList();
+        var fields = type.DescendantNodes().OfType<FieldDeclarationSyntax>().ToList();
+
+        if (methods.Count <= 1) return 0;
+
+        // This is a very simplified version - real LCOM is more complex
+        return Math.Max(0, methods.Count - fields.Count);
+    }
+
+    private CodeMetricsAnalysis GenerateAnalysis(List<CodeMetricInfo> metrics)
+    {
+        if (!metrics.Any())
+        {
+            return new CodeMetricsAnalysis
+            {
+                TotalItems = 0,
+                AverageComplexity = 0,
+                HighComplexityItems = 0,
+                LowMaintainabilityItems = 0,
+                MaxDepthOfInheritance = 0
+            };
+        }
+
+        return new CodeMetricsAnalysis
+        {
+            TotalItems = metrics.Count,
+            AverageComplexity = metrics.Average(m => m.CyclomaticComplexity),
+            HighComplexityItems = metrics.Count(m => m.CyclomaticComplexity > 10),
+            LowMaintainabilityItems = metrics.Count(m => m.MaintainabilityIndex < 20),
+            MaxDepthOfInheritance = metrics.Max(m => m.DepthOfInheritance),
+            AverageLinesOfCode = metrics.Average(m => m.LinesOfCode),
+            AverageMaintainabilityIndex = metrics.Average(m => m.MaintainabilityIndex)
+        };
+    }
+
+    private List<string> GenerateInsights(List<CodeMetricInfo> metrics)
+    {
+        var insights = new List<string>();
+        var analysis = GenerateAnalysis(metrics);
+
+        if (analysis.HighComplexityItems > 0)
+        {
+            insights.Add($"{analysis.HighComplexityItems} item(s) have high cyclomatic complexity (>10) - consider refactoring");
+        }
+
+        if (analysis.LowMaintainabilityItems > 0)
+        {
+            insights.Add($"{analysis.LowMaintainabilityItems} item(s) have low maintainability index (<20) - technical debt");
+        }
+
+        if (analysis.MaxDepthOfInheritance > 5)
+        {
+            insights.Add($"Deep inheritance detected (depth: {analysis.MaxDepthOfInheritance}) - consider composition");
+        }
+
+        if (analysis.AverageComplexity > 7)
+        {
+            insights.Add($"High average complexity ({analysis.AverageComplexity:F1}) - code may be difficult to maintain");
+        }
+
+        if (analysis.AverageMaintainabilityIndex > 80)
+        {
+            insights.Add($"Good maintainability score ({analysis.AverageMaintainabilityIndex:F1}) - well-structured code");
+        }
+
+        return insights;
+    }
+
+    private List<AIAction> GenerateNextActions(List<CodeMetricInfo> metrics, CodeMetricsParams parameters)
+    {
+        var actions = new List<AIAction>();
+        var analysis = GenerateAnalysis(metrics);
+
+        // Find most complex method for refactoring suggestion
         var mostComplex = metrics.OrderByDescending(m => m.CyclomaticComplexity).FirstOrDefault();
         if (mostComplex != null && mostComplex.CyclomaticComplexity > 10)
         {
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = "refactor_complex",
-                Description = $"Extract methods from '{mostComplex.Name}' (complexity: {mostComplex.CyclomaticComplexity})",
-                ToolName = "csharp_extract_method",
-                Parameters = new
+                Action = "csharp_extract_method",
+                Description = $"Refactor complex {mostComplex.Kind.ToLower()} '{mostComplex.Name}' (complexity: {mostComplex.CyclomaticComplexity})",
+                Parameters = new Dictionary<string, object>
                 {
-                    filePath = parameters.FilePath,
-                    startLine = mostComplex.Location?.StartLine,
-                    endLine = mostComplex.Location?.EndLine
+                    ["filePath"] = mostComplex.Location.FilePath,
+                    ["startLine"] = mostComplex.Location.Line,
+                    ["endLine"] = mostComplex.Location.EndLine
                 },
-                Priority = "high"
+                Priority = 90,
+                Category = "refactoring"
             });
         }
 
-        // Suggest documentation for complex methods
-        if (metrics.Any(m => m.Type == "Method" && m.CyclomaticComplexity > 7))
+        // Suggest finding unused code if maintainability is low
+        if (analysis.LowMaintainabilityItems > 0)
         {
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = "add_documentation",
-                Description = "Add documentation to complex methods",
-                ToolName = "documentation_guardian",
-                Parameters = new
+                Action = "csharp_find_unused_code",
+                Description = "Find unused code to improve maintainability",
+                Parameters = new Dictionary<string, object>
                 {
-                    filePath = parameters.FilePath,
-                    focusOn = "complex_methods"
+                    ["scope"] = "file",
+                    ["filePath"] = parameters.FilePath
                 },
-                Priority = "medium"
+                Priority = 70,
+                Category = "cleanup"
             });
         }
 
-        // Suggest finding similar patterns
-        if (parameters.Scope == "method" && metrics.Count == 1)
-        {
-            actions.Add(new NextAction
-            {
-                Id = "find_similar_complexity",
-                Description = "Find other methods with similar complexity",
-                ToolName = "csharp_symbol_search",
-                Parameters = new
-                {
-                    query = "*",
-                    symbolKinds = new[] { "Method" },
-                    projectFilter = Path.GetFileNameWithoutExtension(parameters.FilePath)
-                },
-                Priority = "low"
-            });
-        }
+        return actions;
+    }
+
+    protected override int EstimateTokenUsage()
+    {
+        // Estimate for typical code metrics response
+        return 3500;
     }
 }
 
+/// <summary>
+/// Parameters for CodeMetrics tool
+/// </summary>
 public class CodeMetricsParams
 {
+    [DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file")]
-    public required string FilePath { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Path to the source file (e.g., 'C:\\Project\\src\\Program.cs' on Windows, '/home/user/project/src/Program.cs' on Unix)")]
+    public string FilePath { get; set; } = string.Empty;
 
     [JsonPropertyName("scope")]
-    [Description("Scope of analysis: 'file' (default), 'class', or 'method'")]
-    public string? Scope { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Scope of analysis: 'file', 'project', or 'file'")]
+    public string? Scope { get; set; } = "file";
 
     [JsonPropertyName("line")]
-    [Description("Line number for method-specific analysis (1-based)")]
+    [COA.Mcp.Framework.Attributes.Description("Line number (1-based) inside the type declaration where code should be generated")]
     public int? Line { get; set; }
 
     [JsonPropertyName("column")]
-    [Description("Column number for method-specific analysis (1-based)")]
+    [COA.Mcp.Framework.Attributes.Description("Column number (1-based) inside the type declaration")]
     public int? Column { get; set; }
 
     [JsonPropertyName("includeInherited")]
-    [Description("Include metrics for inherited members (default: false)")]
-    public bool IncludeInherited { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Include inherited members when generating code. true = include base class members, false = current class only (default)")]
+    public bool IncludeInherited { get; set; } = false;
 
     [JsonPropertyName("thresholds")]
-    [Description("Custom thresholds for highlighting issues")]
-    public MetricsThresholds? Thresholds { get; set; }
-}
-
-public class MetricsThresholds
-{
-    [JsonPropertyName("complexityWarning")]
-    public int ComplexityWarning { get; set; } = 10;
-
-    [JsonPropertyName("complexityError")]
-    public int ComplexityError { get; set; } = 20;
-
-    [JsonPropertyName("maintainabilityWarning")]
-    public int MaintainabilityWarning { get; set; } = 50;
-
-    [JsonPropertyName("locWarning")]
-    public int LocWarning { get; set; } = 50;
+    [COA.Mcp.Framework.Attributes.Description("Custom thresholds for highlighting issues")]
+    public Dictionary<string, int>? Thresholds { get; set; }
 }
 
 public class CodeMetricsResult : ToolResultBase
 {
-    public override string Operation => ToolNames.CodeMetrics;
-
+    public override string Operation => "csharp_code_metrics";
+    
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
+    
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
 
     [JsonPropertyName("metrics")]
     public List<CodeMetricInfo>? Metrics { get; set; }
 
-    [JsonPropertyName("summary")]
-    public CodeMetricsSummary? Summary { get; set; }
-
-    [JsonPropertyName("distribution")]
-    public MetricsDistribution? Distribution { get; set; }
+    [JsonPropertyName("analysis")]
+    public CodeMetricsAnalysis? Analysis { get; set; }
 }
 
 public class CodeMetricInfo
@@ -604,8 +550,14 @@ public class CodeMetricInfo
     [JsonPropertyName("name")]
     public required string Name { get; set; }
 
-    [JsonPropertyName("type")]
-    public required string Type { get; set; }
+    [JsonPropertyName("fullName")]
+    public required string FullName { get; set; }
+
+    [JsonPropertyName("kind")]
+    public required string Kind { get; set; }
+
+    [JsonPropertyName("location")]
+    public required LocationInfo Location { get; set; }
 
     [JsonPropertyName("cyclomaticComplexity")]
     public int CyclomaticComplexity { get; set; }
@@ -614,31 +566,19 @@ public class CodeMetricInfo
     public int LinesOfCode { get; set; }
 
     [JsonPropertyName("maintainabilityIndex")]
-    public double? MaintainabilityIndex { get; set; }
+    public int MaintainabilityIndex { get; set; }
 
     [JsonPropertyName("depthOfInheritance")]
-    public int? DepthOfInheritance { get; set; }
+    public int DepthOfInheritance { get; set; }
 
-    [JsonPropertyName("methodCount")]
-    public int? MethodCount { get; set; }
+    [JsonPropertyName("couplingBetweenObjects")]
+    public int CouplingBetweenObjects { get; set; }
 
-    [JsonPropertyName("typeCount")]
-    public int? TypeCount { get; set; }
-
-    [JsonPropertyName("location")]
-    public MetricLocationInfo? Location { get; set; }
+    [JsonPropertyName("lackOfCohesion")]
+    public int LackOfCohesion { get; set; }
 }
 
-public class MetricLocationInfo
-{
-    [JsonPropertyName("startLine")]
-    public int StartLine { get; set; }
-
-    [JsonPropertyName("endLine")]
-    public int EndLine { get; set; }
-}
-
-public class CodeMetricsSummary
+public class CodeMetricsAnalysis
 {
     [JsonPropertyName("totalItems")]
     public int TotalItems { get; set; }
@@ -646,21 +586,18 @@ public class CodeMetricsSummary
     [JsonPropertyName("averageComplexity")]
     public double AverageComplexity { get; set; }
 
-    [JsonPropertyName("maxComplexity")]
-    public int MaxComplexity { get; set; }
+    [JsonPropertyName("highComplexityItems")]
+    public int HighComplexityItems { get; set; }
 
-    [JsonPropertyName("totalLinesOfCode")]
-    public int TotalLinesOfCode { get; set; }
+    [JsonPropertyName("lowMaintainabilityItems")]
+    public int LowMaintainabilityItems { get; set; }
+
+    [JsonPropertyName("maxDepthOfInheritance")]
+    public int MaxDepthOfInheritance { get; set; }
+
+    [JsonPropertyName("averageLinesOfCode")]
+    public double AverageLinesOfCode { get; set; }
 
     [JsonPropertyName("averageMaintainabilityIndex")]
-    public double? AverageMaintainabilityIndex { get; set; }
-}
-
-public class MetricsDistribution
-{
-    [JsonPropertyName("complexityRanges")]
-    public Dictionary<string, int>? ComplexityRanges { get; set; }
-
-    [JsonPropertyName("maintainabilityRanges")]
-    public Dictionary<string, int>? MaintainabilityRanges { get; set; }
+    public double AverageMaintainabilityIndex { get; set; }
 }

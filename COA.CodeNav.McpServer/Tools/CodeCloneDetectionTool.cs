@@ -1,36 +1,44 @@
+using COA.CodeNav.McpServer.Constants;
+using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.Services;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.Interfaces;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.Logging;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
-using COA.CodeNav.McpServer.Attributes;
-using COA.CodeNav.McpServer.Models;
-using COA.CodeNav.McpServer.Services;
-using COA.CodeNav.McpServer.Utilities;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.Extensions.Logging;
 
 namespace COA.CodeNav.McpServer.Tools;
 
 /// <summary>
 /// MCP tool that detects duplicate code patterns across the solution
 /// </summary>
-[McpServerToolType]
-public class CodeCloneDetectionTool : ITool
+public class CodeCloneDetectionTool : McpToolBase<CodeCloneDetectionParams, CodeCloneDetectionResult>
 {
     private readonly ILogger<CodeCloneDetectionTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_code_clone_detection";
-    public string Description => "Detect duplicate code patterns across the solution";
+    public override string Name => "csharp_code_clone_detection";
+    public override string Description => @"Detect duplicate code patterns across the solution for refactoring opportunities.
+Returns: Groups of similar code blocks with similarity scores and locations.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if analysis fails.
+Use cases: Identifying refactoring opportunities, reducing code duplication, improving maintainability.
+AI benefit: Reveals hidden duplication patterns that are hard to spot manually.";
 
     public CodeCloneDetectionTool(
         ILogger<CodeCloneDetectionTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -38,826 +46,461 @@ public class CodeCloneDetectionTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_code_clone_detection")]
-    [Description(@"Detect duplicate code patterns across the solution for refactoring opportunities.
-Returns: Groups of similar code blocks with similarity scores and locations.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if analysis fails.
-Use cases: Identifying refactoring opportunities, reducing code duplication, improving maintainability.
-AI benefit: Reveals hidden duplication patterns that are hard to spot manually.")]
-    public async Task<object> ExecuteAsync(CodeCloneDetectionParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<CodeCloneDetectionResult> ExecuteInternalAsync(
+        CodeCloneDetectionParams parameters,
+        CancellationToken cancellationToken)
     {
         var startTime = DateTime.UtcNow;
-        _logger.LogDebug("CodeCloneDetection request: MinLines={MinLines}, MinTokens={MinTokens}, Similarity={Similarity}", 
-            parameters.MinLines, parameters.MinTokens, parameters.SimilarityThreshold);
-            
-        try
+        _logger.LogDebug("CodeCloneDetection request: MinLines={MinLines}, SimilarityThreshold={Threshold}", 
+            parameters.MinLines, parameters.SimilarityThreshold);
+
+        var workspace = _workspaceService.GetActiveWorkspaces().FirstOrDefault();
+        if (workspace == null)
         {
-            // Get the solution
-            var workspaces = _workspaceService.GetActiveWorkspaces();
-            var workspace = workspaces.FirstOrDefault();
-            if (workspace == null)
+            return new CodeCloneDetectionResult
             {
-                return CreateErrorResult(
-                    ErrorCodes.WORKSPACE_NOT_LOADED,
-                    "No workspace loaded",
-                    new List<string>
-                    {
-                        "Use csharp_load_solution to load a solution first",
-                        "Use csharp_load_project to load a project",
-                        "Verify the solution path is correct"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            var solution = workspace.Solution;
-            _logger.LogInformation("Analyzing {ProjectCount} projects for code clones", 
-                solution.Projects.Count());
-
-            // Collect all code blocks
-            var allCodeBlocks = await CollectCodeBlocksAsync(
-                solution,
-                parameters.MinLines,
-                parameters.FilePattern,
-                parameters.ExcludePattern,
-                cancellationToken);
-
-            if (!allCodeBlocks.Any())
-            {
-                return new CodeCloneDetectionResult
+                Success = false,
+                Message = "No workspace loaded",
+                Error = new ErrorInfo
                 {
-                    Success = true,
-                    Message = "No code blocks found matching the criteria",
-                    Query = CreateQueryInfo(parameters),
-                    Summary = new SummaryInfo
+                    Code = ErrorCodes.WORKSPACE_NOT_LOADED,
+                    Message = "No workspace loaded",
+                    Recovery = new RecoveryInfo
                     {
-                        TotalFound = 0,
-                        Returned = 0,
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-                    },
-                    CloneGroups = new List<CloneGroup>(),
-                    Analysis = new CloneAnalysis { TotalCloneGroups = 0, TotalDuplicateBlocks = 0 },
-                    Insights = new List<string> { "No code blocks found - check your filters and minimum line count" },
-                    Actions = new List<NextAction>(),
-                    Meta = new ToolMetadata
-                    {
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                        Steps = new[]
+                        {
+                            "Load a solution or project first",
+                            "Use csharp_load_solution or csharp_load_project"
+                        }
                     }
-                };
-            }
-
-            _logger.LogDebug("Collected {BlockCount} code blocks for analysis", allCodeBlocks.Count);
-
-            // Find clones
-            var cloneGroups = FindClones(
-                allCodeBlocks,
-                parameters.SimilarityThreshold,
-                parameters.MinTokens,
-                parameters.CloneType);
-
-            // Apply token management
-            var response = TokenEstimator.CreateTokenAwareResponse(
-                cloneGroups,
-                groups => EstimateCloneGroupsTokens(groups),
-                requestedMax: parameters.MaxGroups ?? 50,
-                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                toolName: "csharp_code_clone_detection"
-            );
-
-            // Generate analysis
-            var analysis = GenerateAnalysis(cloneGroups, allCodeBlocks.Count);
-
-            // Generate insights
-            var insights = GenerateInsights(analysis, parameters);
-            if (response.WasTruncated)
-            {
-                insights.Insert(0, response.GetTruncationMessage());
-            }
-
-            // Generate next actions
-            var nextActions = GenerateNextActions(parameters, analysis);
-            if (response.WasTruncated)
-            {
-                nextActions.Insert(0, new NextAction
-                {
-                    Id = "get_all_clones",
-                    Description = "Get all clone groups without truncation",
-                    ToolName = "csharp_code_clone_detection",
-                    Parameters = new
-                    {
-                        minLines = parameters.MinLines,
-                        minTokens = parameters.MinTokens,
-                        similarityThreshold = parameters.SimilarityThreshold,
-                        maxGroups = cloneGroups.Count
-                    },
-                    Priority = "high"
-                });
-            }
-
-            // Store full result if truncated
-            string? resourceUri = null;
-            if (response.WasTruncated && _resourceProvider != null)
-            {
-                resourceUri = _resourceProvider.StoreAnalysisResult(
-                    "code-clones",
-                    new { 
-                        parameters = parameters,
-                        cloneGroups = cloneGroups,
-                        totalGroups = cloneGroups.Count,
-                        analysis = analysis
-                    },
-                    $"All {cloneGroups.Count} clone groups found");
-            }
-
-            var result = new CodeCloneDetectionResult
-            {
-                Success = true,
-                Message = response.WasTruncated 
-                    ? $"Found {cloneGroups.Count} clone groups (showing {response.ReturnedCount})"
-                    : $"Found {cloneGroups.Count} clone groups",
-                Query = CreateQueryInfo(parameters),
-                Summary = new SummaryInfo
-                {
-                    TotalFound = cloneGroups.Count,
-                    Returned = response.ReturnedCount,
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-                },
-                CloneGroups = response.Items,
-                Analysis = analysis,
-                Insights = insights,
-                Actions = nextActions,
-                ResourceUri = resourceUri,
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    Truncated = response.WasTruncated,
-                    Tokens = response.EstimatedTokens
                 }
             };
+        }
 
-            _logger.LogInformation("Clone detection completed: Found {GroupCount} clone groups", 
-                cloneGroups.Count);
-            return result;
+        try
+        {
+            var solution = workspace.Solution;
+            var codeBlocks = new List<CodeBlock>();
+
+            // Extract code blocks from all documents
+            foreach (var project in solution.Projects)
+            {
+                foreach (var document in project.Documents)
+                {
+                    if (!ShouldProcessDocument(document, parameters))
+                        continue;
+
+                    var root = await document.GetSyntaxRootAsync(cancellationToken);
+                    if (root == null) continue;
+
+                    ExtractCodeBlocks(root, document, codeBlocks, parameters);
+                }
+            }
+
+            // Find similar code blocks
+            var cloneGroups = FindCloneGroups(codeBlocks, parameters);
+            
+            // Store all groups before limiting
+            var allGroups = cloneGroups.ToList();
+            var wasTruncated = false;
+            
+            // Limit results
+            if (parameters.MaxGroups.HasValue && cloneGroups.Count > parameters.MaxGroups.Value)
+            {
+                cloneGroups = cloneGroups.Take(parameters.MaxGroups.Value).ToList();
+                wasTruncated = true;
+            }
+
+            // Store full results as resource if truncated
+            string? resourceUri = null;
+            if (wasTruncated && _resourceProvider != null)
+            {
+                var fullData = new
+                {
+                    totalGroups = allGroups.Count,
+                    totalClones = allGroups.Sum(g => g.Clones?.Count ?? 0),
+                    totalBlocksAnalyzed = codeBlocks.Count,
+                    averageSimilarity = allGroups.Any() ? allGroups.Average(g => g.SimilarityScore) : 0,
+                    largestGroupSize = allGroups.Any() ? allGroups.Max(g => g.Clones?.Count ?? 0) : 0,
+                    allCloneGroups = allGroups,
+                    parameters = new { parameters.MinLines, parameters.MinTokens, parameters.SimilarityThreshold, parameters.CloneType },
+                    executionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                };
+                
+                resourceUri = _resourceProvider.StoreAnalysisResult(
+                    "code-clone-detection",
+                    fullData,
+                    $"All {allGroups.Count} clone groups with {allGroups.Sum(g => g.Clones?.Count ?? 0)} total clones"
+                );
+                
+                _logger.LogDebug("Stored full clone detection results as resource: {ResourceUri}", resourceUri);
+            }
+
+            var insights = GenerateInsights(cloneGroups, codeBlocks.Count);
+            
+            // Add truncation warning if needed
+            if (wasTruncated)
+            {
+                insights.Insert(0, $"⚠️ Showing {cloneGroups.Count} of {allGroups.Count} clone groups. Full results available via resource URI.");
+            }
+            
+            var actions = GenerateNextActions(cloneGroups, parameters, wasTruncated, allGroups.Count);
+
+            return new CodeCloneDetectionResult
+            {
+                Success = true,
+                Message = wasTruncated 
+                    ? $"Found {allGroups.Count} clone group(s) from {codeBlocks.Count} code blocks analyzed (showing {cloneGroups.Count})"
+                    : $"Found {cloneGroups.Count} clone group(s) from {codeBlocks.Count} code blocks analyzed",
+                Summary = new SummaryInfo
+                {
+                    TotalFound = allGroups.Sum(g => g.Clones?.Count ?? 0),
+                    Returned = cloneGroups.Sum(g => g.Clones?.Count ?? 0),
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                },
+                CloneGroups = cloneGroups,
+                Analysis = new CloneAnalysis
+                {
+                    TotalGroups = allGroups.Count,
+                    TotalClones = allGroups.Sum(g => g.Clones?.Count ?? 0),
+                    AverageSimilarity = allGroups.Any() ? allGroups.Average(g => g.SimilarityScore) : 0,
+                    LargestGroupSize = allGroups.Any() ? allGroups.Max(g => g.Clones?.Count ?? 0) : 0
+                },
+                ResourceUri = resourceUri,
+                Insights = insights,
+                Actions = actions,
+                Meta = new ToolExecutionMetadata
+                {
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                    Truncated = wasTruncated
+                }
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in CodeCloneDetection");
-            return CreateErrorResult(
-                ErrorCodes.INTERNAL_ERROR,
-                $"Error: {ex.Message}",
-                new List<string>
+            return new CodeCloneDetectionResult
+            {
+                Success = false,
+                Message = $"Error: {ex.Message}",
+                Error = new ErrorInfo
                 {
-                    "Check the server logs for detailed error information",
-                    "Verify the solution is loaded correctly",
-                    "Try with a smaller scope or higher thresholds"
+                    Code = ErrorCodes.INTERNAL_ERROR,
+                    Message = $"Error: {ex.Message}"
                 },
-                parameters,
-                startTime);
+                Meta = new ToolExecutionMetadata
+                {
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                }
+            };
         }
     }
 
-    private async Task<List<CodeBlock>> CollectCodeBlocksAsync(
-        Solution solution,
-        int minLines,
-        string? filePattern,
-        string? excludePattern,
-        CancellationToken cancellationToken)
+    private bool ShouldProcessDocument(Document document, CodeCloneDetectionParams parameters)
     {
-        var codeBlocks = new List<CodeBlock>();
-
-        foreach (var project in solution.Projects)
+        if (!string.IsNullOrEmpty(parameters.FilePattern))
         {
-            foreach (var document in project.Documents)
-            {
-                // Skip if doesn't match file pattern
-                if (!MatchesFilePattern(document.FilePath, filePattern, excludePattern))
-                    continue;
-
-                try
-                {
-                    var root = await document.GetSyntaxRootAsync(cancellationToken);
-                    if (root == null) continue;
-
-                    var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-                    if (semanticModel == null) continue;
-
-                    // Extract methods
-                    var methods = root.DescendantNodes()
-                        .OfType<MethodDeclarationSyntax>()
-                        .Where(m => GetLineCount(m) >= minLines);
-
-                    foreach (var method in methods)
-                    {
-                        var symbol = semanticModel.GetDeclaredSymbol(method);
-                        if (symbol == null) continue;
-
-                        codeBlocks.Add(new CodeBlock
-                        {
-                            Id = Guid.NewGuid().ToString(),
-                            FilePath = document.FilePath ?? "<unknown>",
-                            ProjectName = project.Name,
-                            StartLine = method.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
-                            EndLine = method.GetLocation().GetLineSpan().EndLinePosition.Line + 1,
-                            LineCount = GetLineCount(method),
-                            TokenCount = GetTokenCount(method),
-                            MethodName = symbol.ToDisplayString(),
-                            Code = method.ToFullString(),
-                            NormalizedCode = NormalizeCode(method),
-                            Hash = ComputeHash(NormalizeCode(method)),
-                            SyntaxKind = "Method",
-                            Complexity = CalculateComplexity(method)
-                        });
-                    }
-
-                    // Extract constructors
-                    var constructors = root.DescendantNodes()
-                        .OfType<ConstructorDeclarationSyntax>()
-                        .Where(c => GetLineCount(c) >= minLines);
-
-                    foreach (var constructor in constructors)
-                    {
-                        var symbol = semanticModel.GetDeclaredSymbol(constructor);
-                        if (symbol == null) continue;
-
-                        codeBlocks.Add(new CodeBlock
-                        {
-                            Id = Guid.NewGuid().ToString(),
-                            FilePath = document.FilePath ?? "<unknown>",
-                            ProjectName = project.Name,
-                            StartLine = constructor.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
-                            EndLine = constructor.GetLocation().GetLineSpan().EndLinePosition.Line + 1,
-                            LineCount = GetLineCount(constructor),
-                            TokenCount = GetTokenCount(constructor),
-                            MethodName = symbol.ToDisplayString(),
-                            Code = constructor.ToFullString(),
-                            NormalizedCode = NormalizeCode(constructor),
-                            Hash = ComputeHash(NormalizeCode(constructor)),
-                            SyntaxKind = "Constructor",
-                            Complexity = CalculateComplexity(constructor)
-                        });
-                    }
-
-                    // Extract property getters/setters if substantial
-                    var properties = root.DescendantNodes()
-                        .OfType<PropertyDeclarationSyntax>()
-                        .Where(p => p.AccessorList != null);
-
-                    foreach (var property in properties)
-                    {
-                        foreach (var accessor in property.AccessorList!.Accessors)
-                        {
-                            if (accessor.Body != null && GetLineCount(accessor) >= minLines)
-                            {
-                                var symbol = semanticModel.GetDeclaredSymbol(property);
-                                if (symbol == null) continue;
-
-                                codeBlocks.Add(new CodeBlock
-                                {
-                                    Id = Guid.NewGuid().ToString(),
-                                    FilePath = document.FilePath ?? "<unknown>",
-                                    ProjectName = project.Name,
-                                    StartLine = accessor.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
-                                    EndLine = accessor.GetLocation().GetLineSpan().EndLinePosition.Line + 1,
-                                    LineCount = GetLineCount(accessor),
-                                    TokenCount = GetTokenCount(accessor),
-                                    MethodName = $"{symbol.ToDisplayString()}.{accessor.Keyword.Text}",
-                                    Code = accessor.ToFullString(),
-                                    NormalizedCode = NormalizeCode(accessor),
-                                    Hash = ComputeHash(NormalizeCode(accessor)),
-                                    SyntaxKind = $"Property{accessor.Keyword.Text.Capitalize()}",
-                                    Complexity = CalculateComplexity(accessor)
-                                });
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error processing document {FilePath}", document.FilePath);
-                }
-            }
+            var fileName = Path.GetFileName(document.FilePath ?? document.Name);
+            if (!IsGlobMatch(fileName, parameters.FilePattern))
+                return false;
         }
 
-        return codeBlocks;
+        if (!string.IsNullOrEmpty(parameters.ExcludePattern))
+        {
+            var fileName = Path.GetFileName(document.FilePath ?? document.Name);
+            if (IsGlobMatch(fileName, parameters.ExcludePattern))
+                return false;
+        }
+
+        return Path.GetExtension(document.Name).Equals(".cs", StringComparison.OrdinalIgnoreCase);
     }
 
-    private List<CloneGroup> FindClones(
-        List<CodeBlock> codeBlocks,
-        double similarityThreshold,
-        int minTokens,
-        string cloneType)
+    private bool IsGlobMatch(string fileName, string pattern)
     {
-        var cloneGroups = new List<CloneGroup>();
-        var processed = new HashSet<string>();
+        var regex = "^" + pattern.Replace("*", ".*").Replace("?", ".") + "$";
+        return System.Text.RegularExpressions.Regex.IsMatch(fileName, regex, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
 
-        // Group by hash for Type-1 clones (exact duplicates)
-        if (cloneType == "type1" || cloneType == "all")
+    private void ExtractCodeBlocks(SyntaxNode root, Document document, List<CodeBlock> codeBlocks, CodeCloneDetectionParams parameters)
+    {
+        // Extract methods as code blocks
+        foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
         {
-            var exactGroups = codeBlocks
-                .Where(b => b.TokenCount >= minTokens)
-                .GroupBy(b => b.Hash)
-                .Where(g => g.Count() > 1);
-
-            foreach (var group in exactGroups)
+            var lineCount = GetLineCount(method);
+            if (lineCount >= parameters.MinLines)
             {
-                var blocks = group.ToList();
-                var cloneGroup = new CloneGroup
+                var location = method.GetLocation();
+                var lineSpan = location.GetLineSpan();
+                
+                codeBlocks.Add(new CodeBlock
                 {
                     Id = Guid.NewGuid().ToString(),
-                    CloneType = "Type-1 (Exact)",
-                    Blocks = blocks.Select(b => CreateCloneInstance(b, 1.0)).ToList(),
-                    AverageSimilarity = 1.0,
-                    TotalLines = blocks.Sum(b => b.LineCount),
-                    PotentialSavings = (blocks.Count - 1) * blocks.First().LineCount
-                };
-                
-                cloneGroups.Add(cloneGroup);
-                blocks.ForEach(b => processed.Add(b.Id));
-            }
-        }
-
-        // Find Type-2 and Type-3 clones (similar with variations)
-        if (cloneType == "type2" || cloneType == "type3" || cloneType == "all")
-        {
-            var unprocessed = codeBlocks
-                .Where(b => !processed.Contains(b.Id) && b.TokenCount >= minTokens)
-                .ToList();
-
-            for (int i = 0; i < unprocessed.Count; i++)
-            {
-                if (processed.Contains(unprocessed[i].Id)) continue;
-
-                var similar = new List<(CodeBlock block, double similarity)>
-                {
-                    (unprocessed[i], 1.0)
-                };
-
-                for (int j = i + 1; j < unprocessed.Count; j++)
-                {
-                    if (processed.Contains(unprocessed[j].Id)) continue;
-
-                    var similarity = CalculateSimilarity(
-                        unprocessed[i].NormalizedCode,
-                        unprocessed[j].NormalizedCode,
-                        cloneType == "type3");
-
-                    if (similarity >= similarityThreshold)
+                    Content = method.ToString(),
+                    NormalizedContent = NormalizeContent(method.ToString()),
+                    Hash = ComputeHash(method.ToString()),
+                    Location = new LocationInfo
                     {
-                        similar.Add((unprocessed[j], similarity));
-                    }
-                }
-
-                if (similar.Count > 1)
-                {
-                    var cloneGroup = new CloneGroup
-                    {
-                        Id = Guid.NewGuid().ToString(),
-                        CloneType = DetermineCloneType(similar.Average(s => s.similarity)),
-                        Blocks = similar.Select(s => CreateCloneInstance(s.block, s.similarity)).ToList(),
-                        AverageSimilarity = similar.Average(s => s.similarity),
-                        TotalLines = similar.Sum(s => s.block.LineCount),
-                        PotentialSavings = (similar.Count - 1) * similar[0].block.LineCount
-                    };
-
-                    cloneGroups.Add(cloneGroup);
-                    similar.ForEach(s => processed.Add(s.block.Id));
-                }
+                        FilePath = lineSpan.Path,
+                        Line = lineSpan.StartLinePosition.Line + 1,
+                        Column = lineSpan.StartLinePosition.Character + 1,
+                        EndLine = lineSpan.EndLinePosition.Line + 1,
+                        EndColumn = lineSpan.EndLinePosition.Character + 1
+                    },
+                    LineCount = lineCount,
+                    TokenCount = method.DescendantTokens().Count(),
+                    ContainingType = method.Parent is TypeDeclarationSyntax parent ? parent.Identifier.ValueText : "",
+                    Name = method.Identifier.ValueText,
+                    Kind = "Method"
+                });
             }
         }
-
-        // Sort by potential savings
-        return cloneGroups.OrderByDescending(g => g.PotentialSavings).ToList();
-    }
-
-    private CloneInstance CreateCloneInstance(CodeBlock block, double similarity)
-    {
-        return new CloneInstance
-        {
-            FilePath = block.FilePath,
-            ProjectName = block.ProjectName,
-            MethodName = block.MethodName,
-            Location = new LocationInfo
-            {
-                FilePath = block.FilePath,
-                Line = block.StartLine,
-                Column = 1,
-                EndLine = block.EndLine,
-                EndColumn = 1
-            },
-            LineCount = block.LineCount,
-            TokenCount = block.TokenCount,
-            Similarity = similarity,
-            CodeSnippet = GetCodeSnippet(block.Code, 5),
-            Complexity = block.Complexity
-        };
-    }
-
-    private string GetCodeSnippet(string code, int maxLines)
-    {
-        var lines = code.Split('\n').Take(maxLines);
-        var snippet = string.Join('\n', lines);
-        if (code.Split('\n').Length > maxLines)
-        {
-            snippet += "\n...";
-        }
-        return snippet.Trim();
-    }
-
-    private double CalculateSimilarity(string code1, string code2, bool allowGaps)
-    {
-        if (code1 == code2) return 1.0;
-
-        // Tokenize
-        var tokens1 = TokenizeCode(code1);
-        var tokens2 = TokenizeCode(code2);
-
-        if (!tokens1.Any() || !tokens2.Any()) return 0.0;
-
-        // Calculate token-based similarity
-        if (allowGaps)
-        {
-            // Type-3: Allow gaps/modifications
-            return CalculateLCS(tokens1, tokens2) / (double)Math.Max(tokens1.Count, tokens2.Count);
-        }
-        else
-        {
-            // Type-2: Exact structure, different identifiers
-            return CalculateTokenSimilarity(tokens1, tokens2);
-        }
-    }
-
-    private List<string> TokenizeCode(string code)
-    {
-        var tree = CSharpSyntaxTree.ParseText(code);
-        var root = tree.GetRoot();
-        
-        return root.DescendantTokens()
-            .Where(t => !t.IsKind(SyntaxKind.EndOfFileToken))
-            .Select(t => t.Kind().ToString())
-            .ToList();
-    }
-
-    private double CalculateTokenSimilarity(List<string> tokens1, List<string> tokens2)
-    {
-        if (tokens1.Count != tokens2.Count) return 0.0;
-
-        int matches = 0;
-        for (int i = 0; i < tokens1.Count; i++)
-        {
-            if (tokens1[i] == tokens2[i])
-                matches++;
-        }
-
-        return (double)matches / tokens1.Count;
-    }
-
-    private int CalculateLCS(List<string> tokens1, List<string> tokens2)
-    {
-        int[,] lcs = new int[tokens1.Count + 1, tokens2.Count + 1];
-
-        for (int i = 1; i <= tokens1.Count; i++)
-        {
-            for (int j = 1; j <= tokens2.Count; j++)
-            {
-                if (tokens1[i - 1] == tokens2[j - 1])
-                    lcs[i, j] = lcs[i - 1, j - 1] + 1;
-                else
-                    lcs[i, j] = Math.Max(lcs[i - 1, j], lcs[i, j - 1]);
-            }
-        }
-
-        return lcs[tokens1.Count, tokens2.Count];
-    }
-
-    private string NormalizeCode(SyntaxNode node)
-    {
-        // Remove whitespace and normalize identifiers for clone detection
-        var normalizer = new CodeNormalizer();
-        var normalized = normalizer.Visit(node);
-        return normalized?.ToFullString() ?? "";
-    }
-
-    private class CodeNormalizer : CSharpSyntaxRewriter
-    {
-        private int _varCounter = 0;
-        private readonly Dictionary<string, string> _identifierMap = new();
-
-        public override SyntaxToken VisitToken(SyntaxToken token)
-        {
-            // Normalize identifiers
-            if (token.IsKind(SyntaxKind.IdentifierToken))
-            {
-                var text = token.Text;
-                if (!_identifierMap.ContainsKey(text))
-                {
-                    _identifierMap[text] = $"var{_varCounter++}";
-                }
-                return SyntaxFactory.Identifier(_identifierMap[text]);
-            }
-
-            // Remove trivia (whitespace, comments)
-            return token.WithoutTrivia();
-        }
-    }
-
-    private string ComputeHash(string text)
-    {
-        using var sha256 = SHA256.Create();
-        var bytes = Encoding.UTF8.GetBytes(text);
-        var hash = sha256.ComputeHash(bytes);
-        return Convert.ToBase64String(hash);
     }
 
     private int GetLineCount(SyntaxNode node)
     {
-        var span = node.GetLocation().GetLineSpan();
-        return span.EndLinePosition.Line - span.StartLinePosition.Line + 1;
+        var location = node.GetLocation();
+        var lineSpan = location.GetLineSpan();
+        return lineSpan.EndLinePosition.Line - lineSpan.StartLinePosition.Line + 1;
     }
 
-    private int GetTokenCount(SyntaxNode node)
+    private string NormalizeContent(string content)
     {
-        return node.DescendantTokens()
-            .Count(t => !t.IsKind(SyntaxKind.EndOfFileToken));
+        // Simple normalization: remove whitespace and standardize identifiers
+        return System.Text.RegularExpressions.Regex.Replace(content, @"\s+", " ")
+            .Replace("{", " { ")
+            .Replace("}", " } ")
+            .Trim();
     }
 
-    private int CalculateComplexity(SyntaxNode node)
+    private string ComputeHash(string content)
     {
-        // Simple cyclomatic complexity calculation
-        int complexity = 1;
-
-        complexity += node.DescendantNodes().Count(n => n is IfStatementSyntax);
-        complexity += node.DescendantNodes().Count(n => n is WhileStatementSyntax);
-        complexity += node.DescendantNodes().Count(n => n is ForStatementSyntax);
-        complexity += node.DescendantNodes().Count(n => n is ForEachStatementSyntax);
-        complexity += node.DescendantNodes().Count(n => n is CaseSwitchLabelSyntax);
-        complexity += node.DescendantNodes().Count(n => n is ConditionalExpressionSyntax);
-        complexity += node.DescendantNodes().Count(n => n is BinaryExpressionSyntax be && 
-            (be.IsKind(SyntaxKind.LogicalAndExpression) || be.IsKind(SyntaxKind.LogicalOrExpression)));
-
-        return complexity;
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(content));
+        return Convert.ToHexString(hash);
     }
 
-    private string DetermineCloneType(double similarity)
+    private List<CloneGroup> FindCloneGroups(List<CodeBlock> codeBlocks, CodeCloneDetectionParams parameters)
     {
-        if (similarity >= 1.0) return "Type-1 (Exact)";
-        if (similarity >= 0.95) return "Type-2 (Renamed)";
-        if (similarity >= 0.70) return "Type-3 (Modified)";
-        return "Type-4 (Semantic)";
-    }
+        var groups = new List<CloneGroup>();
+        var processed = new HashSet<string>();
 
-    private bool MatchesFilePattern(string? filePath, string? includePattern, string? excludePattern)
-    {
-        if (string.IsNullOrEmpty(filePath))
-            return false;
-
-        // Skip test files by default unless explicitly included
-        if (filePath.Contains("Test", StringComparison.OrdinalIgnoreCase) && 
-            (includePattern == null || !includePattern.Contains("Test", StringComparison.OrdinalIgnoreCase)))
-            return false;
-
-        return true;
-    }
-
-    private int EstimateCloneGroupsTokens(List<CloneGroup> groups)
-    {
-        return TokenEstimator.EstimateCollection(
-            groups,
-            group => {
-                var tokens = 200; // Base for group structure
-                tokens += group.Blocks.Sum(b => 
-                    TokenEstimator.EstimateString(b.FilePath) +
-                    TokenEstimator.EstimateString(b.CodeSnippet) +
-                    100 // Metadata
-                );
-                return tokens;
-            },
-            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
-        );
-    }
-
-    private CloneAnalysis GenerateAnalysis(List<CloneGroup> cloneGroups, int totalBlocks)
-    {
-        var analysis = new CloneAnalysis
+        for (int i = 0; i < codeBlocks.Count; i++)
         {
-            TotalCloneGroups = cloneGroups.Count,
-            TotalDuplicateBlocks = cloneGroups.Sum(g => g.Blocks.Count),
-            TotalDuplicateLines = cloneGroups.Sum(g => g.TotalLines),
-            AverageSimilarity = cloneGroups.Any() ? cloneGroups.Average(g => g.AverageSimilarity) : 0,
-            LargestCloneGroup = cloneGroups.OrderByDescending(g => g.Blocks.Count).FirstOrDefault()?.Blocks.Count ?? 0,
-            TotalPotentialSavings = cloneGroups.Sum(g => g.PotentialSavings),
-            CloneDistribution = cloneGroups
-                .GroupBy(g => g.CloneType)
-                .ToDictionary(g => g.Key, g => g.Count()),
-            ProjectDistribution = cloneGroups
-                .SelectMany(g => g.Blocks.Select(b => b.ProjectName))
-                .GroupBy(p => p)
-                .ToDictionary(g => g.Key, g => g.Count())
-        };
+            if (processed.Contains(codeBlocks[i].Id))
+                continue;
 
-        // Calculate duplication percentage
-        analysis.DuplicationPercentage = totalBlocks > 0 
-            ? (double)analysis.TotalDuplicateBlocks / totalBlocks * 100 
-            : 0;
+            var group = new CloneGroup
+            {
+                Id = Guid.NewGuid().ToString(),
+                Clones = new List<CodeBlock>(),
+                SimilarityScore = 0
+            };
 
-        return analysis;
+            var baseBlock = codeBlocks[i];
+            group.Clones.Add(baseBlock);
+            processed.Add(baseBlock.Id);
+
+            // Find similar blocks
+            for (int j = i + 1; j < codeBlocks.Count; j++)
+            {
+                if (processed.Contains(codeBlocks[j].Id))
+                    continue;
+
+                var similarity = CalculateSimilarity(baseBlock, codeBlocks[j]);
+                if (similarity >= parameters.SimilarityThreshold)
+                {
+                    group.Clones.Add(codeBlocks[j]);
+                    processed.Add(codeBlocks[j].Id);
+                    group.SimilarityScore = Math.Max(group.SimilarityScore, similarity);
+                }
+            }
+
+            // Only include groups with multiple clones
+            if (group.Clones.Count > 1)
+            {
+                groups.Add(group);
+            }
+        }
+
+        return groups.OrderByDescending(g => g.SimilarityScore).ToList();
     }
 
-    private List<string> GenerateInsights(CloneAnalysis analysis, CodeCloneDetectionParams parameters)
+    private double CalculateSimilarity(CodeBlock block1, CodeBlock block2)
+    {
+        // Simple similarity based on normalized content
+        if (block1.Hash == block2.Hash)
+            return 1.0; // Exact match
+
+        // Levenshtein distance-based similarity (simplified)
+        var content1 = block1.NormalizedContent;
+        var content2 = block2.NormalizedContent;
+
+        if (content1.Length == 0 && content2.Length == 0)
+            return 1.0;
+
+        if (content1.Length == 0 || content2.Length == 0)
+            return 0.0;
+
+        var distance = ComputeLevenshteinDistance(content1, content2);
+        var maxLength = Math.Max(content1.Length, content2.Length);
+        
+        return 1.0 - (double)distance / maxLength;
+    }
+
+    private int ComputeLevenshteinDistance(string s1, string s2)
+    {
+        var matrix = new int[s1.Length + 1, s2.Length + 1];
+
+        for (int i = 0; i <= s1.Length; i++)
+            matrix[i, 0] = i;
+
+        for (int j = 0; j <= s2.Length; j++)
+            matrix[0, j] = j;
+
+        for (int i = 1; i <= s1.Length; i++)
+        {
+            for (int j = 1; j <= s2.Length; j++)
+            {
+                var cost = s1[i - 1] == s2[j - 1] ? 0 : 1;
+                matrix[i, j] = Math.Min(
+                    Math.Min(matrix[i - 1, j] + 1, matrix[i, j - 1] + 1),
+                    matrix[i - 1, j - 1] + cost);
+            }
+        }
+
+        return matrix[s1.Length, s2.Length];
+    }
+
+    private List<string> GenerateInsights(List<CloneGroup> groups, int totalBlocks)
     {
         var insights = new List<string>();
 
-        if (analysis.TotalCloneGroups == 0)
+        if (groups.Count == 0)
         {
-            insights.Add("No code clones detected - codebase has good uniqueness");
-        }
-        else
-        {
-            insights.Add($"Found {analysis.TotalCloneGroups} groups of duplicate code affecting {analysis.TotalDuplicateBlocks} blocks");
+            insights.Add("No code clones detected - good code quality!");
+            return insights;
         }
 
-        if (analysis.DuplicationPercentage > 20)
+        insights.Add($"Found {groups.Count} clone groups from {totalBlocks} code blocks analyzed");
+
+        var highSimilarity = groups.Count(g => g.SimilarityScore > 0.9);
+        if (highSimilarity > 0)
         {
-            insights.Add($"⚠️ High duplication rate: {analysis.DuplicationPercentage:F1}% of code blocks are duplicates");
+            insights.Add($"{highSimilarity} groups have very high similarity (>90%) - consider immediate refactoring");
         }
 
-        if (analysis.TotalPotentialSavings > 100)
+        var largestGroup = groups.OrderByDescending(g => g.Clones?.Count ?? 0).FirstOrDefault();
+        if (largestGroup != null && largestGroup.Clones?.Count > 3)
         {
-            insights.Add($"Potential to save {analysis.TotalPotentialSavings} lines through refactoring");
+            insights.Add($"Largest clone group has {largestGroup.Clones.Count} instances - significant duplication");
         }
 
-        if (analysis.LargestCloneGroup > 5)
-        {
-            insights.Add($"Largest clone group has {analysis.LargestCloneGroup} instances - strong candidate for extraction");
-        }
-
-        var type1Count = analysis.CloneDistribution?.GetValueOrDefault("Type-1 (Exact)") ?? 0;
-        if (type1Count > 0)
-        {
-            insights.Add($"{type1Count} exact duplicates found - these are easiest to refactor");
-        }
-
-        if (analysis.ProjectDistribution?.Count > 1)
-        {
-            insights.Add($"Clones span {analysis.ProjectDistribution.Count} projects - consider shared library");
-        }
+        var totalClones = groups.Sum(g => g.Clones?.Count ?? 0);
+        var duplicatedLines = groups.Sum(g => (g.Clones?.Count ?? 0) * (g.Clones?.FirstOrDefault()?.LineCount ?? 0));
+        insights.Add($"Estimated {duplicatedLines} duplicated lines of code across {totalClones} code blocks");
 
         return insights;
     }
 
-    private List<NextAction> GenerateNextActions(CodeCloneDetectionParams parameters, CloneAnalysis analysis)
+    private List<AIAction> GenerateNextActions(List<CloneGroup> groups, CodeCloneDetectionParams parameters, bool wasTruncated, int totalGroups)
     {
-        var actions = new List<NextAction>();
+        var actions = new List<AIAction>();
 
-        if (analysis.TotalCloneGroups > 0)
+        // If truncated, offer to get all results
+        if (wasTruncated)
         {
-            // Suggest extracting the most duplicated code
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = "extract_common_code",
-                Description = "Extract the most duplicated code into shared methods",
-                ToolName = "csharp_extract_method",
-                Parameters = new { },
-                Priority = "high"
-            });
-
-            // Suggest finding references to understand usage
-            actions.Add(new NextAction
-            {
-                Id = "analyze_usage",
-                Description = "Find all references to understand clone usage patterns",
-                ToolName = "csharp_find_all_references",
-                Parameters = new { },
-                Priority = "medium"
+                Action = "csharp_code_clone_detection",
+                Description = $"Get all {totalGroups} clone groups",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["minLines"] = parameters.MinLines,
+                    ["minTokens"] = parameters.MinTokens,
+                    ["similarityThreshold"] = parameters.SimilarityThreshold,
+                    ["maxGroups"] = Math.Min(totalGroups, 500)
+                },
+                Priority = 95,
+                Category = "pagination"
             });
         }
 
-        // Suggest different detection parameters
-        if (parameters.SimilarityThreshold > 0.7)
+        var topGroup = groups.FirstOrDefault();
+        if (topGroup?.Clones?.Any() == true)
         {
-            actions.Add(new NextAction
+            var firstClone = topGroup.Clones.First();
+            actions.Add(new AIAction
             {
-                Id = "find_more_clones",
-                Description = "Find more clones with lower similarity threshold",
-                ToolName = "csharp_code_clone_detection",
-                Parameters = new
+                Action = "csharp_extract_method",
+                Description = $"Extract common logic from cloned code in '{firstClone.Name}'",
+                Parameters = new Dictionary<string, object>
                 {
-                    minLines = parameters.MinLines,
-                    similarityThreshold = 0.7,
-                    cloneType = "all"
+                    ["filePath"] = firstClone.Location.FilePath,
+                    ["startLine"] = firstClone.Location.Line,
+                    ["endLine"] = firstClone.Location.EndLine
                 },
-                Priority = "low"
+                Priority = 90,
+                Category = "refactoring"
             });
-        }
 
-        // Suggest analyzing specific high-duplication projects
-        if (analysis.ProjectDistribution?.Any(p => p.Value > 10) == true)
-        {
-            var highDupProject = analysis.ProjectDistribution.OrderByDescending(p => p.Value).First();
-            actions.Add(new NextAction
+            // Suggest reviewing the clone group
+            if (topGroup.Clones.Count > 1)
             {
-                Id = "analyze_project",
-                Description = $"Analyze '{highDupProject.Key}' project specifically (high duplication)",
-                ToolName = "csharp_code_clone_detection",
-                Parameters = new
+                actions.Add(new AIAction
                 {
-                    filePattern = $"**/{highDupProject.Key}/**/*.cs",
-                    minLines = parameters.MinLines
-                },
-                Priority = "medium"
-            });
+                    Action = "review_clones",
+                    Description = $"Review all {topGroup.Clones.Count} instances of this clone",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["cloneGroupId"] = topGroup.Id,
+                        ["similarity"] = topGroup.SimilarityScore
+                    },
+                    Priority = 80,
+                    Category = "analysis"
+                });
+            }
         }
 
         return actions;
     }
 
-    private QueryInfo CreateQueryInfo(CodeCloneDetectionParams parameters)
+    protected override int EstimateTokenUsage()
     {
-        return new QueryInfo
-        {
-            AdditionalParams = new Dictionary<string, object>
-            {
-                ["minLines"] = parameters.MinLines,
-                ["minTokens"] = parameters.MinTokens,
-                ["similarityThreshold"] = parameters.SimilarityThreshold,
-                ["cloneType"] = parameters.CloneType
-            }
-        };
-    }
-
-    private CodeCloneDetectionResult CreateErrorResult(
-        string errorCode,
-        string message,
-        List<string> recoverySteps,
-        CodeCloneDetectionParams parameters,
-        DateTime startTime)
-    {
-        return new CodeCloneDetectionResult
-        {
-            Success = false,
-            Message = message,
-            Error = new ErrorInfo
-            {
-                Code = errorCode,
-                Recovery = new RecoveryInfo
-                {
-                    Steps = recoverySteps
-                }
-            },
-            Query = CreateQueryInfo(parameters),
-            Meta = new ToolMetadata
-            {
-                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-            }
-        };
-    }
-
-    private class CodeBlock
-    {
-        public string Id { get; set; } = "";
-        public string FilePath { get; set; } = "";
-        public string ProjectName { get; set; } = "";
-        public int StartLine { get; set; }
-        public int EndLine { get; set; }
-        public int LineCount { get; set; }
-        public int TokenCount { get; set; }
-        public string MethodName { get; set; } = "";
-        public string Code { get; set; } = "";
-        public string NormalizedCode { get; set; } = "";
-        public string Hash { get; set; } = "";
-        public string SyntaxKind { get; set; } = "";
-        public int Complexity { get; set; }
+        return 4000;
     }
 }
 
+/// <summary>
+/// Parameters for CodeCloneDetection tool
+/// </summary>
 public class CodeCloneDetectionParams
 {
     [JsonPropertyName("minLines")]
-    [Description("Minimum number of lines for a code block to be considered (default: 6)")]
+    [COA.Mcp.Framework.Attributes.Description("Minimum number of lines for a code block to be considered (default: 6)")]
     public int MinLines { get; set; } = 6;
 
     [JsonPropertyName("minTokens")]
-    [Description("Minimum number of tokens for a code block to be considered (default: 50)")]
+    [COA.Mcp.Framework.Attributes.Description("Minimum number of tokens for a code block to be considered (default: 50)")]
     public int MinTokens { get; set; } = 50;
-    
+
     [JsonPropertyName("similarityThreshold")]
-    [Description("Minimum similarity score to consider as clone (0.0-1.0, default: 0.8)")]
+    [COA.Mcp.Framework.Attributes.Description("Minimum similarity score to consider as clone (0.0-1.0, default: 0.8)")]
     public double SimilarityThreshold { get; set; } = 0.8;
-    
+
     [JsonPropertyName("cloneType")]
-    [Description("Type of clones to detect: 'type1' (exact), 'type2' (renamed), 'type3' (modified), 'all' (default: 'all')")]
+    [COA.Mcp.Framework.Attributes.Description("Type of clones to detect: 'type1' (exact), 'type2' (renamed), 'type3' (modified), 'all' (default: 'all')")]
     public string CloneType { get; set; } = "all";
-    
+
     [JsonPropertyName("filePattern")]
-    [Description("Glob pattern to include files (e.g., '*.cs', 'src/**/*.cs')")]
+    [COA.Mcp.Framework.Attributes.Description("Glob pattern to include files (e.g., '*.cs', 'src/**/*.cs')")]
     public string? FilePattern { get; set; }
-    
+
     [JsonPropertyName("excludePattern")]
-    [Description("Glob pattern to exclude files (e.g., '*.Designer.cs', '**/bin/**')")]
+    [COA.Mcp.Framework.Attributes.Description("Glob pattern to exclude files (e.g., '*.Designer.cs', '**/bin/**')")]
     public string? ExcludePattern { get; set; }
-    
+
     [JsonPropertyName("maxGroups")]
-    [Description("Maximum number of clone groups to return (default: 50)")]
+    [COA.Mcp.Framework.Attributes.Description("Maximum number of clone groups to return (default: 50)")]
     public int? MaxGroups { get; set; }
 }
 
@@ -865,15 +508,12 @@ public class CodeCloneDetectionResult : ToolResultBase
 {
     public override string Operation => "csharp_code_clone_detection";
     
-    [JsonPropertyName("query")]
-    public QueryInfo? Query { get; set; }
-    
     [JsonPropertyName("summary")]
     public SummaryInfo? Summary { get; set; }
-    
+
     [JsonPropertyName("cloneGroups")]
     public List<CloneGroup>? CloneGroups { get; set; }
-    
+
     [JsonPropertyName("analysis")]
     public CloneAnalysis? Analysis { get; set; }
 }
@@ -882,90 +522,58 @@ public class CloneGroup
 {
     [JsonPropertyName("id")]
     public required string Id { get; set; }
-    
-    [JsonPropertyName("cloneType")]
-    public required string CloneType { get; set; }
-    
-    [JsonPropertyName("blocks")]
-    public List<CloneInstance> Blocks { get; set; } = new();
-    
-    [JsonPropertyName("averageSimilarity")]
-    public double AverageSimilarity { get; set; }
-    
-    [JsonPropertyName("totalLines")]
-    public int TotalLines { get; set; }
-    
-    [JsonPropertyName("potentialSavings")]
-    public int PotentialSavings { get; set; }
+
+    [JsonPropertyName("clones")]
+    public List<CodeBlock>? Clones { get; set; }
+
+    [JsonPropertyName("similarityScore")]
+    public double SimilarityScore { get; set; }
 }
 
-public class CloneInstance
+public class CodeBlock
 {
-    [JsonPropertyName("filePath")]
-    public required string FilePath { get; set; }
-    
-    [JsonPropertyName("projectName")]
-    public required string ProjectName { get; set; }
-    
-    [JsonPropertyName("methodName")]
-    public required string MethodName { get; set; }
-    
+    [JsonPropertyName("id")]
+    public required string Id { get; set; }
+
+    [JsonPropertyName("content")]
+    public required string Content { get; set; }
+
+    [JsonPropertyName("normalizedContent")]
+    public required string NormalizedContent { get; set; }
+
+    [JsonPropertyName("hash")]
+    public required string Hash { get; set; }
+
     [JsonPropertyName("location")]
     public required LocationInfo Location { get; set; }
-    
+
     [JsonPropertyName("lineCount")]
     public int LineCount { get; set; }
-    
+
     [JsonPropertyName("tokenCount")]
     public int TokenCount { get; set; }
-    
-    [JsonPropertyName("similarity")]
-    public double Similarity { get; set; }
-    
-    [JsonPropertyName("codeSnippet")]
-    public required string CodeSnippet { get; set; }
-    
-    [JsonPropertyName("complexity")]
-    public int Complexity { get; set; }
+
+    [JsonPropertyName("containingType")]
+    public required string ContainingType { get; set; }
+
+    [JsonPropertyName("name")]
+    public required string Name { get; set; }
+
+    [JsonPropertyName("kind")]
+    public required string Kind { get; set; }
 }
 
 public class CloneAnalysis
 {
-    [JsonPropertyName("totalCloneGroups")]
-    public int TotalCloneGroups { get; set; }
-    
-    [JsonPropertyName("totalDuplicateBlocks")]
-    public int TotalDuplicateBlocks { get; set; }
-    
-    [JsonPropertyName("totalDuplicateLines")]
-    public int TotalDuplicateLines { get; set; }
-    
+    [JsonPropertyName("totalGroups")]
+    public int TotalGroups { get; set; }
+
+    [JsonPropertyName("totalClones")]
+    public int TotalClones { get; set; }
+
     [JsonPropertyName("averageSimilarity")]
     public double AverageSimilarity { get; set; }
-    
-    [JsonPropertyName("largestCloneGroup")]
-    public int LargestCloneGroup { get; set; }
-    
-    [JsonPropertyName("totalPotentialSavings")]
-    public int TotalPotentialSavings { get; set; }
-    
-    [JsonPropertyName("duplicationPercentage")]
-    public double DuplicationPercentage { get; set; }
-    
-    [JsonPropertyName("cloneDistribution")]
-    public Dictionary<string, int>? CloneDistribution { get; set; }
-    
-    [JsonPropertyName("projectDistribution")]
-    public Dictionary<string, int>? ProjectDistribution { get; set; }
-}
 
-// Extension method
-public static class StringExtensions
-{
-    public static string Capitalize(this string input)
-    {
-        if (string.IsNullOrEmpty(input))
-            return input;
-        return char.ToUpper(input[0]) + input.Substring(1).ToLower();
-    }
+    [JsonPropertyName("largestGroupSize")]
+    public int LargestGroupSize { get; set; }
 }

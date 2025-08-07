@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Constants;
+using COA.Mcp.Framework.Models;
 
 namespace COA.CodeNav.McpServer.Models;
 
@@ -25,6 +26,57 @@ public class GoToDefinitionToolResult : ToolResultBase
     [JsonPropertyName("resultsSummary")]
     public ResultsSummary? ResultsSummary { get; set; }
 }
+
+/// <summary>
+/// Result for DocumentSymbols tool
+/// </summary>
+public class DocumentSymbolsToolResult : ToolResultBase
+{
+    public override string Operation => ToolNames.DocumentSymbols;
+
+    [JsonPropertyName("query")]
+    public DocumentSymbolsQuery? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public DocumentSymbolsSummary? Summary { get; set; }
+
+    [JsonPropertyName("symbols")]
+    public List<DocumentSymbol>? Symbols { get; set; }
+
+    [JsonPropertyName("resultsSummary")]
+    public ResultsSummary? ResultsSummary { get; set; }
+
+    [JsonPropertyName("distribution")]
+    public SymbolDistribution? Distribution { get; set; }
+}
+
+/// <summary>
+/// Document symbols specific query
+/// </summary>
+public class DocumentSymbolsQuery : QueryInfo
+{
+    [JsonPropertyName("symbolKinds")]
+    public List<string>? SymbolKinds { get; set; }
+
+    [JsonPropertyName("includePrivate")]
+    public bool IncludePrivate { get; set; }
+
+    [JsonPropertyName("maxResults")]
+    public int MaxResults { get; set; }
+}
+
+/// <summary>
+/// Document symbols summary
+/// </summary>
+public class DocumentSymbolsSummary : SummaryInfo
+{
+    [JsonPropertyName("totalSymbols")]
+    public int TotalSymbols { get; set; }
+
+    [JsonPropertyName("hierarchical")]
+    public bool Hierarchical { get; set; }
+}
+
 
 /// <summary>
 /// Result for FindAllReferences tool
@@ -161,6 +213,9 @@ public class SymbolDistribution
 
     [JsonPropertyName("byProject")]
     public Dictionary<string, int>? ByProject { get; set; }
+
+    [JsonPropertyName("byAccessibility")]
+    public Dictionary<string, int>? ByAccessibility { get; set; }
 }
 
 /// <summary>
@@ -264,4 +319,90 @@ public class DiagnosticsDistribution
 
     [JsonPropertyName("byFile")]
     public Dictionary<string, int>? ByFile { get; set; }
+}
+
+/// <summary>
+/// Result for GetTypeMembers tool
+/// </summary>
+public class GetTypeMembersToolResult : ToolResultBase
+{
+    public override string Operation => ToolNames.GetTypeMembers;
+
+    [JsonPropertyName("query")]
+    public GetTypeMembersQuery? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public GetTypeMembersSummary? Summary { get; set; }
+
+    [JsonPropertyName("members")]
+    public List<TypeMemberInfo>? Members { get; set; }
+
+    [JsonPropertyName("resultsSummary")]
+    public ResultsSummary? ResultsSummary { get; set; }
+
+    [JsonPropertyName("distribution")]
+    public TypeMembersDistribution? Distribution { get; set; }
+}
+
+/// <summary>
+/// GetTypeMembers specific query
+/// </summary>
+public class GetTypeMembersQuery : QueryInfo
+{
+    [JsonPropertyName("includeInherited")]
+    public bool IncludeInherited { get; set; }
+
+    [JsonPropertyName("includePrivate")]
+    public bool IncludePrivate { get; set; }
+
+    [JsonPropertyName("includeDocumentation")]
+    public bool IncludeDocumentation { get; set; }
+
+    [JsonPropertyName("memberKinds")]
+    public List<string>? MemberKinds { get; set; }
+
+    [JsonPropertyName("sortBy")]
+    public string? SortBy { get; set; }
+
+    [JsonPropertyName("maxResults")]
+    public int MaxResults { get; set; }
+}
+
+/// <summary>
+/// GetTypeMembers summary
+/// </summary>
+public class GetTypeMembersSummary : SummaryInfo
+{
+    [JsonPropertyName("typeName")]
+    public string? TypeName { get; set; }
+
+    [JsonPropertyName("typeKind")]
+    public string? TypeKind { get; set; }
+
+    [JsonPropertyName("totalMembers")]
+    public int TotalMembers { get; set; }
+
+    [JsonPropertyName("publicMembers")]
+    public int PublicMembers { get; set; }
+
+    [JsonPropertyName("virtualMembers")]
+    public int VirtualMembers { get; set; }
+
+    [JsonPropertyName("inheritedMembers")]
+    public int InheritedMembers { get; set; }
+}
+
+/// <summary>
+/// Distribution information for type members
+/// </summary>
+public class TypeMembersDistribution
+{
+    [JsonPropertyName("byKind")]
+    public Dictionary<string, int>? ByKind { get; set; }
+
+    [JsonPropertyName("byAccessibility")]
+    public Dictionary<string, int>? ByAccessibility { get; set; }
+
+    [JsonPropertyName("bySource")]
+    public Dictionary<string, int>? BySource { get; set; } // Own vs Inherited
 }

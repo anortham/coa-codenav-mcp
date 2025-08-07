@@ -1,7 +1,9 @@
-using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -9,24 +11,31 @@ using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Options;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Json.Serialization;
 
 namespace COA.CodeNav.McpServer.Tools;
 
-[McpServerToolType]
-public class FormatDocumentTool
+/// <summary>
+/// MCP tool that provides document formatting functionality using Roslyn
+/// </summary>
+public class FormatDocumentTool : McpToolBase<FormatDocumentParams, FormatDocumentResult>
 {
     private readonly ILogger<FormatDocumentTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
+    public override string Name => ToolNames.FormatDocument;
+    public override string Description => "Format code according to project settings and .editorconfig.";
+    
     public FormatDocumentTool(
         ILogger<FormatDocumentTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -34,154 +43,140 @@ public class FormatDocumentTool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_format_document")]
-    [Description(@"Format code according to project settings and .editorconfig.
-Returns: Formatted code following project conventions.
-Prerequisites: Valid C# document.
-Use cases: Clean up code formatting, fix indentation, organize usings.
-AI benefit: Ensures generated/modified code matches project style.")]
-    public async Task<object> ExecuteAsync(FormatDocumentParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<FormatDocumentResult> ExecuteInternalAsync(
+        FormatDocumentParams parameters,
+        CancellationToken cancellationToken)
     {
+        _logger.LogDebug("FormatDocument request received: FilePath={FilePath}, OrganizeUsings={OrganizeUsings}", 
+            parameters.FilePath, parameters.OrganizeUsings);
+        
         var startTime = DateTime.UtcNow;
 
-        try
+        // Get the document
+        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            // Get the document
-            var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
-            {
-                return CreateErrorResult(
-                    ErrorCodes.DOCUMENT_NOT_FOUND,
-                    $"Document not found: {parameters.FilePath}",
-                    new List<string>
-                    {
-                        "Ensure the file path is correct and absolute",
-                        "Verify the file exists in the loaded solution/project",
-                        "Load a solution using csharp_load_solution or project using csharp_load_project"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            // Track changes made
-            var changesMade = new List<string>();
-            var formattedDocument = document;
-
-            // Step 1: Organize usings if requested
-            if (parameters.OrganizeUsings ?? true)
-            {
-                var beforeUsings = await GetUsingsInfo(formattedDocument, cancellationToken);
-                // Note: RemoveUnusedImportsAsync is not available in the current version
-                // We'll handle unused usings through the organize usings logic
-                
-                // Sort usings
-                var root = await formattedDocument.GetSyntaxRootAsync(cancellationToken);
-                if (root != null)
-                {
-                    var newRoot = OrganizeUsings(root);
-                    if (newRoot != root)
-                    {
-                        formattedDocument = formattedDocument.WithSyntaxRoot(newRoot);
-                        changesMade.Add("Organized and sorted using directives");
-                    }
-                }
-                
-                var afterUsings = await GetUsingsInfo(formattedDocument, cancellationToken);
-                if (beforeUsings.Count != afterUsings.Count)
-                {
-                    changesMade.Add($"Removed {beforeUsings.Count - afterUsings.Count} unused using directives");
-                }
-            }
-
-            // Step 2: Format the document
-            var options = await GetFormattingOptionsAsync(formattedDocument, cancellationToken);
-            
-            // Apply formatting
-            formattedDocument = await Formatter.FormatAsync(formattedDocument, options, cancellationToken);
-            
-            // Check if formatting made changes
-            var originalText = await document.GetTextAsync(cancellationToken);
-            var formattedText = await formattedDocument.GetTextAsync(cancellationToken);
-            
-            if (!originalText.ContentEquals(formattedText))
-            {
-                changesMade.Add("Applied code formatting (indentation, spacing, line breaks)");
-            }
-
-            // Step 3: Format selection if specified
-            if (parameters.StartLine.HasValue && parameters.EndLine.HasValue)
-            {
-                var textSpan = await GetTextSpanFromLines(
-                    formattedDocument,
-                    parameters.StartLine.Value,
-                    parameters.EndLine.Value,
-                    cancellationToken);
-                
-                if (textSpan.HasValue)
-                {
-                    formattedDocument = await Formatter.FormatAsync(
-                        formattedDocument,
-                        textSpan.Value,
-                        options,
-                        cancellationToken);
-                    
-                    changesMade.Add($"Formatted selection from line {parameters.StartLine} to {parameters.EndLine}");
-                }
-            }
-
-            // Get the final formatted code
-            var finalText = await formattedDocument.GetTextAsync(cancellationToken);
-            var code = finalText.ToString();
-
-            // Calculate statistics
-            var stats = await CalculateFormattingStats(document, formattedDocument, cancellationToken);
-
-            // Generate insights
-            var insights = GenerateInsights(changesMade, stats);
-
-            // Generate next actions
-            var actions = GenerateNextActions(parameters);
-
             return new FormatDocumentResult
             {
-                Success = true,
-                Message = changesMade.Any() 
-                    ? $"Formatted document with {changesMade.Count} change types" 
-                    : "Document is already properly formatted",
-                Query = CreateQueryInfo(parameters),
-                Summary = new SummaryInfo
+                Success = false,
+                Message = $"Document not found: {parameters.FilePath}",
+                Error = new ErrorInfo
                 {
-                    TotalFound = changesMade.Count,
-                    Returned = changesMade.Count,
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-                },
-                Code = code,
-                ChangesMade = changesMade,
-                FormattingStats = stats,
-                Insights = insights,
-                Actions = actions,
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    Truncated = false
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
+                    Message = $"Document not found: {parameters.FilePath}",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new string[]
+                        {
+                            "Ensure the file path is correct and absolute",
+                            "Verify the file exists in the loaded solution/project",
+                            "Load a solution using csharp_load_solution or project using csharp_load_project"
+                        }
+                    }
                 }
             };
         }
-        catch (Exception ex)
+
+        // Track changes made
+        var changesMade = new List<string>();
+        var formattedDocument = document;
+
+        // Step 1: Organize usings if requested
+        if (parameters.OrganizeUsings ?? true)
         {
-            _logger.LogError(ex, "Error formatting document");
-            return CreateErrorResult(
-                ErrorCodes.INTERNAL_ERROR,
-                $"Error formatting document: {ex.Message}",
-                new List<string>
+            var beforeUsings = await GetUsingsInfo(formattedDocument, cancellationToken);
+            
+            // Sort usings
+            var root = await formattedDocument.GetSyntaxRootAsync(cancellationToken);
+            if (root != null)
+            {
+                var newRoot = OrganizeUsings(root);
+                if (newRoot != root)
                 {
-                    "Check the server logs for detailed error information",
-                    "Verify the file has valid C# syntax",
-                    "Try running csharp_get_diagnostics first to check for errors"
-                },
-                parameters,
-                startTime);
+                    formattedDocument = formattedDocument.WithSyntaxRoot(newRoot);
+                    changesMade.Add("Organized and sorted using directives");
+                }
+            }
+            
+            var afterUsings = await GetUsingsInfo(formattedDocument, cancellationToken);
+            if (beforeUsings.Count != afterUsings.Count)
+            {
+                changesMade.Add($"Removed {beforeUsings.Count - afterUsings.Count} unused using directives");
+            }
         }
+
+        // Step 2: Format the document
+        var options = await GetFormattingOptionsAsync(formattedDocument, cancellationToken);
+        
+        // Apply formatting
+        formattedDocument = await Formatter.FormatAsync(formattedDocument, options, cancellationToken);
+        
+        // Check if formatting made changes
+        var originalText = await document.GetTextAsync(cancellationToken);
+        var formattedText = await formattedDocument.GetTextAsync(cancellationToken);
+        
+        if (!originalText.ContentEquals(formattedText))
+        {
+            changesMade.Add("Applied code formatting (indentation, spacing, line breaks)");
+        }
+
+        // Step 3: Format selection if specified
+        if (parameters.StartLine.HasValue && parameters.EndLine.HasValue)
+        {
+            var textSpan = await GetTextSpanFromLines(
+                formattedDocument,
+                parameters.StartLine.Value,
+                parameters.EndLine.Value,
+                cancellationToken);
+            
+            if (textSpan.HasValue)
+            {
+                formattedDocument = await Formatter.FormatAsync(
+                    formattedDocument,
+                    textSpan.Value,
+                    options,
+                    cancellationToken);
+                
+                changesMade.Add($"Formatted selection from line {parameters.StartLine} to {parameters.EndLine}");
+            }
+        }
+
+        // Get the final formatted code
+        var finalText = await formattedDocument.GetTextAsync(cancellationToken);
+        var code = finalText.ToString();
+
+        // Calculate statistics
+        var stats = await CalculateFormattingStats(document, formattedDocument, cancellationToken);
+
+        // Generate insights
+        var insights = GenerateInsights(changesMade, stats);
+
+        // Generate next actions
+        var actions = GenerateNextActions(parameters);
+
+        return new FormatDocumentResult
+        {
+            Success = true,
+            Message = changesMade.Any() 
+                ? $"Formatted document with {changesMade.Count} change types" 
+                : "Document is already properly formatted",
+            Query = CreateQueryInfo(parameters),
+            Summary = new SummaryInfo
+            {
+                TotalFound = changesMade.Count,
+                Returned = changesMade.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            },
+            Code = code,
+            ChangesMade = changesMade,
+            FormattingStats = stats,
+            Insights = insights,
+            Actions = actions,
+            Meta = new ToolExecutionMetadata
+            {
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            }
+        };
     }
 
     private async Task<OptionSet> GetFormattingOptionsAsync(Document document, CancellationToken cancellationToken)
@@ -361,82 +356,73 @@ AI benefit: Ensures generated/modified code matches project style.")]
 
         if (!changesMade.Any())
         {
-            insights.Add("✅ Document is already properly formatted");
-            insights.Add("💡 No formatting changes were needed");
+            insights.Add("Document is already properly formatted");
+            insights.Add("No formatting changes were needed");
         }
         else
         {
-            insights.Add($"🎨 Applied {changesMade.Count} formatting improvements");
+            insights.Add($"Applied {changesMade.Count} formatting improvements");
 
             if (stats.IndentationChanges > 0)
             {
-                insights.Add($"📐 Fixed indentation on {stats.IndentationChanges} lines");
+                insights.Add($"Fixed indentation on {stats.IndentationChanges} lines");
             }
 
             if (stats.CharactersChanged > 100)
             {
-                insights.Add($"📝 Modified {stats.CharactersChanged:N0} characters for consistent formatting");
+                insights.Add($"Modified {stats.CharactersChanged:N0} characters for consistent formatting");
             }
 
             if (changesMade.Any(c => c.Contains("using")))
             {
-                insights.Add("📦 Organized and cleaned up using directives");
+                insights.Add("Organized and cleaned up using directives");
             }
         }
 
-        insights.Add("💡 Consider setting up .editorconfig for consistent team formatting");
+        insights.Add("Consider setting up .editorconfig for consistent team formatting");
 
         if (stats.FormattedLineCount != stats.OriginalLineCount)
         {
             var diff = stats.FormattedLineCount - stats.OriginalLineCount;
-            insights.Add($"📊 Line count changed by {Math.Abs(diff)} ({(diff > 0 ? "added" : "removed")} lines)");
+            insights.Add($"Line count changed by {Math.Abs(diff)} ({(diff > 0 ? "added" : "removed")} lines)");
         }
 
         return insights;
     }
 
-    private List<NextAction> GenerateNextActions(FormatDocumentParams parameters)
+    private List<AIAction> GenerateNextActions(FormatDocumentParams parameters)
     {
-        var actions = new List<NextAction>
+        var actions = new List<AIAction>
         {
-            new NextAction
+            new AIAction
             {
-                Id = "check_diagnostics",
+                Action = ToolNames.GetDiagnostics,
                 Description = "Check for any compilation errors",
-                ToolName = "csharp_get_diagnostics",
-                Parameters = new { filePath = parameters.FilePath },
-                Priority = "high"
+                Parameters = new Dictionary<string, object> { ["filePath"] = parameters.FilePath },
+                Priority = 90,
+                Category = "validation"
             }
         };
 
         if (!(parameters.OrganizeUsings ?? true))
         {
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = "organize_usings",
+                Action = ToolNames.FormatDocument,
                 Description = "Format with using organization",
-                ToolName = "csharp_format_document",
-                Parameters = new { filePath = parameters.FilePath, organizeUsings = true },
-                Priority = "medium"
+                Parameters = new Dictionary<string, object> { ["filePath"] = parameters.FilePath, ["organizeUsings"] = true },
+                Priority = 70,
+                Category = "formatting"
             });
         }
 
-        actions.Add(new NextAction
+        actions.Add(new AIAction
         {
-            Id = "add_missing_usings",
+            Action = ToolNames.AddMissingUsings,
             Description = "Add any missing using directives",
-            ToolName = "csharp_add_missing_usings",
-            Parameters = new { filePath = parameters.FilePath },
-            Priority = "medium"
-        });
-
-        actions.Add(new NextAction
-        {
-            Id = "format_solution",
-            Description = "Format all files in the solution",
-            ToolName = "bash",
-            Parameters = new { command = "dotnet format" },
-            Priority = "low"
+            Parameters = new Dictionary<string, object> { ["filePath"] = parameters.FilePath },
+            Priority = 70,
+            Category = "refactoring"
         });
 
         return actions;
@@ -452,60 +438,31 @@ AI benefit: Ensures generated/modified code matches project style.")]
                 : null
         };
     }
-
-    private object CreateErrorResult(
-        string errorCode,
-        string message,
-        List<string> recoverySteps,
-        FormatDocumentParams parameters,
-        DateTime startTime)
+    
+    protected override int EstimateTokenUsage()
     {
-        return new FormatDocumentResult
-        {
-            Success = false,
-            Message = message,
-            Error = new ErrorInfo
-            {
-                Code = errorCode,
-                Recovery = new RecoveryInfo
-                {
-                    Steps = recoverySteps,
-                    SuggestedActions = new List<SuggestedAction>
-                    {
-                        new SuggestedAction
-                        {
-                            Tool = "csharp_get_diagnostics",
-                            Description = "Check for compilation errors",
-                            Parameters = new { filePath = parameters.FilePath }
-                        }
-                    }
-                }
-            },
-            Query = CreateQueryInfo(parameters),
-            Meta = new ToolMetadata
-            {
-                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-            }
-        };
+        // Estimate for typical format document response
+        return 2500;
     }
 }
 
 public class FormatDocumentParams
 {
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file")]
-    public required string FilePath { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Path to the source file")]
+    public string FilePath { get; set; } = string.Empty;
 
     [JsonPropertyName("organizeUsings")]
-    [Description("Organize and remove unused usings (default: true)")]
+    [COA.Mcp.Framework.Attributes.Description("Organize and remove unused usings (default: true)")]
     public bool? OrganizeUsings { get; set; }
 
     [JsonPropertyName("startLine")]
-    [Description("Start line for partial formatting (1-based)")]
+    [COA.Mcp.Framework.Attributes.Description("Start line for partial formatting (1-based)")]
     public int? StartLine { get; set; }
 
     [JsonPropertyName("endLine")]
-    [Description("End line for partial formatting (1-based)")]
+    [COA.Mcp.Framework.Attributes.Description("End line for partial formatting (1-based)")]
     public int? EndLine { get; set; }
 }
 

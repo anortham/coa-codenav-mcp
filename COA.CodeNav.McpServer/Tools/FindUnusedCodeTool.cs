@@ -1,36 +1,43 @@
-using System.Text.Json.Serialization;
-using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
-using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.Interfaces;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
+using DataAnnotations = System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace COA.CodeNav.McpServer.Tools;
 
 /// <summary>
 /// MCP tool that finds unused code elements in a project or solution
 /// </summary>
-[McpServerToolType]
-public class FindUnusedCodeTool : ITool
+public class FindUnusedCodeTool : McpToolBase<FindUnusedCodeParams, FindUnusedCodeResult>
 {
     private readonly ILogger<FindUnusedCodeTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_find_unused_code";
-    public string Description => "Find unused classes, methods, properties, and fields in the codebase";
+    public override string Name => "csharp_find_unused_code";
+    public override string Description => @"Find unused code elements in the codebase including classes, methods, properties, and fields.
+Returns: List of potentially unused code elements with their locations and types.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if workspace is not loaded.
+Use cases: Code cleanup, reducing technical debt, identifying dead code, improving maintainability.
+AI benefit: Helps identify code that can be safely removed to reduce complexity.";
 
     public FindUnusedCodeTool(
         ILogger<FindUnusedCodeTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -38,580 +45,462 @@ public class FindUnusedCodeTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_find_unused_code")]
-    [Description(@"Find unused code elements in the codebase including classes, methods, properties, and fields.
-Returns: List of potentially unused code elements with their locations and types.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if workspace is not loaded.
-Use cases: Code cleanup, reducing technical debt, identifying dead code, improving maintainability.
-AI benefit: Helps identify code that can be safely removed to reduce complexity.")]
-    public async Task<object> ExecuteAsync(FindUnusedCodeParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<FindUnusedCodeResult> ExecuteInternalAsync(
+        FindUnusedCodeParams parameters,
+        CancellationToken cancellationToken)
     {
         var startTime = DateTime.UtcNow;
-        _logger.LogDebug("FindUnusedCode request: Scope={Scope}, IncludePrivate={IncludePrivate}", 
-            parameters.Scope, parameters.IncludePrivate);
+        _logger.LogDebug("FindUnusedCode request: Scope={Scope}, FilePath={FilePath}", 
+            parameters.Scope, parameters.FilePath);
+
+        var workspace = _workspaceService.GetActiveWorkspaces().FirstOrDefault();
+        if (workspace == null)
+        {
+            return new FindUnusedCodeResult
+            {
+                Success = false,
+                Message = "No workspace loaded",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.WORKSPACE_NOT_LOADED,
+                    Message = "No workspace loaded",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Load a solution or project first",
+                            "Use csharp_load_solution or csharp_load_project"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
+                            {
+                                Tool = "csharp_load_solution",
+                                Description = "Load a solution",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
+                            }
+                        }
+                    }
+                }
+            };
+        }
+
+        var solution = workspace.Solution;
+        var unusedElements = new List<UnusedCodeElement>();
 
         try
         {
-            var workspaces = _workspaceService.GetActiveWorkspaces();
-            if (!workspaces.Any())
+            switch (parameters.Scope?.ToLower() ?? "solution")
             {
-                return new FindUnusedCodeResult
-                {
-                    Success = false,
-                    Message = "No workspace loaded",
-                    Error = new ErrorInfo
+                case "file":
+                    if (string.IsNullOrEmpty(parameters.FilePath))
                     {
-                        Code = ErrorCodes.WORKSPACE_NOT_LOADED,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Load a solution using csharp_load_solution",
-                                "Or load a project using csharp_load_project"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo { AdditionalParams = new Dictionary<string, object> { ["scope"] = parameters.Scope ?? "solution" } },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                        return CreateErrorResult("FilePath is required for file scope", parameters, startTime);
                     }
-                };
-            }
+                    await AnalyzeFileAsync(parameters.FilePath, unusedElements, solution, parameters, cancellationToken);
+                    break;
 
-            var workspace = workspaces.First();
-            var solution = workspace.Solution;
-            var unusedSymbols = new List<UnusedCodeInfo>();
-            var insights = new List<string>();
-            var actions = new List<NextAction>();
-
-            // Determine projects to analyze
-            var projects = parameters.Scope?.ToLower() switch
-            {
-                "project" when !string.IsNullOrEmpty(parameters.ProjectName) => 
-                    solution.Projects.Where(p => p.Name.Equals(parameters.ProjectName, StringComparison.OrdinalIgnoreCase)),
-                "file" when !string.IsNullOrEmpty(parameters.FilePath) => 
-                    GetProjectsContainingFile(solution, parameters.FilePath),
-                _ => solution.Projects
-            };
-
-            var totalSymbolsChecked = 0;
-            var projectCount = 0;
-
-            foreach (var project in projects)
-            {
-                projectCount++;
-                if (!project.SupportsCompilation)
-                    continue;
-
-                var compilation = await project.GetCompilationAsync(cancellationToken);
-                if (compilation == null)
-                    continue;
-
-                // Get all symbols in the project
-                var symbols = await GetSymbolsToCheck(project, compilation, parameters, cancellationToken);
-                totalSymbolsChecked += symbols.Count;
-
-                // Check each symbol for usage
-                foreach (var symbol in symbols)
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                        break;
-
-                    // Skip symbols that are likely entry points or framework-required
-                    if (IsLikelyUsed(symbol))
-                        continue;
-
-                    // Find all references to this symbol
-                    var references = await SymbolFinder.FindReferencesAsync(symbol, solution, cancellationToken);
-                    var referenceCount = references.Sum(r => r.Locations.Count());
-
-                    // If no references found (except its own declaration), it's unused
-                    if (referenceCount == 0)
+                case "project":
+                    if (!string.IsNullOrEmpty(parameters.ProjectName))
                     {
-                        var location = symbol.Locations.FirstOrDefault();
-                        if (location != null && location.IsInSource)
+                        var project = solution.Projects.FirstOrDefault(p => 
+                            p.Name.Equals(parameters.ProjectName, StringComparison.OrdinalIgnoreCase));
+                        if (project == null)
                         {
-                            var lineSpan = location.GetLineSpan();
-                            unusedSymbols.Add(new UnusedCodeInfo
-                            {
-                                Name = symbol.Name,
-                                FullName = symbol.ToDisplayString(),
-                                Kind = GetSymbolKindString(symbol),
-                                Accessibility = symbol.DeclaredAccessibility.ToString(),
-                                ContainingType = symbol.ContainingType?.Name,
-                                Location = new LocationInfo
-                                {
-                                    FilePath = lineSpan.Path,
-                                    Line = lineSpan.StartLinePosition.Line + 1,
-                                    Column = lineSpan.StartLinePosition.Character + 1,
-                                    EndLine = lineSpan.EndLinePosition.Line + 1,
-                                    EndColumn = lineSpan.EndLinePosition.Character + 1
-                                },
-                                Reason = DetermineUnusedReason(symbol),
-                                SafeToRemove = IsSafeToRemove(symbol)
-                            });
+                            return CreateErrorResult($"Project '{parameters.ProjectName}' not found", parameters, startTime);
+                        }
+                        await AnalyzeProjectAsync(project, unusedElements, parameters, cancellationToken);
+                    }
+                    else if (!string.IsNullOrEmpty(parameters.FilePath))
+                    {
+                        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+                        if (document?.Project != null)
+                        {
+                            await AnalyzeProjectAsync(document.Project, unusedElements, parameters, cancellationToken);
                         }
                     }
-                }
-            }
-
-            // Pre-estimate tokens for response management
-            var estimatedTokens = EstimateResponseTokens(unusedSymbols);
-            var shouldTruncate = estimatedTokens > 10000;
-            
-            if (shouldTruncate && unusedSymbols.Count > 50)
-            {
-                // Sort by safety and take top 50
-                unusedSymbols = unusedSymbols
-                    .OrderByDescending(u => u.SafeToRemove)
-                    .ThenBy(u => u.Kind)
-                    .Take(50)
-                    .ToList();
-                insights.Insert(0, $"⚠️ Response size limit applied. Showing 50 of {unusedSymbols.Count} unused items.");
-            }
-
-            // Generate insights
-            GenerateInsights(unusedSymbols, totalSymbolsChecked, projectCount, insights);
-
-            // Generate next actions
-            GenerateNextActions(unusedSymbols, actions);
-
-            // Group by file for better organization
-            var distribution = unusedSymbols
-                .GroupBy(u => u.Location?.FilePath ?? "Unknown")
-                .ToDictionary(
-                    g => g.Key,
-                    g => new UnusedCodeFileInfo
+                    else
                     {
-                        FilePath = g.Key,
-                        UnusedCount = g.Count(),
-                        Kinds = g.GroupBy(u => u.Kind).ToDictionary(k => k.Key, k => k.Count())
+                        return CreateErrorResult("ProjectName or FilePath is required for project scope", parameters, startTime);
                     }
-                );
+                    break;
 
-            var result = new FindUnusedCodeResult
+                default: // "solution"
+                    await AnalyzeSolutionAsync(solution, unusedElements, parameters, cancellationToken);
+                    break;
+            }
+
+            // Apply filters
+            if (parameters.SymbolKinds?.Any() == true)
+            {
+                var allowedKinds = new HashSet<string>(parameters.SymbolKinds, StringComparer.OrdinalIgnoreCase);
+                unusedElements = unusedElements.Where(e => allowedKinds.Contains(e.Kind)).ToList();
+            }
+
+            if (!parameters.IncludePrivate)
+            {
+                unusedElements = unusedElements.Where(e => e.Accessibility != "Private").ToList();
+            }
+
+            // Generate insights and actions
+            var insights = GenerateInsights(unusedElements);
+            var actions = GenerateNextActions(unusedElements, parameters);
+            var analysis = GenerateAnalysis(unusedElements);
+
+            return new FindUnusedCodeResult
             {
                 Success = true,
-                Message = $"Found {unusedSymbols.Count} potentially unused code elements",
-                Query = new QueryInfo 
-                { 
-                    AdditionalParams = new Dictionary<string, object> 
-                    { 
-                        ["scope"] = parameters.Scope ?? "solution",
-                        ["includePrivate"] = parameters.IncludePrivate
-                    }
-                },
-                UnusedSymbols = unusedSymbols,
-                Summary = new UnusedCodeSummary
+                Message = $"Found {unusedElements.Count} potentially unused code element(s)",
+                Query = new QueryInfo
                 {
-                    TotalUnused = unusedSymbols.Count,
-                    TotalChecked = totalSymbolsChecked,
-                    ProjectsAnalyzed = projectCount,
-                    ByKind = unusedSymbols.GroupBy(u => u.Kind).ToDictionary(g => g.Key, g => g.Count()),
-                    SafeToRemove = unusedSymbols.Count(u => u.SafeToRemove)
+                    FilePath = parameters.FilePath
                 },
-                Distribution = distribution,
+                Summary = new SummaryInfo
+                {
+                    TotalFound = unusedElements.Count,
+                    Returned = unusedElements.Count,
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                },
+                UnusedElements = unusedElements,
+                Analysis = analysis,
                 Insights = insights,
                 Actions = actions,
-                Meta = new ToolMetadata
+                Meta = new ToolExecutionMetadata
                 {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    Truncated = shouldTruncate,
-                    Tokens = estimatedTokens
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                 }
             };
-
-            // Store full results if truncated
-            if (shouldTruncate && _resourceProvider != null)
-            {
-                result.ResourceUri = _resourceProvider.StoreAnalysisResult(
-                    "unused_code",
-                    result,
-                    "unused_code_analysis");
-            }
-
-            return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error finding unused code");
-            return new FindUnusedCodeResult
-            {
-                Success = false,
-                Message = $"Error finding unused code: {ex.Message}",
-                Error = new ErrorInfo
-                {
-                    Code = ErrorCodes.INTERNAL_ERROR,
-                    Recovery = new RecoveryInfo
-                    {
-                        Steps = new List<string>
-                        {
-                            "Check the server logs for detailed error information",
-                            "Verify the solution is fully loaded and compiled",
-                            "Try analyzing a smaller scope (single project or file)"
-                        }
-                    }
-                },
-                Query = new QueryInfo { AdditionalParams = new Dictionary<string, object> { ["scope"] = parameters.Scope ?? "solution" } },
-                Meta = new ToolMetadata 
-                { 
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                }
-            };
+            return CreateErrorResult($"Error: {ex.Message}", parameters, startTime);
         }
     }
 
-    private async Task<List<ISymbol>> GetSymbolsToCheck(Project project, Compilation compilation, 
+    private async Task AnalyzeFileAsync(string filePath, List<UnusedCodeElement> unusedElements, 
+        Solution solution, FindUnusedCodeParams parameters, CancellationToken cancellationToken)
+    {
+        var document = await _workspaceService.GetDocumentAsync(filePath);
+        if (document == null) return;
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+        var root = await document.GetSyntaxRootAsync(cancellationToken);
+        if (semanticModel == null || root == null) return;
+
+        await AnalyzeSymbolsInNode(root, semanticModel, solution, unusedElements, parameters, cancellationToken);
+    }
+
+    private async Task AnalyzeProjectAsync(Project project, List<UnusedCodeElement> unusedElements, 
         FindUnusedCodeParams parameters, CancellationToken cancellationToken)
     {
-        var symbols = new List<ISymbol>();
-        
-        foreach (var tree in compilation.SyntaxTrees)
+        foreach (var document in project.Documents)
         {
-            if (parameters.Scope?.ToLower() == "file" && !string.IsNullOrEmpty(parameters.FilePath))
-            {
-                var normalizedFilePath = Path.GetFullPath(parameters.FilePath);
-                var treeFilePath = Path.GetFullPath(tree.FilePath);
-                if (!normalizedFilePath.Equals(treeFilePath, StringComparison.OrdinalIgnoreCase))
-                    continue;
-            }
+            if (!document.Name.EndsWith(".cs")) continue;
 
-            var semanticModel = compilation.GetSemanticModel(tree);
-            var root = await tree.GetRootAsync(cancellationToken);
+            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+            var root = await document.GetSyntaxRootAsync(cancellationToken);
+            if (semanticModel == null || root == null) continue;
 
-            // Find all type declarations
-            var typeDeclarations = root.DescendantNodes().OfType<TypeDeclarationSyntax>();
-            foreach (var typeDecl in typeDeclarations)
-            {
-                var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl);
-                if (typeSymbol != null && ShouldCheckSymbol(typeSymbol, parameters))
-                {
-                    symbols.Add(typeSymbol);
-                    
-                    // Add members
-                    foreach (var member in typeSymbol.GetMembers())
-                    {
-                        if (ShouldCheckSymbol(member, parameters))
-                        {
-                            symbols.Add(member);
-                        }
-                    }
-                }
-            }
+            await AnalyzeSymbolsInNode(root, semanticModel, project.Solution, unusedElements, parameters, cancellationToken);
+        }
+    }
 
-            // Find global methods and properties (in top-level programs)
-            var members = root.DescendantNodes().OfType<MemberDeclarationSyntax>()
-                .Where(m => m.Parent is CompilationUnitSyntax);
-            
-            foreach (var member in members)
+    private async Task AnalyzeSolutionAsync(Solution solution, List<UnusedCodeElement> unusedElements, 
+        FindUnusedCodeParams parameters, CancellationToken cancellationToken)
+    {
+        foreach (var project in solution.Projects)
+        {
+            await AnalyzeProjectAsync(project, unusedElements, parameters, cancellationToken);
+        }
+    }
+
+    private async Task AnalyzeSymbolsInNode(SyntaxNode root, SemanticModel semanticModel, Solution solution,
+        List<UnusedCodeElement> unusedElements, FindUnusedCodeParams parameters, CancellationToken cancellationToken)
+    {
+        // Analyze classes, interfaces, structs
+        foreach (var typeDecl in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+        {
+            var symbol = semanticModel.GetDeclaredSymbol(typeDecl);
+            if (symbol != null && await IsUnusedAsync(symbol, solution, cancellationToken))
             {
-                var symbol = semanticModel.GetDeclaredSymbol(member);
-                if (symbol != null && ShouldCheckSymbol(symbol, parameters))
-                {
-                    symbols.Add(symbol);
-                }
+                unusedElements.Add(CreateUnusedElement(symbol, typeDecl.GetLocation()));
             }
         }
 
-        return symbols;
-    }
-
-    private bool ShouldCheckSymbol(ISymbol symbol, FindUnusedCodeParams parameters)
-    {
-        // Skip compiler-generated symbols
-        if (symbol.IsImplicitlyDeclared || symbol.Name.StartsWith("<"))
-            return false;
-
-        // Skip if not including private and symbol is private
-        if (!parameters.IncludePrivate && symbol.DeclaredAccessibility == Accessibility.Private)
-            return false;
-
-        // Filter by symbol kinds
-        if (parameters.SymbolKinds?.Any() == true)
+        // Analyze methods
+        foreach (var methodDecl in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
         {
-            var symbolKind = GetSymbolKindString(symbol);
-            if (!parameters.SymbolKinds.Contains(symbolKind, StringComparer.OrdinalIgnoreCase))
-                return false;
+            var symbol = semanticModel.GetDeclaredSymbol(methodDecl);
+            if (symbol != null && await IsUnusedAsync(symbol, solution, cancellationToken))
+            {
+                // Skip special methods
+                if (symbol is IMethodSymbol methodSym && IsSpecialMethod(methodSym)) continue;
+                
+                unusedElements.Add(CreateUnusedElement(symbol, methodDecl.GetLocation()));
+            }
         }
 
-        // Include types, methods, properties, fields, and events
-        return symbol.Kind is SymbolKind.NamedType or SymbolKind.Method or 
-               SymbolKind.Property or SymbolKind.Field or SymbolKind.Event;
+        // Analyze properties
+        foreach (var propertyDecl in root.DescendantNodes().OfType<PropertyDeclarationSyntax>())
+        {
+            var symbol = semanticModel.GetDeclaredSymbol(propertyDecl);
+            if (symbol != null && await IsUnusedAsync(symbol, solution, cancellationToken))
+            {
+                unusedElements.Add(CreateUnusedElement(symbol, propertyDecl.GetLocation()));
+            }
+        }
+
+        // Analyze fields
+        foreach (var fieldDecl in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
+        {
+            foreach (var variable in fieldDecl.Declaration.Variables)
+            {
+                var symbol = semanticModel.GetDeclaredSymbol(variable);
+                if (symbol != null && await IsUnusedAsync(symbol, solution, cancellationToken))
+                {
+                    unusedElements.Add(CreateUnusedElement(symbol, variable.GetLocation()));
+                }
+            }
+        }
     }
 
-    private bool IsLikelyUsed(ISymbol symbol)
+    private async Task<bool> IsUnusedAsync(ISymbol symbol, Solution solution, CancellationToken cancellationToken)
     {
-        // Main method
-        if (symbol is IMethodSymbol method && method.Name == "Main" && method.IsStatic)
-            return true;
-
-        // Program class in top-level programs
-        if (symbol is INamedTypeSymbol type && type.Name == "Program" && type.IsImplicitClass)
-            return true;
-
-        // Has specific attributes that indicate usage
-        var attributeNames = symbol.GetAttributes().Select(a => a.AttributeClass?.Name).Where(n => n != null);
-        var usageAttributes = new[] { "TestMethod", "Test", "Fact", "Theory", "TestFixture", "TestClass",
-                                     "Controller", "ApiController", "Route", "HttpGet", "HttpPost",
-                                     "DllImport", "ComVisible", "Serializable" };
-        
-        if (attributeNames.Any(name => usageAttributes.Contains(name)))
-            return true;
-
-        // Interface implementations
-        if (symbol.IsOverride || symbol.IsVirtual || symbol.IsAbstract)
-            return true;
-
-        // Event handlers
-        if (symbol is IMethodSymbol eventHandler && 
-            eventHandler.Parameters.Length == 2 &&
-            eventHandler.Parameters[0].Type.Name == "Object" &&
-            eventHandler.Parameters[1].Type.Name.EndsWith("EventArgs"))
-            return true;
-
-        return false;
-    }
-
-    private string DetermineUnusedReason(ISymbol symbol)
-    {
-        if (symbol.DeclaredAccessibility == Accessibility.Private)
-            return "Private member with no references";
-        
-        if (symbol.DeclaredAccessibility == Accessibility.Internal)
-            return "Internal member with no references within assembly";
-        
+        // Skip public API members unless requested
         if (symbol.DeclaredAccessibility == Accessibility.Public)
-            return "Public member with no references (may be used externally)";
+            return false;
+
+        // Skip interface members
+        if (symbol.ContainingType?.TypeKind == TypeKind.Interface)
+            return false;
+
+        // Skip override members
+        if (symbol.IsOverride)
+            return false;
+
+        // Find references
+        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, cancellationToken);
         
-        return "No references found";
-    }
-
-    private bool IsSafeToRemove(ISymbol symbol)
-    {
-        // Private symbols are generally safe to remove
-        if (symbol.DeclaredAccessibility == Accessibility.Private)
-            return true;
-
-        // Internal symbols in non-library projects are relatively safe
-        if (symbol.DeclaredAccessibility == Accessibility.Internal)
+        // Check if there are any references outside of the declaration
+        foreach (var reference in references)
         {
-            // Check if this is a library project (simplified check)
-            var isLibrary = symbol.ContainingAssembly?.Name.EndsWith(".dll") == true;
-            return !isLibrary;
+            foreach (var location in reference.Locations)
+            {
+                if (!location.Location.IsInSource) continue;
+                
+                // Skip the declaration itself - simple location comparison
+                if (symbol.Locations.Any(l => l.SourceTree?.FilePath == location.Location.SourceTree?.FilePath &&
+                                               l.SourceSpan.Start == location.Location.SourceSpan.Start))
+                    continue;
+
+                // Found a usage reference
+                return false;
+            }
         }
 
-        // Public symbols are not safe to remove without further analysis
-        return false;
+        return true; // No references found
     }
 
-    private string GetSymbolKindString(ISymbol symbol)
+    private bool IsSpecialMethod(IMethodSymbol method)
     {
-        return symbol.Kind switch
+        // Skip constructors, destructors, operators, etc.
+        return method.MethodKind != MethodKind.Ordinary ||
+               method.IsOverride ||
+               method.IsVirtual ||
+               method.IsAbstract ||
+               method.ContainingType?.TypeKind == TypeKind.Interface;
+    }
+
+    private UnusedCodeElement CreateUnusedElement(ISymbol symbol, Location location)
+    {
+        var lineSpan = location.GetLineSpan();
+        
+        return new UnusedCodeElement
         {
-            SymbolKind.NamedType when symbol is INamedTypeSymbol namedType => namedType.TypeKind switch
+            Name = symbol.Name,
+            FullName = symbol.ToDisplayString(),
+            Kind = symbol.Kind.ToString(),
+            Accessibility = symbol.DeclaredAccessibility.ToString(),
+            ContainingType = symbol.ContainingType?.Name,
+            Namespace = symbol.ContainingNamespace?.ToDisplayString(),
+            Location = new LocationInfo
             {
-                TypeKind.Class => "Class",
-                TypeKind.Interface => "Interface",
-                TypeKind.Struct => "Struct",
-                TypeKind.Enum => "Enum",
-                TypeKind.Delegate => "Delegate",
-                _ => "Type"
+                FilePath = lineSpan.Path,
+                Line = lineSpan.StartLinePosition.Line + 1,
+                Column = lineSpan.StartLinePosition.Character + 1,
+                EndLine = lineSpan.EndLinePosition.Line + 1,
+                EndColumn = lineSpan.EndLinePosition.Character + 1
             },
-            SymbolKind.Method when symbol is IMethodSymbol methodSymbol => methodSymbol.MethodKind switch
-            {
-                MethodKind.Constructor => "Constructor",
-                MethodKind.PropertyGet => "PropertyGetter",
-                MethodKind.PropertySet => "PropertySetter",
-                _ => "Method"
-            },
-            SymbolKind.Property => "Property",
-            SymbolKind.Field => "Field",
-            SymbolKind.Event => "Event",
-            _ => symbol.Kind.ToString()
+            Reason = "No references found in the analyzed scope"
         };
     }
 
-    private IEnumerable<Project> GetProjectsContainingFile(Solution solution, string filePath)
+    private UnusedCodeAnalysis GenerateAnalysis(List<UnusedCodeElement> elements)
     {
-        var normalizedPath = Path.GetFullPath(filePath);
-        foreach (var project in solution.Projects)
+        return new UnusedCodeAnalysis
         {
-            foreach (var document in project.Documents)
+            TotalUnused = elements.Count,
+            ByKind = elements.GroupBy(e => e.Kind).ToDictionary(g => g.Key, g => g.Count()),
+            ByAccessibility = elements.GroupBy(e => e.Accessibility).ToDictionary(g => g.Key, g => g.Count()),
+            ByNamespace = elements.GroupBy(e => e.Namespace ?? "").ToDictionary(g => g.Key, g => g.Count())
+        };
+    }
+
+    private List<string> GenerateInsights(List<UnusedCodeElement> elements)
+    {
+        var insights = new List<string>();
+        var analysis = GenerateAnalysis(elements);
+
+        if (elements.Count == 0)
+        {
+            insights.Add("No unused code elements found - good code hygiene!");
+            return insights;
+        }
+
+        insights.Add($"Found {elements.Count} potentially unused code elements");
+
+        var mostCommonKind = analysis.ByKind.OrderByDescending(kvp => kvp.Value).FirstOrDefault();
+        if (mostCommonKind.Value > 0)
+        {
+            insights.Add($"Most unused element type: {mostCommonKind.Key} ({mostCommonKind.Value} items)");
+        }
+
+        var privateCount = analysis.ByAccessibility.GetValueOrDefault("Private", 0);
+        if (privateCount > elements.Count * 0.8)
+        {
+            insights.Add($"Most unused elements are private ({privateCount}) - safe to remove");
+        }
+
+        if (analysis.ByNamespace.Count > 5)
+        {
+            insights.Add($"Unused code spread across {analysis.ByNamespace.Count} namespaces - systematic cleanup needed");
+        }
+
+        return insights;
+    }
+
+    private List<AIAction> GenerateNextActions(List<UnusedCodeElement> elements, FindUnusedCodeParams parameters)
+    {
+        var actions = new List<AIAction>();
+
+        if (elements.Any())
+        {
+            // Suggest refactoring the first unused method
+            var firstMethod = elements.FirstOrDefault(e => e.Kind == "Method");
+            if (firstMethod != null)
             {
-                if (document.FilePath != null && 
-                    Path.GetFullPath(document.FilePath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase))
+                actions.Add(new AIAction
                 {
-                    yield return project;
-                    break;
-                }
+                    Action = "review_and_remove",
+                    Description = $"Review and consider removing unused {firstMethod.Kind.ToLower()} '{firstMethod.Name}'",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = firstMethod.Location.FilePath,
+                        ["line"] = firstMethod.Location.Line,
+                        ["column"] = firstMethod.Location.Column
+                    },
+                    Priority = 80,
+                    Category = "cleanup"
+                });
+            }
+
+            // Suggest broader analysis if file scope
+            if (parameters.Scope?.ToLower() == "file")
+            {
+                actions.Add(new AIAction
+                {
+                    Action = "csharp_find_unused_code",
+                    Description = "Analyze entire project for unused code",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["scope"] = "project",
+                        ["filePath"] = parameters.FilePath ?? "",
+                        ["includePrivate"] = true
+                    },
+                    Priority = 60,
+                    Category = "analysis"
+                });
             }
         }
+
+        return actions;
     }
 
-    private int EstimateResponseTokens(List<UnusedCodeInfo> symbols)
+    private FindUnusedCodeResult CreateErrorResult(string message, FindUnusedCodeParams parameters, DateTime startTime)
     {
-        var baseTokens = 800;
-        var perSymbolTokens = 120;
-        return baseTokens + (symbols.Count * perSymbolTokens);
+        return new FindUnusedCodeResult
+        {
+            Success = false,
+            Message = message,
+            Error = new ErrorInfo
+            {
+                Code = ErrorCodes.INTERNAL_ERROR,
+                Message = message
+            },
+            Query = new QueryInfo { FilePath = parameters.FilePath },
+            Meta = new ToolExecutionMetadata
+            {
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            }
+        };
     }
 
-    private void GenerateInsights(List<UnusedCodeInfo> symbols, int totalChecked, int projectCount, List<string> insights)
+    protected override int EstimateTokenUsage()
     {
-        if (!symbols.Any())
-        {
-            insights.Add("✨ No unused code found! Your codebase is well-maintained.");
-            return;
-        }
-
-        // Overall statistics
-        var percentageUnused = totalChecked > 0 ? (symbols.Count * 100.0 / totalChecked) : 0;
-        insights.Add($"📊 Found {symbols.Count} unused items out of {totalChecked} checked ({percentageUnused:F1}%)");
-
-        // By accessibility
-        var byAccessibility = symbols.GroupBy(s => s.Accessibility).OrderByDescending(g => g.Count());
-        var topAccessibility = byAccessibility.FirstOrDefault();
-        if (topAccessibility != null)
-        {
-            insights.Add($"🔒 Most unused code is {topAccessibility.Key.ToLower()} ({topAccessibility.Count()} items)");
-        }
-
-        // Safe to remove
-        var safeToRemove = symbols.Count(s => s.SafeToRemove);
-        if (safeToRemove > 0)
-        {
-            insights.Add($"✅ {safeToRemove} items are safe to remove (private members)");
-        }
-
-        // By kind
-        var byKind = symbols.GroupBy(s => s.Kind).OrderByDescending(g => g.Count()).Take(3);
-        var kinds = string.Join(", ", byKind.Select(g => $"{g.Key}s ({g.Count()})"));
-        insights.Add($"📋 Most common unused: {kinds}");
-
-        // Files with most unused code
-        var fileWithMostUnused = symbols.GroupBy(s => Path.GetFileName(s.Location?.FilePath ?? "Unknown"))
-            .OrderByDescending(g => g.Count())
-            .FirstOrDefault();
-        if (fileWithMostUnused != null && fileWithMostUnused.Count() > 3)
-        {
-            insights.Add($"📁 '{fileWithMostUnused.Key}' has the most unused code ({fileWithMostUnused.Count()} items)");
-        }
-    }
-
-    private void GenerateNextActions(List<UnusedCodeInfo> symbols, List<NextAction> actions)
-    {
-        if (!symbols.Any())
-            return;
-
-        // Suggest removing safe items
-        var safeItems = symbols.Where(s => s.SafeToRemove).Take(5).ToList();
-        if (safeItems.Any())
-        {
-            var firstSafe = safeItems.First();
-            actions.Add(new NextAction
-            {
-                Id = "remove_safe_unused",
-                Description = $"Remove unused private {firstSafe.Kind.ToLower()} '{firstSafe.Name}'",
-                ToolName = "editor_remove_symbol",
-                Parameters = new
-                {
-                    filePath = firstSafe.Location?.FilePath,
-                    line = firstSafe.Location?.Line,
-                    symbolName = firstSafe.Name
-                },
-                Priority = "high"
-            });
-        }
-
-        // Suggest analyzing specific file with most unused code
-        var fileWithMost = symbols.GroupBy(s => s.Location?.FilePath)
-            .Where(g => g.Key != null)
-            .OrderByDescending(g => g.Count())
-            .FirstOrDefault();
-        
-        if (fileWithMost != null && fileWithMost.Count() > 3)
-        {
-            actions.Add(new NextAction
-            {
-                Id = "analyze_file_metrics",
-                Description = $"Analyze code metrics for file with {fileWithMost.Count()} unused items",
-                ToolName = "csharp_code_metrics",
-                Parameters = new
-                {
-                    filePath = fileWithMost.Key,
-                    scope = "file"
-                },
-                Priority = "medium"
-            });
-        }
-
-        // Suggest finding references for public symbols
-        var publicUnused = symbols.FirstOrDefault(s => s.Accessibility == "Public");
-        if (publicUnused != null)
-        {
-            actions.Add(new NextAction
-            {
-                Id = "verify_public_usage",
-                Description = $"Verify external usage of public {publicUnused.Kind.ToLower()} '{publicUnused.Name}'",
-                ToolName = "csharp_find_all_references",
-                Parameters = new
-                {
-                    filePath = publicUnused.Location?.FilePath,
-                    line = publicUnused.Location?.Line,
-                    column = publicUnused.Location?.Column
-                },
-                Priority = "medium"
-            });
-        }
+        // Estimate for typical unused code analysis response
+        return 3000;
     }
 }
 
+/// <summary>
+/// Parameters for FindUnusedCode tool
+/// </summary>
 public class FindUnusedCodeParams
 {
     [JsonPropertyName("scope")]
-    [Description("Scope of analysis: 'solution' (default), 'project', or 'file'")]
-    public string? Scope { get; set; }
-
-    [JsonPropertyName("projectName")]
-    [Description("Project name when scope is 'project'")]
-    public string? ProjectName { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Scope of analysis: 'solution', 'project', or 'file'")]
+    public string? Scope { get; set; } = "solution";
 
     [JsonPropertyName("filePath")]
-    [Description("File path when scope is 'file'")]
+    [COA.Mcp.Framework.Attributes.Description("File path when scope is 'file'")]
     public string? FilePath { get; set; }
 
-    [JsonPropertyName("includePrivate")]
-    [Description("Include private members in analysis (default: true)")]
-    public bool IncludePrivate { get; set; } = true;
+    [JsonPropertyName("projectName")]
+    [COA.Mcp.Framework.Attributes.Description("Project name when scope is 'project'")]
+    public string? ProjectName { get; set; }
 
     [JsonPropertyName("symbolKinds")]
-    [Description("Filter by symbol kinds: 'Class', 'Method', 'Property', 'Field', 'Event'")]
-    public List<string>? SymbolKinds { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Filter by symbol kinds: 'Class', 'Method', 'Property', 'Field', 'Event'")]
+    public string[]? SymbolKinds { get; set; }
+
+    [JsonPropertyName("includePrivate")]
+    [COA.Mcp.Framework.Attributes.Description("Include private members in analysis (default: true)")]
+    public bool IncludePrivate { get; set; } = true;
 
     [JsonPropertyName("excludeTestCode")]
-    [Description("Exclude test classes and methods (default: true)")]
+    [COA.Mcp.Framework.Attributes.Description("Exclude test classes and methods (default: true)")]
     public bool ExcludeTestCode { get; set; } = true;
 }
 
 public class FindUnusedCodeResult : ToolResultBase
 {
-    public override string Operation => ToolNames.FindUnusedCode;
-
+    public override string Operation => "csharp_find_unused_code";
+    
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
-
-    [JsonPropertyName("unusedSymbols")]
-    public List<UnusedCodeInfo>? UnusedSymbols { get; set; }
-
+    
     [JsonPropertyName("summary")]
-    public UnusedCodeSummary? Summary { get; set; }
+    public SummaryInfo? Summary { get; set; }
 
-    [JsonPropertyName("distribution")]
-    public Dictionary<string, UnusedCodeFileInfo>? Distribution { get; set; }
+    [JsonPropertyName("unusedElements")]
+    public List<UnusedCodeElement>? UnusedElements { get; set; }
+
+    [JsonPropertyName("analysis")]
+    public UnusedCodeAnalysis? Analysis { get; set; }
 }
 
-public class UnusedCodeInfo
+public class UnusedCodeElement
 {
     [JsonPropertyName("name")]
     public required string Name { get; set; }
@@ -628,42 +517,27 @@ public class UnusedCodeInfo
     [JsonPropertyName("containingType")]
     public string? ContainingType { get; set; }
 
+    [JsonPropertyName("namespace")]
+    public string? Namespace { get; set; }
+
     [JsonPropertyName("location")]
-    public LocationInfo? Location { get; set; }
+    public required LocationInfo Location { get; set; }
 
     [JsonPropertyName("reason")]
     public required string Reason { get; set; }
-
-    [JsonPropertyName("safeToRemove")]
-    public bool SafeToRemove { get; set; }
 }
 
-public class UnusedCodeSummary
+public class UnusedCodeAnalysis
 {
     [JsonPropertyName("totalUnused")]
     public int TotalUnused { get; set; }
 
-    [JsonPropertyName("totalChecked")]
-    public int TotalChecked { get; set; }
-
-    [JsonPropertyName("projectsAnalyzed")]
-    public int ProjectsAnalyzed { get; set; }
-
     [JsonPropertyName("byKind")]
-    public Dictionary<string, int>? ByKind { get; set; }
+    public Dictionary<string, int> ByKind { get; set; } = new();
 
-    [JsonPropertyName("safeToRemove")]
-    public int SafeToRemove { get; set; }
-}
+    [JsonPropertyName("byAccessibility")]
+    public Dictionary<string, int> ByAccessibility { get; set; } = new();
 
-public class UnusedCodeFileInfo
-{
-    [JsonPropertyName("filePath")]
-    public required string FilePath { get; set; }
-
-    [JsonPropertyName("unusedCount")]
-    public int UnusedCount { get; set; }
-
-    [JsonPropertyName("kinds")]
-    public Dictionary<string, int>? Kinds { get; set; }
+    [JsonPropertyName("byNamespace")]
+    public Dictionary<string, int> ByNamespace { get; set; } = new();
 }

@@ -1,4 +1,5 @@
 using COA.Mcp.Protocol;
+using COA.Mcp.Framework.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Text.Json;

@@ -1,5 +1,6 @@
-using COA.CodeNav.McpServer.Attributes;
+using COA.Mcp.Framework.Attributes;
 using COA.CodeNav.McpServer.Configuration;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
@@ -67,7 +68,7 @@ public class ApplyCodeFixToolTests
         
         // Should include hint to load workspace
         typedResult.Error.Recovery.Steps.Should().Contain(s => 
-            s.Contains("roslyn_load_solution") || s.Contains("roslyn_load_project"));
+            s.Contains(ToolNames.LoadSolution) || s.Contains(ToolNames.LoadProject));
     }
 
     [Fact]
@@ -76,28 +77,16 @@ public class ApplyCodeFixToolTests
         // Verify the tool has proper MCP attributes
         var toolType = typeof(ApplyCodeFixTool);
         
-        // Should have McpServerToolType attribute
-        var toolTypeAttr = toolType.GetCustomAttributes(typeof(McpServerToolTypeAttribute), false);
-        toolTypeAttr.Should().HaveCount(1);
+        // Tool should inherit from McpToolBase
+        toolType.Should().BeAssignableTo(typeof(COA.Mcp.Framework.Base.McpToolBase<ApplyCodeFixParams, ApplyCodeFixToolResult>));
         
-        // Should have ExecuteAsync method with proper attributes
-        var executeMethod = toolType.GetMethod("ExecuteAsync");
-        executeMethod.Should().NotBeNull();
+        // Should have Name property
+        var nameProp = toolType.GetProperty("Name");
+        nameProp.Should().NotBeNull();
         
-        var toolAttr = executeMethod!.GetCustomAttributes(typeof(McpServerToolAttribute), false);
-        toolAttr.Should().HaveCount(1);
-        
-        var mcpToolAttr = (McpServerToolAttribute)toolAttr[0];
-        mcpToolAttr.Name.Should().Be("roslyn_apply_code_fix");
-        
-        // Should have Description attribute
-        var descAttr = executeMethod.GetCustomAttributes(typeof(DescriptionAttribute), false);
-        descAttr.Should().HaveCount(1);
-        
-        var description = ((DescriptionAttribute)descAttr[0]).Description;
-        description.Should().Contain("Apply a code fix");
-        description.Should().Contain("Prerequisites:");
-        description.Should().Contain("Use cases:");
+        // Should have Description property
+        var descProp = toolType.GetProperty("Description");
+        descProp.Should().NotBeNull();
     }
 
     [Fact]
@@ -120,8 +109,8 @@ public class ApplyCodeFixToolTests
                 }
             },
             Insights = new List<string> { "Applied fix" },
-            Actions = new List<NextAction>(),
-            Meta = new ToolMetadata
+            Actions = new List<COA.Mcp.Framework.Models.AIAction>(),
+            Meta = new COA.Mcp.Framework.Models.ToolExecutionMetadata
             {
                 ExecutionTime = "10ms",
                 Truncated = false
@@ -131,7 +120,7 @@ public class ApplyCodeFixToolTests
         // Assert - verify all required fields are present
         result.Success.Should().BeTrue();
         result.Message.Should().NotBeNullOrEmpty();
-        result.Operation.Should().Be("roslyn_apply_code_fix");
+        result.Operation.Should().Be(ToolNames.ApplyCodeFix);
         result.FixTitle.Should().NotBeNullOrEmpty();
         result.DiagnosticId.Should().NotBeNullOrEmpty();
         result.AllFilesSucceeded.Should().BeTrue();
@@ -150,16 +139,16 @@ public class ApplyCodeFixToolTests
         var filePathProp = paramType.GetProperty("FilePath");
         filePathProp.Should().NotBeNull();
         filePathProp!.GetCustomAttributes(typeof(JsonPropertyNameAttribute), false).Should().HaveCount(1);
-        filePathProp.GetCustomAttributes(typeof(DescriptionAttribute), false).Should().HaveCount(1);
+        filePathProp.GetCustomAttributes(typeof(COA.Mcp.Framework.Attributes.DescriptionAttribute), false).Should().HaveCount(1);
         
         var lineProp = paramType.GetProperty("Line");
         lineProp.Should().NotBeNull();
         lineProp!.GetCustomAttributes(typeof(JsonPropertyNameAttribute), false).Should().HaveCount(1);
-        lineProp.GetCustomAttributes(typeof(DescriptionAttribute), false).Should().HaveCount(1);
+        lineProp.GetCustomAttributes(typeof(COA.Mcp.Framework.Attributes.DescriptionAttribute), false).Should().HaveCount(1);
         
         var columnProp = paramType.GetProperty("Column");
         columnProp.Should().NotBeNull();
         columnProp!.GetCustomAttributes(typeof(JsonPropertyNameAttribute), false).Should().HaveCount(1);
-        columnProp.GetCustomAttributes(typeof(DescriptionAttribute), false).Should().HaveCount(1);
+        columnProp.GetCustomAttributes(typeof(COA.Mcp.Framework.Attributes.DescriptionAttribute), false).Should().HaveCount(1);
     }
 }

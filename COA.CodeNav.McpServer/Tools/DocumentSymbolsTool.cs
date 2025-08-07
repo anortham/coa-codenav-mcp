@@ -1,230 +1,198 @@
-using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
-using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
 namespace COA.CodeNav.McpServer.Tools;
 
 /// <summary>
-/// MCP tool that extracts symbol hierarchy from a document
+/// MCP tool that extracts symbol hierarchy from a document using Framework v1.1.0
 /// </summary>
-[McpServerToolType]
-public class DocumentSymbolsTool : ITool
+public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSymbolsToolResult>
 {
     private readonly ILogger<DocumentSymbolsTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_document_symbols";
-    public string Description => "Extract symbol hierarchy from a document";
+    public override string Name => ToolNames.DocumentSymbols;
+    public override string Description => "Extract the symbol hierarchy from a C# document";
 
     public DocumentSymbolsTool(
         ILogger<DocumentSymbolsTool> logger,
         RoslynWorkspaceService workspaceService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_document_symbols")]
-    [Description(@"Extract the symbol hierarchy from a C# document.
-Returns: Hierarchical list of symbols with their locations, kinds, and modifiers.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if document is not found.
-Use cases: Document outline, navigation, understanding file structure, finding symbols in a file.
-Not for: Cross-file symbol search (use csharp_symbol_search), finding references (use csharp_find_all_references).")]
-    public async Task<object> ExecuteAsync(DocumentSymbolsParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<DocumentSymbolsToolResult> ExecuteInternalAsync(
+        DocumentSymbolsParams parameters,
+        CancellationToken cancellationToken)
     {
         _logger.LogDebug("DocumentSymbols request received: FilePath={FilePath}", parameters.FilePath);
-            
-        try
+
+        var startTime = DateTime.UtcNow;
+
+        // Get the document
+        _logger.LogDebug("Retrieving document from workspace: {FilePath}", parameters.FilePath);
+        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            _logger.LogInformation("Processing DocumentSymbols for {FilePath}", parameters.FilePath);
-
-            // Get the document
-            _logger.LogDebug("Retrieving document from workspace: {FilePath}", parameters.FilePath);
-            var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
+            _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
+            return new DocumentSymbolsToolResult
             {
-                _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return new DocumentSymbolsResult
-                {
-                    Found = false,
-                    FilePath = parameters.FilePath,
-                    Message = $"Document not found in workspace: {parameters.FilePath}",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.DOCUMENT_NOT_FOUND,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Ensure the file path is correct and absolute",
-                                "Verify the solution/project containing this file is loaded",
-                                "Use csharp_load_solution or csharp_load_project to load the containing project"
-                            },
-                            SuggestedActions = new List<SuggestedAction>
-                            {
-                                new SuggestedAction
-                                {
-                                    Tool = "csharp_load_solution",
-                                    Description = "Load the solution containing this file",
-                                    Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
-                                }
-                            }
-                        }
-                    }
-                };
-            }
-
-            // Get the syntax tree
-            var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
-            if (syntaxTree == null)
-            {
-                _logger.LogError("Failed to get syntax tree for document: {FilePath}", parameters.FilePath);
-                return new DocumentSymbolsResult
-                {
-                    Found = false,
-                    FilePath = parameters.FilePath,
-                    Message = "Could not parse document syntax",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.COMPILATION_ERROR,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Check for syntax errors in the file",
-                                "Ensure the file is a valid C# source file",
-                                "Try reloading the project"
-                            }
-                        }
-                    }
-                };
-            }
-
-            // Get semantic model if available
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-
-            // Get the root node
-            var root = await syntaxTree.GetRootAsync(cancellationToken);
-
-            // Extract all symbols
-            var allSymbols = new List<DocumentSymbol>();
-            ExtractSymbols(root, allSymbols, semanticModel, parameters.IncludePrivate ?? false);
-
-            // Apply filters
-            if (parameters.SymbolKinds?.Any() == true)
-            {
-                allSymbols = FilterSymbolsByKind(allSymbols, parameters.SymbolKinds);
-            }
-
-            // Apply token management
-            var totalSymbolCount = CountSymbols(allSymbols);
-            
-            // Create token-aware response
-            var response = TokenEstimator.CreateTokenAwareResponse(
-                allSymbols,
-                symbols => EstimateDocumentSymbolsTokens(symbols),
-                requestedMax: parameters.MaxResults ?? 100, // Default to 100 symbols
-                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                toolName: "csharp_document_symbols"
-            );
-
-            // Generate insights (use all symbols for accurate insights)
-            var insights = GenerateInsights(allSymbols);
-            
-            // Add truncation message if needed
-            if (response.WasTruncated)
-            {
-                insights.Insert(0, response.GetTruncationMessage());
-                if (response.SafetyLimitApplied)
-                {
-                    // When safety limit is applied, we might need to flatten the hierarchy
-                    response.Items = FlattenSymbolHierarchy(response.Items, response.ReturnedCount);
-                }
-            }
-
-            // Generate next actions
-            var nextActions = GenerateNextActions(allSymbols, parameters.FilePath);
-            
-            // Add action to get more results if truncated
-            if (response.WasTruncated)
-            {
-                nextActions.Insert(0, new NextAction
-                {
-                    Id = "get_more_symbols",
-                    Description = "Get additional symbols",
-                    ToolName = "csharp_document_symbols",
-                    Parameters = new
-                    {
-                        filePath = parameters.FilePath,
-                        maxResults = Math.Min(totalSymbolCount, 500),
-                        includePrivate = parameters.IncludePrivate
-                    },
-                    Priority = "high"
-                });
-            }
-
-            // Store full result if truncated
-            string? resourceUri = null;
-            if (response.WasTruncated && _resourceProvider != null)
-            {
-                resourceUri = _resourceProvider.StoreAnalysisResult("document-symbols",
-                    new { filePath = parameters.FilePath, symbols = allSymbols, totalCount = totalSymbolCount },
-                    $"All {totalSymbolCount} symbols for {Path.GetFileName(parameters.FilePath)}");
-            }
-
-            return new DocumentSymbolsResult
-            {
-                Found = true,
-                FilePath = parameters.FilePath,
-                TotalSymbols = totalSymbolCount,
-                Symbols = response.Items,
-                Message = response.WasTruncated 
-                    ? $"Found {totalSymbolCount} symbols - showing {response.ReturnedCount}"
-                    : $"Found {totalSymbolCount} symbols in {Path.GetFileName(parameters.FilePath)}",
-                Insights = insights,
-                NextActions = nextActions,
-                ResourceUri = resourceUri,
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = "0ms", // TODO: Add timing
-                    Truncated = response.WasTruncated,
-                    Tokens = response.EstimatedTokens
-                }
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in Document Symbols");
-            return new DocumentSymbolsResult
-            {
-                Found = false,
-                FilePath = parameters.FilePath,
-                Message = $"Error: {ex.Message}",
+                Success = false,
+                Message = $"Document not found in workspace: {parameters.FilePath}",
                 Error = new ErrorInfo
                 {
-                    Code = ErrorCodes.INTERNAL_ERROR,
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
+                    Message = $"Document not found in workspace: {parameters.FilePath}",
                     Recovery = new RecoveryInfo
                     {
-                        Steps = new List<string>
+                        Steps = new[]
                         {
-                            "Check the server logs for detailed error information",
-                            "Verify the solution/project is loaded correctly",
-                            "Try the operation again"
+                            "Ensure the file path is correct and absolute",
+                            "Verify the solution/project containing this file is loaded",
+                            "Use csharp_load_solution or csharp_load_project to load the containing project"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
+                            {
+                                Tool = "csharp_load_solution",
+                                Description = "Load the solution containing this file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
+                            }
                         }
                     }
                 }
             };
         }
+
+        // Get the syntax tree
+        var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
+        if (syntaxTree == null)
+        {
+            _logger.LogError("Failed to get syntax tree for document: {FilePath}", parameters.FilePath);
+            return new DocumentSymbolsToolResult
+            {
+                Success = false,
+                Message = "Could not parse document syntax",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
+                    Message = "Could not parse document syntax",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Check for syntax errors in the file",
+                            "Ensure the file is a valid C# source file",
+                            "Try reloading the project"
+                        }
+                    }
+                }
+            };
+        }
+
+        // Get semantic model
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+
+        // Get the root node
+        var root = await syntaxTree.GetRootAsync(cancellationToken);
+
+        // Extract all symbols
+        var allSymbols = new List<DocumentSymbol>();
+        ExtractSymbols(root, allSymbols, semanticModel, parameters.IncludePrivate);
+
+        // Apply filters
+        if (parameters.SymbolKinds?.Any() == true)
+        {
+            allSymbols = FilterSymbolsByKind(allSymbols, parameters.SymbolKinds);
+        }
+
+        // Apply max results limit
+        var returnedSymbols = allSymbols.Take(parameters.MaxResults).ToList();
+        var totalSymbolCount = CountSymbols(allSymbols);
+        var wasLimited = allSymbols.Count > parameters.MaxResults;
+
+        // Generate insights
+        var insights = GenerateInsights(allSymbols, totalSymbolCount);
+
+        // Generate next actions
+        var actions = GenerateNextActions(parameters.FilePath, allSymbols);
+
+        // Add action to get more results if limited
+        if (wasLimited)
+        {
+            actions.Insert(0, new AIAction
+            {
+                Action = ToolNames.DocumentSymbols,
+                Description = "Get additional symbols",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["filePath"] = parameters.FilePath,
+                    ["maxResults"] = Math.Min(totalSymbolCount, 500),
+                    ["includePrivate"] = parameters.IncludePrivate
+                },
+                Priority = 90,
+                Category = "pagination"
+            });
+        }
+
+        // Generate distribution
+        var distribution = GenerateDistribution(allSymbols);
+
+        _logger.LogInformation("DocumentSymbols found {Count} symbols for {FilePath}", 
+            totalSymbolCount, Path.GetFileName(parameters.FilePath));
+
+        return new DocumentSymbolsToolResult
+        {
+            Success = true,
+            Message = wasLimited 
+                ? $"Found {totalSymbolCount} symbols - showing {returnedSymbols.Count}"
+                : $"Found {totalSymbolCount} symbols in {Path.GetFileName(parameters.FilePath)}",
+            Query = new DocumentSymbolsQuery
+            {
+                FilePath = parameters.FilePath,
+                SymbolKinds = parameters.SymbolKinds?.ToList(),
+                IncludePrivate = parameters.IncludePrivate,
+                MaxResults = parameters.MaxResults
+            },
+            Summary = new DocumentSymbolsSummary
+            {
+                TotalFound = totalSymbolCount,
+                Returned = returnedSymbols.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                TotalSymbols = totalSymbolCount,
+                Hierarchical = true
+            },
+            Symbols = returnedSymbols,
+            ResultsSummary = new ResultsSummary
+            {
+                Total = totalSymbolCount,
+                Included = returnedSymbols.Count,
+                HasMore = wasLimited
+            },
+            Distribution = distribution,
+            Insights = insights,
+            Actions = actions,
+            Meta = new ToolExecutionMetadata 
+            { 
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+            }
+        };
     }
 
     private void ExtractSymbols(SyntaxNode node, List<DocumentSymbol> symbols, SemanticModel? semanticModel, bool includePrivate)
@@ -582,7 +550,7 @@ Not for: Cross-file symbol search (use csharp_symbol_search), finding references
         return symbols.Count + symbols.Sum(s => CountSymbols(s.Children));
     }
 
-    private List<string> GenerateInsights(List<DocumentSymbol> symbols)
+    private List<string> GenerateInsights(List<DocumentSymbol> symbols, int totalCount)
     {
         var insights = new List<string>();
 
@@ -654,64 +622,55 @@ Not for: Cross-file symbol search (use csharp_symbol_search), finding references
         return result;
     }
 
-    private int EstimateDocumentSymbolsTokens(List<DocumentSymbol> symbols)
+    private SymbolDistribution GenerateDistribution(List<DocumentSymbol> symbols)
     {
-        return TokenEstimator.EstimateCollection(
-            symbols,
-            symbol => EstimateSymbolTokens(symbol, includeChildren: true),
-            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
-        );
-    }
-    
-    private int EstimateSymbolTokens(DocumentSymbol symbol, bool includeChildren)
-    {
-        var tokens = TokenEstimator.Roslyn.EstimateDocumentSymbol(symbol, recursive: false);
-        
-        if (includeChildren && symbol.Children.Any())
+        var byKind = new Dictionary<string, int>();
+        var byAccessibility = new Dictionary<string, int>();
+
+        CountDistribution(symbols, byKind, byAccessibility);
+
+        return new SymbolDistribution
         {
-            tokens += symbol.Children.Sum(child => EstimateSymbolTokens(child, true));
-        }
-        
-        return tokens;
-    }
-    
-    private List<DocumentSymbol> FlattenSymbolHierarchy(List<DocumentSymbol> symbols, int maxCount)
-    {
-        var flattened = new List<DocumentSymbol>();
-        var queue = new Queue<(DocumentSymbol symbol, int depth)>(symbols.Select(s => (s, 0)));
-        
-        while (queue.Count > 0 && flattened.Count < maxCount)
-        {
-            var (symbol, depth) = queue.Dequeue();
-            
-            // Create a copy without children for flattened view
-            var flatSymbol = new DocumentSymbol
-            {
-                Name = depth > 0 ? new string(' ', depth * 2) + symbol.Name : symbol.Name,
-                Kind = symbol.Kind,
-                Location = symbol.Location,
-                Modifiers = symbol.Modifiers,
-                TypeParameters = symbol.TypeParameters,
-                Parameters = symbol.Parameters,
-                ReturnType = symbol.ReturnType,
-                Children = new List<DocumentSymbol>() // Empty children in flattened view
-            };
-            
-            flattened.Add(flatSymbol);
-            
-            // Add children to queue for processing
-            foreach (var child in symbol.Children)
-            {
-                queue.Enqueue((child, depth + 1));
-            }
-        }
-        
-        return flattened;
+            ByKind = byKind.Any() ? byKind : null,
+            ByAccessibility = byAccessibility.Any() ? byAccessibility : null
+        };
     }
 
-    private List<NextAction> GenerateNextActions(List<DocumentSymbol> symbols, string filePath)
+    private void CountDistribution(List<DocumentSymbol> symbols, Dictionary<string, int> byKind, Dictionary<string, int> byAccessibility)
     {
-        var actions = new List<NextAction>();
+        foreach (var symbol in symbols)
+        {
+            // Count by kind
+            if (!byKind.ContainsKey(symbol.Kind))
+                byKind[symbol.Kind] = 0;
+            byKind[symbol.Kind]++;
+
+            // Count by accessibility (based on modifiers)
+            var accessibility = GetAccessibilityFromModifiers(symbol.Modifiers);
+            if (!byAccessibility.ContainsKey(accessibility))
+                byAccessibility[accessibility] = 0;
+            byAccessibility[accessibility]++;
+
+            // Recursively count children
+            CountDistribution(symbol.Children, byKind, byAccessibility);
+        }
+    }
+
+    private string GetAccessibilityFromModifiers(List<string>? modifiers)
+    {
+        if (modifiers == null) return "internal";
+
+        if (modifiers.Contains("public")) return "public";
+        if (modifiers.Contains("private")) return "private";
+        if (modifiers.Contains("protected")) return "protected";
+        if (modifiers.Contains("internal")) return "internal";
+
+        return "internal"; // Default C# accessibility
+    }
+
+    private List<AIAction> GenerateNextActions(string filePath, List<DocumentSymbol> symbols)
+    {
+        var actions = new List<AIAction>();
 
         // Suggest go to definition for key types
         var publicTypes = GetAllSymbolsOfKind(symbols, "Class")
@@ -723,32 +682,32 @@ Not for: Cross-file symbol search (use csharp_symbol_search), finding references
         {
             if (type.Location != null)
             {
-                actions.Add(new NextAction
+                actions.Add(new AIAction
                 {
-                    Id = $"goto_{type.Name.ToLower()}",
+                    Action = ToolNames.GoToDefinition,
                     Description = $"Go to {type.Name} definition",
-                    ToolName = "csharp_goto_definition",
-                    Parameters = new
+                    Parameters = new Dictionary<string, object>
                     {
-                        filePath = type.Location.FilePath,
-                        line = type.Location.Line,
-                        column = type.Location.Column
+                        ["filePath"] = type.Location.FilePath,
+                        ["line"] = type.Location.Line,
+                        ["column"] = type.Location.Column
                     },
-                    Priority = "medium"
+                    Priority = 80,
+                    Category = "navigation"
                 });
 
-                actions.Add(new NextAction
+                actions.Add(new AIAction
                 {
-                    Id = $"find_refs_{type.Name.ToLower()}",
+                    Action = ToolNames.FindAllReferences,
                     Description = $"Find references to {type.Name}",
-                    ToolName = "csharp_find_all_references",
-                    Parameters = new
+                    Parameters = new Dictionary<string, object>
                     {
-                        filePath = type.Location.FilePath,
-                        line = type.Location.Line,
-                        column = type.Location.Column
+                        ["filePath"] = type.Location.FilePath,
+                        ["line"] = type.Location.Line,
+                        ["column"] = type.Location.Column
                     },
-                    Priority = "low"
+                    Priority = 70,
+                    Category = "navigation"
                 });
             }
         }
@@ -756,65 +715,50 @@ Not for: Cross-file symbol search (use csharp_symbol_search), finding references
         // Suggest symbol search for complex files
         if (CountSymbols(symbols) > 50)
         {
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = "search_symbols",
+                Action = ToolNames.SymbolSearch,
                 Description = "Search for specific symbols in solution",
-                ToolName = "csharp_symbol_search",
-                Parameters = new
+                Parameters = new Dictionary<string, object>
                 {
-                    query = "*",
-                    namespaceFilter = symbols.FirstOrDefault(s => s.Kind == "Namespace")?.Name
+                    ["query"] = "*",
+                    ["namespaceFilter"] = symbols.FirstOrDefault(s => s.Kind == "Namespace")?.Name ?? ""
                 },
-                Priority = "low"
+                Priority = 60,
+                Category = "search"
             });
         }
 
         return actions;
     }
+
+    protected override int EstimateTokenUsage()
+    {
+        // Estimate for typical DocumentSymbols response - can vary widely based on file size
+        return 5000;
+    }
 }
 
+/// <summary>
+/// Parameters for DocumentSymbols tool
+/// </summary>
 public class DocumentSymbolsParams
 {
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file")]
-    public required string FilePath { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Path to the source file")]
+    public string FilePath { get; set; } = string.Empty;
 
     [JsonPropertyName("symbolKinds")]
-    [Description("Filter by symbol kinds: 'Class', 'Interface', 'Method', 'Property', 'Field', 'Event', 'Namespace', 'Struct', 'Enum', 'Delegate'")]
+    [COA.Mcp.Framework.Attributes.Description("Filter by symbol kinds: 'Class', 'Interface', 'Method', 'Property', 'Field', 'Event', 'Namespace', 'Struct', 'Enum', 'Delegate'")]
     public string[]? SymbolKinds { get; set; }
 
     [JsonPropertyName("includePrivate")]
-    [Description("Include private symbols (default: false)")]
-    public bool? IncludePrivate { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Include private symbols (default: false)")]
+    public bool IncludePrivate { get; set; } = false;
     
+    [System.ComponentModel.DataAnnotations.Range(1, 500, ErrorMessage = "MaxResults must be between 1 and 500")]
     [JsonPropertyName("maxResults")]
-    [Description("Maximum number of symbols to return (default: 100, max: 500)")]
-    public int? MaxResults { get; set; }
-}
-
-public class DocumentSymbolsResult
-{
-    public bool Found { get; set; }
-    public required string FilePath { get; set; }
-    public int TotalSymbols { get; set; }
-    public List<DocumentSymbol>? Symbols { get; set; }
-    public string? Message { get; set; }
-    public List<string>? Insights { get; set; }
-    public List<NextAction>? NextActions { get; set; }
-    public ErrorInfo? Error { get; set; }
-    public string? ResourceUri { get; set; }
-    public ToolMetadata? Meta { get; set; }
-}
-
-public class DocumentSymbol
-{
-    public required string Name { get; set; }
-    public required string Kind { get; set; }
-    public LocationInfo? Location { get; set; }
-    public List<string>? Modifiers { get; set; }
-    public List<string>? TypeParameters { get; set; }
-    public List<string>? Parameters { get; set; }
-    public string? ReturnType { get; set; }
-    public List<DocumentSymbol> Children { get; set; } = new();
+    [COA.Mcp.Framework.Attributes.Description("Maximum number of symbols to return (default: 100, max: 500)")]
+    public int MaxResults { get; set; } = 100;
 }

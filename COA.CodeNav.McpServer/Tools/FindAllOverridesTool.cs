@@ -1,35 +1,42 @@
-using System.Text.Json.Serialization;
-using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
-using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.Interfaces;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
+using DataAnnotations = System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace COA.CodeNav.McpServer.Tools;
 
 /// <summary>
 /// MCP tool that finds all overrides of virtual/abstract methods and properties
 /// </summary>
-[McpServerToolType]
-public class FindAllOverridesTool : ITool
+public class FindAllOverridesTool : McpToolBase<FindAllOverridesParams, FindAllOverridesResult>
 {
     private readonly ILogger<FindAllOverridesTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_find_all_overrides";
-    public string Description => "Find all overrides of virtual/abstract methods and properties";
+    public override string Name => "csharp_find_all_overrides";
+    public override string Description => @"Find all overrides of virtual/abstract methods and properties, including interface implementations.
+Returns: Complete inheritance tree showing all overrides, implementations, and their relationships.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if symbol is not overridable.
+Use cases: Impact analysis before changes, understanding inheritance hierarchy, finding all implementations.
+AI benefit: Provides complete override information that's difficult to piece together from other tools.";
 
     public FindAllOverridesTool(
         ILogger<FindAllOverridesTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -37,223 +44,199 @@ public class FindAllOverridesTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_find_all_overrides")]
-    [Description(@"Find all overrides of virtual/abstract methods and properties, including interface implementations.
-Returns: Complete inheritance tree showing all overrides, implementations, and their relationships.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if symbol is not overridable.
-Use cases: Impact analysis before changes, understanding inheritance hierarchy, finding all implementations.
-AI benefit: Provides complete override information that's difficult to piece together from other tools.")]
-    public async Task<object> ExecuteAsync(FindAllOverridesParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<FindAllOverridesResult> ExecuteInternalAsync(
+        FindAllOverridesParams parameters,
+        CancellationToken cancellationToken)
     {
-        var startTime = DateTime.UtcNow;
         _logger.LogDebug("FindAllOverrides request: FilePath={FilePath}, Line={Line}, Column={Column}", 
             parameters.FilePath, parameters.Line, parameters.Column);
             
-        try
+        var startTime = DateTime.UtcNow;
+
+        // Get the document
+        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            // Get the document
-            var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
+            _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
+            return new FindAllOverridesResult
             {
-                _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return CreateErrorResult(
-                    ErrorCodes.DOCUMENT_NOT_FOUND,
-                    $"Document not found in workspace: {parameters.FilePath}",
-                    new List<string>
-                    {
-                        "Ensure the file path is correct and absolute",
-                        "Verify the solution/project containing this file is loaded",
-                        "Use csharp_load_solution or csharp_load_project to load the containing project"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            // Get the symbol at position
-            var sourceText = await document.GetTextAsync(cancellationToken);
-            var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
-                parameters.Line - 1, 
-                parameters.Column - 1));
-
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            if (semanticModel == null)
-            {
-                return CreateErrorResult(
-                    ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
-                    "Could not get semantic model for document",
-                    new List<string>
-                    {
-                        "Ensure the project is fully loaded and compiled",
-                        "Check for compilation errors in the project",
-                        "Try reloading the solution"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            // Find the symbol at position
-            var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
-                semanticModel, 
-                position, 
-                document.Project.Solution.Workspace, 
-                cancellationToken);
-
-            if (symbol == null)
-            {
-                return CreateErrorResult(
-                    ErrorCodes.NO_SYMBOL_AT_POSITION,
-                    "No symbol found at the specified position",
-                    new List<string>
-                    {
-                        "Ensure the cursor is on a method or property name",
-                        "Verify the line and column numbers are correct (1-based)",
-                        "Try positioning on the method/property declaration"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            // Check if the symbol is overridable
-            var overridableInfo = GetOverridableInfo(symbol);
-            if (!overridableInfo.IsOverridable)
-            {
-                return CreateErrorResult(
-                    ErrorCodes.SYMBOL_NOT_FOUND,
-                    $"The symbol '{symbol.Name}' is not overridable (not virtual, abstract, or part of an interface)",
-                    new List<string>
-                    {
-                        "This tool only works with virtual, abstract, or interface members",
-                        "For finding all references, use csharp_find_all_references",
-                        "For finding implementations of types, use csharp_find_implementations"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            _logger.LogInformation("Finding overrides for {SymbolType} '{SymbolName}'", 
-                overridableInfo.SymbolType, symbol.ToDisplayString());
-
-            // Build the override hierarchy
-            var hierarchy = await BuildOverrideHierarchyAsync(
-                symbol, 
-                document.Project.Solution,
-                parameters.IncludeInterfaces,
-                parameters.IncludeBase,
-                cancellationToken);
-
-            // Flatten hierarchy for token estimation
-            var allOverrides = FlattenHierarchy(hierarchy);
-            
-            // Apply token management
-            var response = TokenEstimator.CreateTokenAwareResponse(
-                allOverrides,
-                overrides => EstimateOverridesTokens(overrides),
-                requestedMax: parameters.MaxResults ?? 200,
-                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                toolName: "csharp_find_all_overrides"
-            );
-
-            // Generate insights
-            var insights = GenerateInsights(allOverrides, symbol, overridableInfo);
-            if (response.WasTruncated)
-            {
-                insights.Insert(0, response.GetTruncationMessage());
-            }
-
-            // Generate next actions
-            var nextActions = GenerateNextActions(symbol, parameters, overridableInfo);
-            if (response.WasTruncated)
-            {
-                nextActions.Insert(0, new NextAction
+                Success = false,
+                Message = $"Document not found in workspace: {parameters.FilePath}",
+                Error = new ErrorInfo
                 {
-                    Id = "get_all_overrides",
-                    Description = "Get all overrides without truncation",
-                    ToolName = "csharp_find_all_overrides",
-                    Parameters = new
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
+                    Message = $"Document not found in workspace: {parameters.FilePath}",
+                    Recovery = new RecoveryInfo
                     {
-                        filePath = parameters.FilePath,
-                        line = parameters.Line,
-                        column = parameters.Column,
-                        maxResults = allOverrides.Count
-                    },
-                    Priority = "high"
-                });
-            }
-
-            // Store full result if truncated
-            string? resourceUri = null;
-            if (response.WasTruncated && _resourceProvider != null)
-            {
-                resourceUri = _resourceProvider.StoreAnalysisResult(
-                    "override-hierarchy",
-                    new { 
-                        symbol = symbol.ToDisplayString(),
-                        hierarchy = hierarchy,
-                        totalOverrides = allOverrides.Count
-                    },
-                    $"Complete override hierarchy for {symbol.Name}");
-            }
-
-            var result = new FindAllOverridesResult
-            {
-                Success = true,
-                Message = response.WasTruncated 
-                    ? $"Found {allOverrides.Count} overrides for '{symbol.Name}' (showing {response.ReturnedCount})"
-                    : $"Found {allOverrides.Count} overrides for '{symbol.Name}'",
-                Query = new QueryInfo
-                {
-                    FilePath = parameters.FilePath,
-                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
-                    TargetSymbol = symbol.ToDisplayString()
-                },
-                Summary = new SummaryInfo
-                {
-                    TotalFound = allOverrides.Count,
-                    Returned = response.ReturnedCount,
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    SymbolInfo = new SymbolSummary
-                    {
-                        Name = symbol.Name,
-                        Kind = symbol.Kind.ToString(),
-                        ContainingType = symbol.ContainingType?.ToDisplayString(),
-                        Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                        Steps = new[]
+                        {
+                            "Ensure the file path is correct and absolute",
+                            "Verify the solution/project containing this file is loaded",
+                            "Use csharp_load_solution or csharp_load_project to load the containing project"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
+                            {
+                                Tool = "csharp_load_solution",
+                                Description = "Load the solution containing this file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
+                            }
+                        }
                     }
-                },
-                BaseSymbol = CreateSymbolInfo(symbol, overridableInfo),
-                Hierarchy = CreateLimitedHierarchy(hierarchy, response.Items),
-                Overrides = response.Items,
-                Analysis = GenerateAnalysis(allOverrides, symbol, overridableInfo),
-                Distribution = GenerateDistribution(allOverrides),
-                Insights = insights,
-                Actions = nextActions,
-                ResourceUri = resourceUri,
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    Truncated = response.WasTruncated,
-                    Tokens = response.EstimatedTokens
                 }
             };
+        }
 
-            _logger.LogInformation("Override search completed: Found {Count} overrides", allOverrides.Count);
-            return result;
-        }
-        catch (Exception ex)
+        // Get the symbol at position
+        var sourceText = await document.GetTextAsync(cancellationToken);
+        var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
+            parameters.Line - 1, 
+            parameters.Column - 1));
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+        if (semanticModel == null)
         {
-            _logger.LogError(ex, "Error in FindAllOverrides");
-            return CreateErrorResult(
-                ErrorCodes.INTERNAL_ERROR,
-                $"Error: {ex.Message}",
-                new List<string>
+            return new FindAllOverridesResult
+            {
+                Success = false,
+                Message = "Could not get semantic model for document",
+                Error = new ErrorInfo
                 {
-                    "Check the server logs for detailed error information",
-                    "Verify the solution/project is loaded correctly",
-                    "Try the operation again"
-                },
-                parameters,
-                startTime);
+                    Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
+                    Message = "Could not get semantic model for document",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Ensure the project is fully loaded and compiled",
+                            "Check for compilation errors in the project",
+                            "Try reloading the solution"
+                        }
+                    }
+                }
+            };
         }
+
+        // Find the symbol at position
+        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
+            semanticModel, 
+            position, 
+            document.Project.Solution.Workspace, 
+            cancellationToken);
+
+        if (symbol == null)
+        {
+            return new FindAllOverridesResult
+            {
+                Success = false,
+                Message = "No symbol found at the specified position",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
+                    Message = "No symbol found at the specified position",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Ensure the cursor is on a method or property name",
+                            "Verify the line and column numbers are correct (1-based)",
+                            "Try positioning on the method/property declaration"
+                        }
+                    }
+                }
+            };
+        }
+
+        // Check if the symbol is overridable
+        var overridableInfo = GetOverridableInfo(symbol);
+        if (!overridableInfo.IsOverridable)
+        {
+            return new FindAllOverridesResult
+            {
+                Success = false,
+                Message = $"The symbol '{symbol.Name}' is not overridable (not virtual, abstract, or part of an interface)",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.SYMBOL_NOT_FOUND,
+                    Message = $"The symbol '{symbol.Name}' is not overridable (not virtual, abstract, or part of an interface)",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "This tool only works with virtual, abstract, or interface members",
+                            "For finding all references, use csharp_find_all_references",
+                            "For finding implementations of types, use csharp_find_implementations"
+                        }
+                    }
+                }
+            };
+        }
+
+        _logger.LogInformation("Finding overrides for {SymbolType} '{SymbolName}'", 
+            overridableInfo.SymbolType, symbol.ToDisplayString());
+
+        // Build the override hierarchy
+        var hierarchy = await BuildOverrideHierarchyAsync(
+            symbol, 
+            document.Project.Solution,
+            parameters.IncludeInterfaces,
+            parameters.IncludeBase,
+            cancellationToken);
+
+        // Flatten hierarchy for counting
+        var allOverrides = FlattenHierarchy(hierarchy);
+        
+        // Apply limit if specified
+        var limitedOverrides = allOverrides;
+        if (parameters.MaxResults.HasValue && allOverrides.Count > parameters.MaxResults.Value)
+        {
+            limitedOverrides = allOverrides.Take(parameters.MaxResults.Value).ToList();
+        }
+
+        // Generate insights and analysis
+        var insights = GenerateInsights(allOverrides, symbol, overridableInfo);
+        var analysis = GenerateAnalysis(allOverrides, symbol, overridableInfo);
+        var distribution = GenerateDistribution(allOverrides);
+        var nextActions = GenerateNextActions(symbol, parameters, overridableInfo);
+
+        _logger.LogInformation("Override search completed: Found {Count} overrides", allOverrides.Count);
+
+        return new FindAllOverridesResult
+        {
+            Success = true,
+            Message = $"Found {allOverrides.Count} overrides for '{symbol.Name}'",
+            Query = new QueryInfo
+            {
+                FilePath = parameters.FilePath,
+                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                TargetSymbol = symbol.ToDisplayString()
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = allOverrides.Count,
+                Returned = limitedOverrides.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                SymbolInfo = new SymbolSummary
+                {
+                    Name = symbol.Name,
+                    Kind = symbol.Kind.ToString(),
+                    ContainingType = symbol.ContainingType?.ToDisplayString(),
+                    Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                }
+            },
+            BaseSymbol = CreateSymbolInfo(symbol, overridableInfo),
+            Hierarchy = CreateLimitedHierarchy(hierarchy, limitedOverrides),
+            Overrides = limitedOverrides,
+            Analysis = analysis,
+            Distribution = distribution,
+            Insights = insights,
+            Actions = nextActions,
+            Meta = new ToolExecutionMetadata
+            {
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            }
+        };
     }
 
     private async Task<OverrideHierarchy> BuildOverrideHierarchyAsync(
@@ -286,7 +269,6 @@ AI benefit: Provides complete override information that's difficult to piece tog
             implementationsList.Count, symbol.ToDisplayString());
 
         // For abstract properties/methods in abstract classes, FindImplementationsAsync may not find overrides
-        // We need to find derived types and then look for the overriding member
         if (implementationsList.Count == 0 && symbol.IsAbstract && symbol.ContainingType?.TypeKind == TypeKind.Class)
         {
             _logger.LogInformation("Looking for overrides in derived types for abstract {SymbolType} '{Symbol}'", 
@@ -301,7 +283,6 @@ AI benefit: Provides complete override information that's difficult to piece tog
                 
             foreach (var derivedType in derivedTypes)
             {
-                // Look for the overriding member in the derived type
                 var overridingMember = derivedType.GetMembers(symbol.Name)
                     .FirstOrDefault(m => IsOverrideOf(m, symbol));
                     
@@ -507,22 +488,6 @@ AI benefit: Provides complete override information that's difficult to piece tog
         };
     }
 
-    private int EstimateOverridesTokens(List<OverrideInfo> overrides)
-    {
-        return TokenEstimator.EstimateCollection(
-            overrides,
-            o => {
-                var tokens = 150; // Base for override structure
-                tokens += TokenEstimator.EstimateString(o.Symbol);
-                tokens += TokenEstimator.EstimateString(o.ContainingType);
-                tokens += TokenEstimator.EstimateString(o.Documentation);
-                tokens += 100; // Location and metadata
-                return tokens;
-            },
-            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
-        );
-    }
-
     private OverrideAnalysis GenerateAnalysis(List<OverrideInfo> overrides, ISymbol symbol, OverridableInfo info)
     {
         var analysis = new OverrideAnalysis
@@ -536,15 +501,9 @@ AI benefit: Provides complete override information that's difficult to piece tog
             UniqueProjects = overrides.Select(o => GetProjectFromPath(o.Location.FilePath)).Distinct().Count()
         };
 
-        // Determine patterns
-        if (analysis.SealedOverrides > 0)
-            analysis.HasSealedImplementations = true;
-        
-        if (analysis.ExplicitImplementations > 0)
-            analysis.HasExplicitImplementations = true;
-        
-        if (analysis.UniqueNamespaces > 5)
-            analysis.IsWidelyImplemented = true;
+        analysis.HasSealedImplementations = analysis.SealedOverrides > 0;
+        analysis.HasExplicitImplementations = analysis.ExplicitImplementations > 0;
+        analysis.IsWidelyImplemented = analysis.UniqueNamespaces > 5;
 
         return analysis;
     }
@@ -598,61 +557,59 @@ AI benefit: Provides complete override information that's difficult to piece tog
         return insights;
     }
 
-    private List<NextAction> GenerateNextActions(ISymbol symbol, FindAllOverridesParams parameters, OverridableInfo info)
+    private List<AIAction> GenerateNextActions(ISymbol symbol, FindAllOverridesParams parameters, OverridableInfo info)
     {
-        var actions = new List<NextAction>();
+        var actions = new List<AIAction>();
 
-        // Suggest call hierarchy to understand usage
-        actions.Add(new NextAction
+        actions.Add(new AIAction
         {
-            Id = "view_call_hierarchy",
+            Action = "csharp_call_hierarchy",
             Description = $"View complete call hierarchy for '{symbol.Name}'",
-            ToolName = "csharp_call_hierarchy",
-            Parameters = new
+            Parameters = new Dictionary<string, object>
             {
-                filePath = parameters.FilePath,
-                line = parameters.Line,
-                column = parameters.Column,
-                includeOverrides = true
+                ["filePath"] = parameters.FilePath,
+                ["line"] = parameters.Line,
+                ["column"] = parameters.Column,
+                ["includeOverrides"] = true
             },
-            Priority = "high"
+            Priority = 90,
+            Category = "analysis"
         });
 
-        // Suggest rename if many overrides
-        actions.Add(new NextAction
+        actions.Add(new AIAction
         {
-            Id = "rename_with_overrides",
+            Action = "csharp_rename_symbol",
             Description = $"Rename '{symbol.Name}' including all overrides",
-            ToolName = "csharp_rename_symbol",
-            Parameters = new
+            Parameters = new Dictionary<string, object>
             {
-                filePath = parameters.FilePath,
-                line = parameters.Line,
-                column = parameters.Column,
-                preview = true,
-                renameOverloads = true
+                ["filePath"] = parameters.FilePath,
+                ["line"] = parameters.Line,
+                ["column"] = parameters.Column,
+                ["preview"] = true,
+                ["renameOverloads"] = true
             },
-            Priority = "medium"
+            Priority = 70,
+            Category = "refactoring"
         });
 
-        // Suggest finding references
-        actions.Add(new NextAction
+        actions.Add(new AIAction
         {
-            Id = "find_all_references",
+            Action = "csharp_find_all_references",
             Description = $"Find all references to '{symbol.Name}'",
-            ToolName = "csharp_find_all_references",
-            Parameters = new
+            Parameters = new Dictionary<string, object>
             {
-                filePath = parameters.FilePath,
-                line = parameters.Line,
-                column = parameters.Column
+                ["filePath"] = parameters.FilePath,
+                ["line"] = parameters.Line,
+                ["column"] = parameters.Column
             },
-            Priority = "medium"
+            Priority = 60,
+            Category = "navigation"
         });
 
         return actions;
     }
 
+    // Helper methods
     private bool IsVirtual(ISymbol symbol) => symbol switch
     {
         IMethodSymbol method => method.IsVirtual,
@@ -734,7 +691,6 @@ AI benefit: Provides complete override information that's difficult to piece tog
 
     private string GetProjectFromPath(string filePath)
     {
-        // Simple heuristic to extract project name from path
         var parts = filePath.Split('\\', '/');
         for (int i = parts.Length - 1; i >= 0; i--)
         {
@@ -752,7 +708,6 @@ AI benefit: Provides complete override information that's difficult to piece tog
         if (string.IsNullOrWhiteSpace(xml))
             return null;
 
-        // Simple extraction of summary tag
         var startTag = "<summary>";
         var endTag = "</summary>";
         var start = xml.IndexOf(startTag);
@@ -770,34 +725,23 @@ AI benefit: Provides complete override information that's difficult to piece tog
         return null;
     }
 
-    private FindAllOverridesResult CreateErrorResult(
-        string errorCode,
-        string message,
-        List<string> recoverySteps,
-        FindAllOverridesParams parameters,
-        DateTime startTime)
+    private bool IsOverrideOf(ISymbol member, ISymbol baseMember)
     {
-        return new FindAllOverridesResult
+        return member switch
         {
-            Success = false,
-            Message = message,
-            Error = new ErrorInfo
-            {
-                Code = errorCode,
-                Recovery = new RecoveryInfo
-                {
-                    Steps = recoverySteps
-                }
-            },
-            Query = new QueryInfo
-            {
-                FilePath = parameters.FilePath,
-                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-            },
-            Meta = new ToolMetadata
-            {
-                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-            }
+            IMethodSymbol method => baseMember is IMethodSymbol baseMethod && 
+                                   method.OverriddenMethod != null &&
+                                   SymbolEqualityComparer.Default.Equals(method.OverriddenMethod.OriginalDefinition, baseMethod.OriginalDefinition),
+                                   
+            IPropertySymbol property => baseMember is IPropertySymbol baseProperty && 
+                                       property.OverriddenProperty != null &&
+                                       SymbolEqualityComparer.Default.Equals(property.OverriddenProperty.OriginalDefinition, baseProperty.OriginalDefinition),
+                                       
+            IEventSymbol eventSymbol => baseMember is IEventSymbol baseEvent && 
+                                       eventSymbol.OverriddenEvent != null &&
+                                       SymbolEqualityComparer.Default.Equals(eventSymbol.OverriddenEvent.OriginalDefinition, baseEvent.OriginalDefinition),
+                                       
+            _ => false
         };
     }
 
@@ -809,57 +753,46 @@ AI benefit: Provides complete override information that's difficult to piece tog
         public bool IsInterface { get; set; }
         public string SymbolType { get; set; } = "";
     }
-    
-    private bool IsOverrideOf(ISymbol member, ISymbol baseMember)
+
+    protected override int EstimateTokenUsage()
     {
-        // Check if member overrides baseMember
-        switch (member)
-        {
-            case IMethodSymbol method:
-                return baseMember is IMethodSymbol baseMethod && 
-                       method.OverriddenMethod != null &&
-                       SymbolEqualityComparer.Default.Equals(method.OverriddenMethod.OriginalDefinition, baseMethod.OriginalDefinition);
-                       
-            case IPropertySymbol property:
-                return baseMember is IPropertySymbol baseProperty && 
-                       property.OverriddenProperty != null &&
-                       SymbolEqualityComparer.Default.Equals(property.OverriddenProperty.OriginalDefinition, baseProperty.OriginalDefinition);
-                       
-            case IEventSymbol eventSymbol:
-                return baseMember is IEventSymbol baseEvent && 
-                       eventSymbol.OverriddenEvent != null &&
-                       SymbolEqualityComparer.Default.Equals(eventSymbol.OverriddenEvent.OriginalDefinition, baseEvent.OriginalDefinition);
-                       
-            default:
-                return false;
-        }
+        // Estimate for typical find all overrides response
+        return 4000;
     }
 }
 
+/// <summary>
+/// Parameters for FindAllOverrides tool
+/// </summary>
 public class FindAllOverridesParams
 {
+    [DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file containing the virtual/abstract member")]
-    public required string FilePath { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Path to the source file containing the virtual/abstract member")]
+    public string FilePath { get; set; } = string.Empty;
 
+    [DataAnnotations.Required]
+    [DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Line must be positive")]
     [JsonPropertyName("line")]
-    [Description("Line number (1-based) where the member is declared")]
+    [COA.Mcp.Framework.Attributes.Description("Line number (1-based) where the member is declared")]
     public int Line { get; set; }
 
+    [DataAnnotations.Required]
+    [DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Column must be positive")]
     [JsonPropertyName("column")]
-    [Description("Column number (1-based) where the member is declared")]
+    [COA.Mcp.Framework.Attributes.Description("Column number (1-based) where the member is declared")]
     public int Column { get; set; }
     
     [JsonPropertyName("includeInterfaces")]
-    [Description("Include interface implementations. true = include interface implementations (default), false = only overrides")]
+    [COA.Mcp.Framework.Attributes.Description("Include interface implementations. true = include interface implementations (default), false = only overrides")]
     public bool IncludeInterfaces { get; set; } = true;
     
     [JsonPropertyName("includeBase")]
-    [Description("Include base method chain for overrides. true = show full inheritance chain (default), false = direct overrides only")]
+    [COA.Mcp.Framework.Attributes.Description("Include base method chain for overrides. true = show full inheritance chain (default), false = direct overrides only")]
     public bool IncludeBase { get; set; } = true;
     
     [JsonPropertyName("maxResults")]
-    [Description("Maximum number of overrides to return (default: 200, max: 500)")]
+    [COA.Mcp.Framework.Attributes.Description("Maximum number of overrides to return (default: 200, max: 500)")]
     public int? MaxResults { get; set; }
 }
 

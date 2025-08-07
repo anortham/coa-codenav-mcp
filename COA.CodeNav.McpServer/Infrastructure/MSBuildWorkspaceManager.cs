@@ -24,7 +24,8 @@ public class MSBuildWorkspaceManager : IDisposable
     {
         _logger = logger;
         _config = config.Value;
-        EnsureMSBuildRegistered();
+        // Defer MSBuild registration until first use to avoid blocking initialization
+        // EnsureMSBuildRegistered();
         
         // Start idle workspace cleanup timer
         _idleCheckTimer = new Timer(
@@ -77,6 +78,8 @@ public class MSBuildWorkspaceManager : IDisposable
 
     public async Task<MSBuildWorkspace> GetOrCreateWorkspaceAsync(string workspaceId, Dictionary<string, string>? properties = null)
     {
+        // Ensure MSBuild is registered before creating any workspace
+        EnsureMSBuildRegistered();
         return await Task.Run(() =>
         {
             // Check if workspace already exists

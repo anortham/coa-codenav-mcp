@@ -1,9 +1,14 @@
 using System.Text;
 using System.Text.Json.Serialization;
-using COA.CodeNav.McpServer.Attributes;
+using System.ComponentModel.DataAnnotations;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using NextAction = COA.Mcp.Framework.Models.AIAction;
 using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
@@ -13,22 +18,27 @@ namespace COA.CodeNav.McpServer.Tools;
 /// <summary>
 /// MCP tool that provides hover information (quick info) for symbols using Roslyn
 /// </summary>
-[McpServerToolType]
-public class HoverTool : ITool
+public class HoverTool : McpToolBase<HoverParams, HoverToolResult>
 {
     private readonly ILogger<HoverTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_hover";
-    public string Description => "Get hover information for a symbol at a given position";
+    public override string Name => ToolNames.Hover;
+    public override string Description => @"Get hover information (quick info) for a symbol at a given position.
+Returns: Symbol signature, documentation, type information, and parameter details.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if symbol cannot be resolved.
+Use cases: View method signatures, read XML documentation, understand parameter types, check return types.
+Not for: Navigation (use csharp_goto_definition), finding usages (use csharp_find_all_references).";
 
     public HoverTool(
         ILogger<HoverTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -36,270 +46,48 @@ public class HoverTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_hover")]
-    [Description(@"Get hover information (quick info) for a symbol at a given position.
-Returns: Symbol signature, documentation, type information, and parameter details.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if symbol cannot be resolved.
-Use cases: View method signatures, read XML documentation, understand parameter types, check return types.
-Not for: Navigation (use csharp_goto_definition), finding usages (use csharp_find_all_references).")]
-    public async Task<object> ExecuteAsync(HoverParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<HoverToolResult> ExecuteInternalAsync(
+        HoverParams parameters,
+        CancellationToken cancellationToken)
     {
         _logger.LogDebug("Hover request received: FilePath={FilePath}, Line={Line}, Column={Column}", 
             parameters.FilePath, parameters.Line, parameters.Column);
         
         var startTime = DateTime.UtcNow;
-            
-        try
+
+        _logger.LogInformation("Processing hover for {FilePath} at {Line}:{Column}", 
+            parameters.FilePath, parameters.Line, parameters.Column);
+
+        // Get the document
+        _logger.LogDebug("Retrieving document from workspace: {FilePath}", parameters.FilePath);
+        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            _logger.LogInformation("Processing hover for {FilePath} at {Line}:{Column}", 
-                parameters.FilePath, parameters.Line, parameters.Column);
-
-            // Get the document
-            _logger.LogDebug("Retrieving document from workspace: {FilePath}", parameters.FilePath);
-            var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
-            {
-                _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return new HoverToolResult
-                {
-                    Success = false,
-                    Message = $"Document not found in workspace: {parameters.FilePath}",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.DOCUMENT_NOT_FOUND,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Ensure the file path is correct and absolute",
-                                "Verify the solution/project containing this file is loaded",
-                                "Use csharp_load_solution or csharp_load_project to load the containing project"
-                            },
-                            SuggestedActions = new List<SuggestedAction>
-                            {
-                                new SuggestedAction
-                                {
-                                    Tool = "csharp_load_solution",
-                                    Description = "Load the solution containing this file",
-                                    Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
-                                }
-                            }
-                        }
-                    },
-                    Query = new QueryInfo
-                    {
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            // Get the source text
-            var sourceText = await document.GetTextAsync(cancellationToken);
-            
-            // Convert line/column to position (adjusting for 0-based indexing)
-            var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
-                parameters.Line - 1, 
-                parameters.Column - 1));
-
-            // Get semantic model
-            _logger.LogDebug("Getting semantic model for document");
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            if (semanticModel == null)
-            {
-                _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
-                return new HoverToolResult
-                {
-                    Success = false,
-                    Message = "Could not get semantic model for document",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Ensure the project is fully loaded and compiled",
-                                "Check for compilation errors in the project",
-                                "Try reloading the solution"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo
-                    {
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            // Get the syntax node at the position
-            var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
-            var root = await syntaxTree!.GetRootAsync(cancellationToken);
-            var node = root.FindToken(position).Parent;
-            
-            if (node == null)
-            {
-                return new HoverToolResult
-                {
-                    Success = false,
-                    Message = "No syntax node found at position",
-                    Error = new ErrorInfo
-                    {
-                        Code = "NO_NODE_AT_POSITION",
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string> { "Ensure the position is within a valid code element" }
-                        }
-                    },
-                    Query = new QueryInfo
-                    {
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            // Get symbol info
-            var symbolInfo = semanticModel.GetSymbolInfo(node, cancellationToken);
-            var symbol = symbolInfo.Symbol;
-
-            if (symbol == null)
-            {
-                // Try to get type info if symbol info is null
-                var typeInfo = semanticModel.GetTypeInfo(node, cancellationToken);
-                if (typeInfo.Type != null)
-                {
-                    symbol = typeInfo.Type;
-                }
-            }
-
-            if (symbol == null)
-            {
-                _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
-                    parameters.Line, parameters.Column, parameters.FilePath);
-                return new HoverToolResult
-                {
-                    Success = false,
-                    Message = "No symbol found at the specified position",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Verify the line and column numbers are correct (1-based)",
-                                "Ensure the cursor is on a symbol (class, method, property, etc.)",
-                                "Try adjusting the column position to the start of the symbol name"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo
-                    {
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            _logger.LogDebug("Found symbol '{SymbolName}' of kind {SymbolKind}, building hover info", 
-                symbol.ToDisplayString(), symbol.Kind);
-
-            // Build hover information
-            var hoverInfo = BuildHoverInfo(symbol, node, semanticModel);
-            var nextActions = GenerateNextActions(symbol, parameters);
-            var insights = GenerateInsights(symbol);
-
-            // Store result if resource provider is available
-            var resourceUri = _resourceProvider?.StoreAnalysisResult("hover", 
-                new { symbol = symbol.ToDisplayString(), hoverInfo }, 
-                $"Hover info for {symbol.Name}");
-                
-            if (resourceUri != null)
-            {
-                _logger.LogDebug("Stored hover result with URI: {ResourceUri}", resourceUri);
-            }
-
-            var result = new HoverToolResult
-            {
-                Success = true,
-                HoverInfo = hoverInfo,
-                SymbolDetails = new SymbolDetails
-                {
-                    FullName = symbol.ToDisplayString(),
-                    Kind = symbol.Kind.ToString(),
-                    TypeInfo = GetTypeInfoSummary(symbol),
-                    Parameters = hoverInfo.Parameters,
-                    ReturnType = hoverInfo.ReturnType,
-                    Modifiers = GetModifiers(symbol)
-                },
-                Message = "Found hover information",
-                Actions = nextActions,
-                Insights = insights,
-                ResourceUri = resourceUri,
-                Query = new QueryInfo
-                {
-                    FilePath = parameters.FilePath,
-                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
-                    TargetSymbol = symbol.ToDisplayString()
-                },
-                Summary = new SummaryInfo
-                {
-                    TotalFound = 1,
-                    Returned = 1,
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    SymbolInfo = new SymbolSummary
-                    {
-                        Name = symbol.Name,
-                        Kind = symbol.Kind.ToString(),
-                        ContainingType = symbol.ContainingType?.ToDisplayString(),
-                        Namespace = symbol.ContainingNamespace?.ToDisplayString()
-                    }
-                },
-                Meta = new ToolMetadata 
-                { 
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                }
-            };
-
-            _logger.LogInformation("Hover completed successfully for '{SymbolName}'", symbol.ToDisplayString());
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in Hover");
+            _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
             return new HoverToolResult
             {
                 Success = false,
-                Message = $"Error: {ex.Message}",
+                Message = $"Document not found in workspace: {parameters.FilePath}",
                 Error = new ErrorInfo
                 {
-                    Code = ErrorCodes.INTERNAL_ERROR,
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
+                    Message = $"Document not found in workspace: {parameters.FilePath}",
                     Recovery = new RecoveryInfo
                     {
-                        Steps = new List<string>
+                        Steps = new[]
                         {
-                            "Check the server logs for detailed error information",
-                            "Verify the solution/project is loaded correctly",
-                            "Try the operation again"
+                            "Ensure the file path is correct and absolute",
+                            "Verify the solution/project containing this file is loaded",
+                            "Use csharp_load_solution or csharp_load_project to load the containing project"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
+                            {
+                                Tool = "csharp_load_solution",
+                                Description = "Load the solution containing this file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
+                            }
                         }
                     }
                 },
@@ -308,12 +96,205 @@ Not for: Navigation (use csharp_goto_definition), finding usages (use csharp_fin
                     FilePath = parameters.FilePath,
                     Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
                 },
-                Meta = new ToolMetadata 
+                Meta = new ToolExecutionMetadata 
                 { 
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                 }
             };
         }
+
+        // Get the source text
+        var sourceText = await document.GetTextAsync(cancellationToken);
+        
+        // Convert line/column to position (adjusting for 0-based indexing)
+        var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
+            parameters.Line - 1, 
+            parameters.Column - 1));
+
+        // Get semantic model
+        _logger.LogDebug("Getting semantic model for document");
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+        if (semanticModel == null)
+        {
+            _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
+            return new HoverToolResult
+            {
+                Success = false,
+                Message = "Could not get semantic model for document",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
+                    Message = "Could not get semantic model for document",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Ensure the project is fully loaded and compiled",
+                            "Check for compilation errors in the project",
+                            "Try reloading the solution"
+                        }
+                    }
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolExecutionMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
+            };
+        }
+
+        // Get the syntax node at the position
+        var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
+        var root = await syntaxTree!.GetRootAsync(cancellationToken);
+        var node = root.FindToken(position).Parent;
+        
+        if (node == null)
+        {
+            return new HoverToolResult
+            {
+                Success = false,
+                Message = "No syntax node found at position",
+                Error = new ErrorInfo
+                {
+                    Code = "NO_NODE_AT_POSITION",
+                    Message = "No syntax node found at position",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[] { "Ensure the position is within a valid code element" }
+                    }
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolExecutionMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
+            };
+        }
+
+        // Get symbol info
+        var symbolInfo = semanticModel.GetSymbolInfo(node, cancellationToken);
+        var symbol = symbolInfo.Symbol;
+
+        if (symbol == null)
+        {
+            // Try to get type info if symbol info is null
+            var typeInfo = semanticModel.GetTypeInfo(node, cancellationToken);
+            if (typeInfo.Type != null)
+            {
+                symbol = typeInfo.Type;
+            }
+        }
+
+        if (symbol == null)
+        {
+            _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
+                parameters.Line, parameters.Column, parameters.FilePath);
+            return new HoverToolResult
+            {
+                Success = false,
+                Message = "No symbol found at the specified position",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
+                    Message = "No symbol found at the specified position",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Verify the line and column numbers are correct (1-based)",
+                            "Ensure the cursor is on a symbol (class, method, property, etc.)",
+                            "Try adjusting the column position to the start of the symbol name"
+                        }
+                    }
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolExecutionMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
+            };
+        }
+
+        _logger.LogDebug("Found symbol '{SymbolName}' of kind {SymbolKind}, building hover info", 
+            symbol.ToDisplayString(), symbol.Kind);
+
+        // Build hover information
+        var hoverInfo = BuildHoverInfo(symbol, node, semanticModel);
+        var nextActions = GenerateNextActions(symbol, parameters);
+        var insights = GenerateInsights(symbol);
+
+        // Store result if resource provider is available
+        var resourceUri = _resourceProvider?.StoreAnalysisResult("hover", 
+            new { symbol = symbol.ToDisplayString(), hoverInfo }, 
+            $"Hover info for {symbol.Name}");
+            
+        if (resourceUri != null)
+        {
+            _logger.LogDebug("Stored hover result with URI: {ResourceUri}", resourceUri);
+        }
+
+        var result = new HoverToolResult
+        {
+            Success = true,
+            HoverInfo = hoverInfo,
+            SymbolDetails = new SymbolDetails
+            {
+                FullName = symbol.ToDisplayString(),
+                Kind = symbol.Kind.ToString(),
+                TypeInfo = GetTypeInfoSummary(symbol),
+                Parameters = hoverInfo.Parameters,
+                ReturnType = hoverInfo.ReturnType,
+                Modifiers = GetModifiers(symbol)
+            },
+            Message = "Found hover information",
+            Actions = nextActions,
+            Insights = insights,
+            ResourceUri = resourceUri,
+            Query = new QueryInfo
+            {
+                FilePath = parameters.FilePath,
+                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                TargetSymbol = symbol.ToDisplayString()
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = 1,
+                Returned = 1,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                SymbolInfo = new SymbolSummary
+                {
+                    Name = symbol.Name,
+                    Kind = symbol.Kind.ToString(),
+                    ContainingType = symbol.ContainingType?.ToDisplayString(),
+                    Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                }
+            },
+            Meta = new ToolExecutionMetadata 
+            { 
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+            }
+        };
+
+        _logger.LogInformation("Hover completed successfully for '{SymbolName}'", symbol.ToDisplayString());
+        return result;
+    }
+
+    protected override int EstimateTokenUsage()
+    {
+        // Hover typically returns moderate amount of data
+        return 2000;
     }
 
     private HoverInfo BuildHoverInfo(ISymbol symbol, SyntaxNode node, SemanticModel semanticModel)
@@ -470,34 +451,32 @@ Not for: Navigation (use csharp_goto_definition), finding usages (use csharp_fin
         var actions = new List<NextAction>();
 
         // Suggest go to definition
-        actions.Add(new NextAction
-        {
-            Id = "goto_definition",
-            Description = $"Go to definition of '{symbol.Name}'",
-            ToolName = "csharp_goto_definition",
-            Parameters = new
+        actions.Add(NextActionExtensions.CreateNextAction(
+            "goto_definition",
+            $"Go to definition of '{symbol.Name}'",
+            ToolNames.GoToDefinition,
+            new
             {
                 filePath = parameters.FilePath,
                 line = parameters.Line,
                 column = parameters.Column
             },
-            Priority = "high"
-        });
+            "high"
+        ));
 
         // Suggest finding references
-        actions.Add(new NextAction
-        {
-            Id = "find_references",
-            Description = $"Find all references to '{symbol.Name}'",
-            ToolName = "csharp_find_all_references",
-            Parameters = new
+        actions.Add(NextActionExtensions.CreateNextAction(
+            "find_references",
+            $"Find all references to '{symbol.Name}'",
+            ToolNames.FindAllReferences,
+            new
             {
                 filePath = parameters.FilePath,
                 line = parameters.Line,
                 column = parameters.Column
             },
-            Priority = "medium"
-        });
+            "medium"
+        ));
 
         return actions;
     }
@@ -611,17 +590,22 @@ Not for: Navigation (use csharp_goto_definition), finding usages (use csharp_fin
 
 public class HoverParams
 {
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file (e.g., 'C:\\Project\\src\\Program.cs' on Windows, '/home/user/project/src/Program.cs' on Unix)")]
+    [System.ComponentModel.Description("Path to the source file")]
     public required string FilePath { get; set; }
 
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Line must be positive")]
     [JsonPropertyName("line")]
-    [Description("Line number (1-based) where the symbol appears")]
+    [System.ComponentModel.Description("Line number (1-based) where the symbol appears")]
     public int Line { get; set; }
 
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Column must be positive")]
     [JsonPropertyName("column")]
-    [Description("Column number (1-based) of the symbol position")]
+    [System.ComponentModel.Description("Column number (1-based) of the symbol position")]
     public int Column { get; set; }
 }
 
-// Result classes have been moved to COA.CodeNav.McpServer.Models namespace
+// Result class is defined in Models/ToolResults.cs

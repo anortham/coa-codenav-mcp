@@ -8,9 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- COA MCP Framework NuGet packages -->
+    <PackageReference Include="COA.Mcp.Framework" Version="1.1.6" />
+    <PackageReference Include="COA.Mcp.Framework.TokenOptimization" Version="1.1.6" />
+    <PackageReference Include="COA.Mcp.Framework.Testing" Version="1.1.6" />
+    
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="FluentAssertions" Version="8.5.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.7" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.8" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />

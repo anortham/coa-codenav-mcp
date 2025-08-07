@@ -56,7 +56,16 @@
       "mcp__codesearch__backup_memories",
       "mcp__codesearch__restore_memories",
       "Bash(dir:*)",
-      "mcp__codesearch__log_diagnostics"
+      "mcp__codesearch__log_diagnostics",
+      "Bash(dotnet restore:*)",
+      "mcp__codenav__csharp_rename_symbol",
+      "mcp__codenav__csharp_code_metrics",
+      "mcp__codenav__csharp_get_workspace_statistics",
+      "mcp__codenav__csharp_find_unused_code",
+      "Bash(for tool in SolutionWideFindReplaceTool CodeCloneDetectionTool TraceCallStackTool)",
+      "Bash(do echo \"=== $tool ===\")",
+      "Bash(done)",
+      "Bash(dotnet clean:*)"
     ],
     "deny": []
   }
