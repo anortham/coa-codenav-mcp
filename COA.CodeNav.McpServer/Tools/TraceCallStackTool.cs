@@ -1,8 +1,12 @@
 using System.Text.Json.Serialization;
-using COA.CodeNav.McpServer.Attributes;
+using System.ComponentModel.DataAnnotations;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using NextAction = COA.Mcp.Framework.Models.AIAction;
 using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -14,22 +18,28 @@ namespace COA.CodeNav.McpServer.Tools;
 /// <summary>
 /// MCP tool that traces execution paths through code, showing complete call chains
 /// </summary>
-[McpServerToolType]
-public class TraceCallStackTool : ITool
+public class TraceCallStackTool : McpToolBase<TraceCallStackParams, TraceCallStackToolResult>
 {
     private readonly ILogger<TraceCallStackTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_trace_call_stack";
-    public string Description => "Trace execution paths through code from entry points to implementations";
+    public override string Name => ToolNames.TraceCallStack;
+    
+    public override string Description => @"Trace execution paths through code from entry points to implementations.
+Returns: Complete call chains with conditions, branches, and insights about code flow.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if starting point cannot be found.
+Use cases: Understanding API flows, tracing event handlers, debugging call chains, analyzing code paths.
+Not for: Static analysis (use other tools), finding implementations (use csharp_find_implementations).";
 
     public TraceCallStackTool(
         ILogger<TraceCallStackTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -37,246 +47,253 @@ public class TraceCallStackTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_trace_call_stack")]
-    [Description(@"Trace execution paths through code from entry points to implementations.
-Returns: Complete call chains with conditions, branches, and insights about code flow.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if starting point cannot be found.
-Use cases: Understanding API flows, tracing event handlers, debugging call chains, analyzing code paths.
-Not for: Static analysis (use other tools), finding implementations (use csharp_find_implementations).")]
-    public async Task<object> ExecuteAsync(TraceCallStackParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<TraceCallStackToolResult> ExecuteInternalAsync(
+        TraceCallStackParams parameters,
+        CancellationToken cancellationToken)
     {
         _logger.LogDebug("TraceCallStack request: FilePath={FilePath}, Line={Line}, Column={Column}, Direction={Direction}", 
             parameters.FilePath, parameters.Line, parameters.Column, parameters.Direction);
             
-        try
+        var startTime = DateTime.UtcNow;
+
+        _logger.LogInformation("Processing call stack trace for {FilePath} at {Line}:{Column}", 
+            parameters.FilePath, parameters.Line, parameters.Column);
+
+        // Get the document
+        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            _logger.LogInformation("Processing call stack trace for {FilePath} at {Line}:{Column}", 
-                parameters.FilePath, parameters.Line, parameters.Column);
-
-            // Get the document
-            var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
+            _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
+            return new TraceCallStackToolResult
             {
-                _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return new TraceCallStackResult
+                Success = false,
+                Message = $"Document not found in workspace: {parameters.FilePath}",
+                Error = new ErrorInfo
                 {
-                    Success = false,
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
                     Message = $"Document not found in workspace: {parameters.FilePath}",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.DOCUMENT_NOT_FOUND,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
+                            "Ensure the file path is correct and absolute",
+                            "Verify the solution/project containing this file is loaded",
+                            "Use csharp_load_solution or csharp_load_project to load the containing project"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
                             {
-                                "Ensure the file path is correct and absolute",
-                                "Verify the solution/project containing this file is loaded",
-                                "Use csharp_load_solution or csharp_load_project to load the containing project"
+                                Tool = "csharp_load_solution",
+                                Description = "Load the solution containing this file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                             }
                         }
                     }
-                };
-            }
-
-            // Get the starting symbol
-            var sourceText = await document.GetTextAsync(cancellationToken);
-            var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
-                parameters.Line - 1, 
-                parameters.Column - 1));
-
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            if (semanticModel == null)
-            {
-                _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
-                return new TraceCallStackResult
+                },
+                Query = new QueryInfo
                 {
-                    Success = false,
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolExecutionMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
+            };
+        }
+
+        // Get the starting symbol
+        var sourceText = await document.GetTextAsync(cancellationToken);
+        var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
+            parameters.Line - 1, 
+            parameters.Column - 1));
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+        if (semanticModel == null)
+        {
+            _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
+            return new TraceCallStackToolResult
+            {
+                Success = false,
+                Message = "Could not get semantic model for document",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
                     Message = "Could not get semantic model for document",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
-                            {
-                                "Ensure the project is fully loaded and compiled",
-                                "Check for compilation errors in the project",
-                                "Try reloading the solution"
-                            }
+                            "Ensure the project is fully loaded and compiled",
+                            "Check for compilation errors in the project",
+                            "Try reloading the solution"
                         }
                     }
-                };
-            }
-
-            // Find the method at the position
-            var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
-            var root = await syntaxTree!.GetRootAsync(cancellationToken);
-            var token = root.FindToken(position);
-            
-            // Find the containing method
-            var methodSyntax = token.Parent?.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-            if (methodSyntax == null)
-            {
-                _logger.LogDebug("No method found at position {Line}:{Column}", parameters.Line, parameters.Column);
-                return new TraceCallStackResult
+                },
+                Query = new QueryInfo
                 {
-                    Success = false,
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolExecutionMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
+            };
+        }
+
+        // Find the method at the position
+        var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
+        var root = await syntaxTree!.GetRootAsync(cancellationToken);
+        var token = root.FindToken(position);
+        
+        // Find the containing method
+        var methodSyntax = token.Parent?.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault();
+        if (methodSyntax == null)
+        {
+            _logger.LogDebug("No method found at position {Line}:{Column}", parameters.Line, parameters.Column);
+            return new TraceCallStackToolResult
+            {
+                Success = false,
+                Message = "No method found at the specified position",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
                     Message = "No method found at the specified position",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
-                            {
-                                "Ensure the cursor is inside a method body",
-                                "Try positioning at the method name",
-                                "Verify the line and column numbers are correct (1-based)"
-                            }
+                            "Ensure the cursor is inside a method body",
+                            "Try positioning at the method name",
+                            "Verify the line and column numbers are correct (1-based)"
                         }
                     }
-                };
-            }
-
-            var methodSymbol = semanticModel.GetDeclaredSymbol(methodSyntax) as IMethodSymbol;
-            if (methodSymbol == null)
-            {
-                return new TraceCallStackResult
+                },
+                Query = new QueryInfo
                 {
-                    Success = false,
-                    Message = "Could not resolve method symbol"
-                };
-            }
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolExecutionMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
+            };
+        }
 
-            _logger.LogDebug("Found method '{MethodName}', starting trace in {Direction} direction", 
-                methodSymbol.ToDisplayString(), parameters.Direction);
-
-            // Trace the call stack
-            var allPaths = new List<CallPath>();
-            var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-            
-            if (parameters.Direction == "forward")
+        var methodSymbol = semanticModel.GetDeclaredSymbol(methodSyntax) as IMethodSymbol;
+        if (methodSymbol == null)
+        {
+            return new TraceCallStackToolResult
             {
-                // Trace calls made by this method
-                var path = await TraceForwardAsync(methodSymbol, document, parameters.MaxDepth ?? 10, visited, cancellationToken);
+                Success = false,
+                Message = "Could not resolve method symbol",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
+                    Message = "Could not resolve method symbol"
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                },
+                Meta = new ToolExecutionMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
+            };
+        }
+
+        _logger.LogDebug("Found method '{MethodName}', starting trace in {Direction} direction", 
+            methodSymbol.ToDisplayString(), parameters.Direction);
+
+        // Trace the call stack
+        var allPaths = new List<CallPath>();
+        var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        
+        if (parameters.Direction == "forward")
+        {
+            // Trace calls made by this method
+            var path = await TraceForwardAsync(methodSymbol, document, parameters.MaxDepth ?? 10, visited, cancellationToken);
+            if (path != null)
+                allPaths.Add(path);
+        }
+        else // backward
+        {
+            // Find all callers of this method
+            var callers = await FindCallersAsync(methodSymbol, document.Project.Solution, cancellationToken);
+            foreach (var caller in callers.Take(parameters.MaxPaths ?? 10)) // Apply limit early
+            {
+                var path = await TraceBackwardAsync(caller, methodSymbol, document.Project.Solution, parameters.MaxDepth ?? 10, visited, cancellationToken);
                 if (path != null)
                     allPaths.Add(path);
             }
-            else // backward
-            {
-                // Find all callers of this method
-                var callers = await FindCallersAsync(methodSymbol, document.Project.Solution, cancellationToken);
-                foreach (var caller in callers.Take(20)) // Get more initially, then apply token limit
-                {
-                    var path = await TraceBackwardAsync(caller, methodSymbol, document.Project.Solution, parameters.MaxDepth ?? 10, visited, cancellationToken);
-                    if (path != null)
-                        allPaths.Add(path);
-                }
-            }
-            
-            // Apply token management
-            var response = TokenEstimator.CreateTokenAwareResponse(
-                allPaths,
-                paths => EstimateCallPathsTokens(paths, parameters.IncludeFramework),
-                requestedMax: parameters.MaxPaths ?? 10, // Default to 10 paths
-                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                toolName: "csharp_trace_call_stack"
-            );
-
-            // Generate insights (use all paths for accurate insights)
-            var insights = GenerateInsights(allPaths, methodSymbol);
-            
-            // Add truncation message if needed
-            if (response.WasTruncated)
-            {
-                insights.Insert(0, response.GetTruncationMessage());
-            }
-            
-            var keyFindings = GenerateKeyFindings(response.Items, methodSymbol);
-            var nextActions = GenerateNextActions(methodSymbol, parameters);
-            
-            // Add action to get more results if truncated
-            if (response.WasTruncated)
-            {
-                nextActions.Insert(0, new NextAction
-                {
-                    Id = "get_more_paths",
-                    Description = "Get additional call paths",
-                    ToolName = "csharp_trace_call_stack",
-                    Parameters = new
-                    {
-                        filePath = parameters.FilePath,
-                        line = parameters.Line,
-                        column = parameters.Column,
-                        direction = parameters.Direction,
-                        maxPaths = Math.Min(allPaths.Count, 50),
-                        maxDepth = parameters.MaxDepth
-                    },
-                    Priority = "high"
-                });
-            }
-
-            // Store full result if truncated
-            string? resourceUri = null;
-            if (response.WasTruncated && _resourceProvider != null)
-            {
-                resourceUri = _resourceProvider.StoreAnalysisResult("call-stack-trace", 
-                    new { 
-                        method = methodSymbol.ToDisplayString(), 
-                        paths = allPaths, 
-                        totalPaths = allPaths.Count,
-                        direction = parameters.Direction 
-                    }, 
-                    $"All {allPaths.Count} call paths for {methodSymbol.Name}");
-            }
-
-            var result = new TraceCallStackResult
-            {
-                Success = true,
-                StartMethod = methodSymbol.ToDisplayString(),
-                Direction = parameters.Direction,
-                Paths = response.Items,
-                Insights = insights,
-                KeyFindings = keyFindings,
-                NextActions = nextActions,
-                ResourceUri = resourceUri,
-                Message = response.WasTruncated 
-                    ? $"Traced {allPaths.Count} path(s) from {methodSymbol.Name} (showing {response.ReturnedCount})"
-                    : $"Traced {allPaths.Count} path(s) from {methodSymbol.Name}",
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = "0ms", // TODO: Add timing
-                    Truncated = response.WasTruncated,
-                    Tokens = response.EstimatedTokens
-                }
-            };
-
-            _logger.LogInformation("Call stack trace completed: Found {PathCount} paths", allPaths.Count);
-            return result;
         }
-        catch (Exception ex)
+        
+        // Apply Framework token management patterns
+        var finalPaths = allPaths.Take(parameters.MaxPaths ?? 10).ToList();
+        
+        // Generate insights
+        var insights = GenerateInsights(allPaths, methodSymbol);
+        var keyFindings = GenerateKeyFindings(finalPaths, methodSymbol);
+        var nextActions = GenerateNextActions(methodSymbol, parameters);
+
+        // Store full result if resource provider is available
+        string? resourceUri = null;
+        if (_resourceProvider != null && allPaths.Count > finalPaths.Count)
         {
-            _logger.LogError(ex, "Error in TraceCallStack");
-            return new TraceCallStackResult
-            {
-                Success = false,
-                Message = $"Error: {ex.Message}",
-                Error = new ErrorInfo
-                {
-                    Code = ErrorCodes.INTERNAL_ERROR,
-                    Recovery = new RecoveryInfo
-                    {
-                        Steps = new List<string>
-                        {
-                            "Check the server logs for detailed error information",
-                            "Verify the solution/project is loaded correctly",
-                            "Try the operation again"
-                        }
-                    }
-                }
-            };
+            resourceUri = _resourceProvider.StoreAnalysisResult("call-stack-trace", 
+                new { 
+                    method = methodSymbol.ToDisplayString(), 
+                    paths = allPaths, 
+                    totalPaths = allPaths.Count,
+                    direction = parameters.Direction 
+                }, 
+                $"All {allPaths.Count} call paths for {methodSymbol.Name}");
         }
+
+        var result = new TraceCallStackToolResult
+        {
+            Success = true,
+            StartMethod = methodSymbol.ToDisplayString(),
+            Direction = parameters.Direction,
+            Paths = finalPaths,
+            KeyFindings = keyFindings,
+            Message = finalPaths.Count < allPaths.Count 
+                ? $"Traced {allPaths.Count} path(s) from {methodSymbol.Name} (showing {finalPaths.Count})"
+                : $"Traced {allPaths.Count} path(s) from {methodSymbol.Name}",
+            Actions = nextActions,
+            Insights = insights,
+            ResourceUri = resourceUri,
+            Query = new QueryInfo
+            {
+                FilePath = parameters.FilePath,
+                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                TargetSymbol = methodSymbol.ToDisplayString()
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = allPaths.Count,
+                Returned = finalPaths.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            },
+            Meta = new ToolExecutionMetadata 
+            { 
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+            }
+        };
+
+        _logger.LogInformation("Call stack trace completed: Found {PathCount} paths", allPaths.Count);
+        return result;
+    }
+
+    protected override int EstimateTokenUsage()
+    {
+        // Call stack tracing can return substantial data
+        return 5000;
     }
 
     private async Task<CallPath?> TraceForwardAsync(
@@ -425,23 +442,9 @@ Not for: Static analysis (use other tools), finding implementations (use csharp_
 
             path.Steps.Add(step);
 
-            // Find callers of current method - need to get solution context
-            // For now, we can't find callers without a solution context
-            // This would need to be passed down from the original call
-            var callers = new List<IMethodSymbol>();
-            if (callers.Any())
-            {
-                // Pick the most likely caller (e.g., in same namespace)
-                currentMethod = callers.FirstOrDefault(c => 
-                    c.ContainingNamespace.Equals(currentMethod.ContainingNamespace, SymbolEqualityComparer.Default))
-                    ?? callers.First();
-            }
-            else
-            {
-                break; // No more callers
-            }
-
-            depth++;
+            // For now, we can't find callers without more solution context
+            // This would need more sophisticated caller analysis
+            break;
         }
 
         // Reverse the path since we traced backward
@@ -606,40 +609,19 @@ Not for: Static analysis (use other tools), finding implementations (use csharp_
             
         return findings;
     }
-
-    private int EstimateCallPathsTokens(List<CallPath> paths, bool includeFramework)
-    {
-        return TokenEstimator.EstimateCollection(
-            paths,
-            path => {
-                var pathTokens = 100; // Base for path metadata
-                pathTokens += path.Steps.Sum(step => {
-                    var stepTokens = TokenEstimator.Roslyn.EstimateCallFrame(step, includeFramework);
-                    // Add extra for calls list
-                    stepTokens += step.Calls.Count * 50;
-                    // Add extra for conditions
-                    stepTokens += step.Conditions.Sum(c => TokenEstimator.EstimateString(c));
-                    return stepTokens;
-                });
-                return pathTokens;
-            },
-            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
-        );
-    }
     
     private List<NextAction> GenerateNextActions(IMethodSymbol method, TraceCallStackParams parameters)
     {
         var actions = new List<NextAction>();
         
         // Suggest opposite direction
-        actions.Add(new NextAction
-        {
-            Id = "trace_opposite",
-            Description = parameters.Direction == "forward" 
+        actions.Add(NextActionExtensions.CreateNextAction(
+            "trace_opposite",
+            parameters.Direction == "forward" 
                 ? "Trace who calls this method" 
                 : "Trace what this method calls",
-            ToolName = "csharp_trace_call_stack",
-            Parameters = new
+            ToolNames.TraceCallStack,
+            new
             {
                 filePath = parameters.FilePath,
                 line = parameters.Line,
@@ -647,23 +629,22 @@ Not for: Static analysis (use other tools), finding implementations (use csharp_
                 direction = parameters.Direction == "forward" ? "backward" : "forward",
                 maxDepth = parameters.MaxDepth
             },
-            Priority = "high"
-        });
+            "high"
+        ));
         
         // Suggest finding references
-        actions.Add(new NextAction
-        {
-            Id = "find_references",
-            Description = $"Find all references to '{method.Name}'",
-            ToolName = "csharp_find_all_references",
-            Parameters = new
+        actions.Add(NextActionExtensions.CreateNextAction(
+            "find_references",
+            $"Find all references to '{method.Name}'",
+            ToolNames.FindAllReferences,
+            new
             {
                 filePath = parameters.FilePath,
                 line = parameters.Line,
                 column = parameters.Column
             },
-            Priority = "medium"
-        });
+            "medium"
+        ));
         
         return actions;
     }
@@ -671,39 +652,49 @@ Not for: Static analysis (use other tools), finding implementations (use csharp_
 
 public class TraceCallStackParams
 {
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file containing the method to trace")]
+    [System.ComponentModel.Description("Path to the source file containing the method to trace")]
     public required string FilePath { get; set; }
 
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Line must be positive")]
     [JsonPropertyName("line")]
-    [Description("Line number (1-based) inside the method to trace from")]
+    [System.ComponentModel.Description("Line number (1-based) inside the method to trace from")]
     public int Line { get; set; }
 
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Column must be positive")]
     [JsonPropertyName("column")]
-    [Description("Column number (1-based) inside the method to trace from")]
+    [System.ComponentModel.Description("Column number (1-based) inside the method to trace from")]
     public int Column { get; set; }
     
     [JsonPropertyName("direction")]
-    [Description("Trace direction: 'forward' (follow calls made by this method) or 'backward' (find callers of this method)")]
+    [System.ComponentModel.Description("Trace direction: 'forward' (follow calls made by this method) or 'backward' (find callers of this method)")]
     public string Direction { get; set; } = "forward";
     
     [JsonPropertyName("maxDepth")]
-    [Description("Maximum depth to trace (default: 10)")]
+    [System.ComponentModel.Description("Maximum depth to trace (default: 10)")]
     public int? MaxDepth { get; set; }
     
     [JsonPropertyName("includeFramework")]
-    [Description("Include framework method calls. true = include .NET framework methods, false = user code only (default)")]
+    [System.ComponentModel.Description("Include framework method calls. true = include .NET framework methods, false = user code only (default)")]
     public bool IncludeFramework { get; set; } = false;
     
     [JsonPropertyName("maxPaths")]
-    [Description("Maximum number of paths to return (default: 10, max: 50)")]
+    [System.ComponentModel.Description("Maximum number of paths to return (default: 10, max: 50)")]
     public int? MaxPaths { get; set; }
 }
 
-public class TraceCallStackResult
+public class TraceCallStackToolResult : ToolResultBase
 {
-    [JsonPropertyName("success")]
-    public bool Success { get; set; }
+    public override string Operation => ToolNames.TraceCallStack;
+    
+    [JsonPropertyName("query")]
+    public QueryInfo? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
     
     [JsonPropertyName("startMethod")]
     public string? StartMethod { get; set; }
@@ -714,26 +705,11 @@ public class TraceCallStackResult
     [JsonPropertyName("paths")]
     public List<CallPath>? Paths { get; set; }
     
-    [JsonPropertyName("insights")]
-    public List<string>? Insights { get; set; }
-    
     [JsonPropertyName("keyFindings")]
     public Dictionary<string, string>? KeyFindings { get; set; }
     
-    [JsonPropertyName("message")]
-    public string? Message { get; set; }
-
-    [JsonPropertyName("nextActions")]
-    public List<NextAction>? NextActions { get; set; }
-    
-    [JsonPropertyName("error")]
-    public ErrorInfo? Error { get; set; }
-    
-    [JsonPropertyName("resourceUri")]
-    public string? ResourceUri { get; set; }
-    
-    [JsonPropertyName("meta")]
-    public ToolMetadata? Meta { get; set; }
+    [JsonPropertyName("resultsSummary")]
+    public ResultsSummary? ResultsSummary { get; set; }
 }
 
 public class CallPath

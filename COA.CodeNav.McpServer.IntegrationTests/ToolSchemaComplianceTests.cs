@@ -1,11 +1,13 @@
+using COA.CodeNav.McpServer.Configuration;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Tools;
+using COA.Mcp.Framework.Models;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using COA.CodeNav.McpServer.Configuration;
 
 namespace COA.CodeNav.McpServer.IntegrationTests;
 
@@ -39,7 +41,7 @@ public class ToolSchemaComplianceTests
         // Verify all required schema fields are present
         typedResult.Success.Should().BeTrue();
         typedResult.Message.Should().NotBeNullOrEmpty();
-        typedResult.Operation.Should().Be("roslyn_get_workspace_statistics");
+        typedResult.Operation.Should().Be(ToolNames.GetWorkspaceStatistics);
         
         // Standard fields
         typedResult.Query.Should().NotBeNull();
@@ -105,16 +107,16 @@ public class ToolSchemaComplianceTests
         
         // Should include hint to load workspace
         typedResult.Error.Recovery.Steps.Should().Contain(s => 
-            s.Contains("roslyn_load_solution") || s.Contains("roslyn_load_project"));
+            s.Contains(ToolNames.LoadSolution) || s.Contains(ToolNames.LoadProject));
     }
 
     [Fact]
     public void AllToolResults_ShouldInheritFromToolResultBase()
     {
         // This test verifies that all tool result types properly inherit from ToolResultBase
-        var assembly = typeof(ToolResultBase).Assembly;
+        var assembly = typeof(GoToDefinitionToolResult).Assembly;
         var toolResultTypes = assembly.GetTypes()
-            .Where(t => t.Name.EndsWith("ToolResult") && !t.IsAbstract && t != typeof(ToolResultBase))
+            .Where(t => t.Name.EndsWith("ToolResult") && !t.IsAbstract)
             .ToList();
 
         toolResultTypes.Should().NotBeEmpty("There should be tool result types in the assembly");
@@ -186,6 +188,6 @@ public class ToolSchemaComplianceTests
         typedResult.Success.Should().BeFalse();
         typedResult.Error.Should().NotBeNull();
         typedResult.Error!.Recovery!.Steps.Should().Contain(s => 
-            s.Contains("roslyn_load_solution") || s.Contains("roslyn_load_project"));
+            s.Contains(ToolNames.LoadSolution) || s.Contains(ToolNames.LoadProject));
     }
 }

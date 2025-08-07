@@ -1,231 +1,171 @@
 using System.Text.Json.Serialization;
-using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
 using Microsoft.Extensions.Logging;
 
 namespace COA.CodeNav.McpServer.Tools;
 
-[McpServerToolType]
-public class GetWorkspaceStatisticsTool
+/// <summary>
+/// Tool for getting workspace statistics and resource usage
+/// </summary>
+public class GetWorkspaceStatisticsTool : McpToolBase<GetWorkspaceStatisticsParams, GetWorkspaceStatisticsResult>
 {
     private readonly ILogger<GetWorkspaceStatisticsTool> _logger;
     private readonly MSBuildWorkspaceManager _workspaceManager;
 
+    public override string Name => "csharp_get_workspace_statistics";
+    public override string Description => "Get statistics about currently loaded workspaces and resource usage";
+
     public GetWorkspaceStatisticsTool(
         ILogger<GetWorkspaceStatisticsTool> logger,
         MSBuildWorkspaceManager workspaceManager)
+        : base(logger)
     {
         _logger = logger;
         _workspaceManager = workspaceManager;
     }
 
-    [McpServerTool(Name = "csharp_get_workspace_statistics")]
-    [Description(@"Get statistics about currently loaded workspaces and resource usage.
-Returns: Workspace count, memory usage, idle times, and access patterns.
-Use cases: Monitoring resource usage, debugging workspace issues, understanding cache behavior.")]
-    public Task<object> ExecuteAsync(GetWorkspaceStatisticsParams parameters, CancellationToken cancellationToken = default)
+    protected override Task<GetWorkspaceStatisticsResult> ExecuteInternalAsync(
+        GetWorkspaceStatisticsParams parameters,
+        CancellationToken cancellationToken)
     {
         var startTime = DateTime.UtcNow;
         
-        try
+        _logger.LogInformation("Getting workspace statistics");
+        
+        var stats = _workspaceManager.GetStatistics();
+        var process = System.Diagnostics.Process.GetCurrentProcess();
+        
+        var memoryMB = process.WorkingSet64 / (1024 * 1024);
+        
+        var result = new GetWorkspaceStatisticsResult
         {
-            _logger.LogInformation("Getting workspace statistics");
-            
-            var stats = _workspaceManager.GetStatistics();
-            var process = System.Diagnostics.Process.GetCurrentProcess();
-            
-            var memoryMB = process.WorkingSet64 / (1024 * 1024);
-            
-            return Task.FromResult<object>(new GetWorkspaceStatisticsResult
+            Success = true,
+            Message = $"Found {stats.TotalWorkspaces} active workspace(s)",
+            Query = new QueryInfo
             {
-                Success = true,
-                Message = $"Found {stats.TotalWorkspaces} active workspace(s)",
-                Query = new QueryInfo
-                {
-                    // No specific query parameters for this tool
-                },
-                Summary = new SummaryInfo
-                {
-                    TotalFound = stats.TotalWorkspaces,
-                    Returned = stats.TotalWorkspaces,
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-                },
-                Statistics = new WorkspaceStatisticsInfo
-                {
-                    TotalWorkspaces = stats.TotalWorkspaces,
-                    MaxWorkspaces = stats.MaxWorkspaces,
-                    AvailableSlots = stats.MaxWorkspaces - stats.TotalWorkspaces,
-                    OldestIdleTime = stats.OldestIdleTime.ToString(@"hh\:mm\:ss"),
-                    TotalAccessCount = stats.TotalAccessCount,
-                    MemoryUsageMB = memoryMB,
-                    GCMemoryMB = GC.GetTotalMemory(false) / (1024 * 1024),
-                    WorkspaceDetails = stats.WorkspaceDetails.Select(w => new WorkspaceDetailInfo
-                    {
-                        WorkspaceId = w.WorkspaceId,
-                        LoadedPath = w.LoadedPath ?? "N/A",
-                        CreatedAt = w.CreatedAt,
-                        LastAccessedAt = w.LastAccessedAt,
-                        AccessCount = w.AccessCount,
-                        IdleTime = w.IdleTime.ToString(@"hh\:mm\:ss"),
-                        IsStale = w.IdleTime > TimeSpan.FromMinutes(15)
-                    }).ToList()
-                },
-                ResultsSummary = new ResultsSummary
-                {
-                    Included = stats.TotalWorkspaces,
-                    Total = stats.TotalWorkspaces,
-                    HasMore = false
-                },
-                Insights = GenerateInsights(stats, process),
-                Actions = GenerateNextActions(stats, memoryMB),
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting workspace statistics");
-            return Task.FromResult<object>(new GetWorkspaceStatisticsResult
+                // No specific query parameters for this tool
+            },
+            Summary = new SummaryInfo
             {
-                Success = false,
-                Message = $"Error getting statistics: {ex.Message}",
-                Query = new QueryInfo
+                TotalFound = stats.TotalWorkspaces,
+                Returned = stats.TotalWorkspaces,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            },
+            Statistics = new WorkspaceStatisticsInfo
+            {
+                TotalWorkspaces = stats.TotalWorkspaces,
+                MaxWorkspaces = stats.MaxWorkspaces,
+                AvailableSlots = stats.MaxWorkspaces - stats.TotalWorkspaces,
+                OldestIdleTime = stats.OldestIdleTime.ToString(@"hh\:mm\:ss"),
+                TotalAccessCount = stats.TotalAccessCount,
+                MemoryUsageMB = memoryMB,
+                GCMemoryMB = GC.GetTotalMemory(false) / (1024 * 1024),
+                WorkspaceDetails = stats.WorkspaceDetails.Select(w => new WorkspaceDetailInfo
                 {
-                    // No specific query parameters for this tool
-                },
-                Error = new ErrorInfo
-                {
-                    Code = ErrorCodes.INTERNAL_ERROR,
-                    Recovery = new RecoveryInfo
-                    {
-                        Steps = new List<string>
-                        {
-                            "Check server logs for detailed error information",
-                            "Verify the server is running correctly"
-                        }
-                    }
-                },
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-                }
-            });
-        }
+                    WorkspaceId = w.WorkspaceId,
+                    LoadedPath = w.LoadedPath ?? "N/A",
+                    CreatedAt = w.CreatedAt,
+                    LastAccessedAt = w.LastAccessedAt,
+                    AccessCount = w.AccessCount,
+                    IdleTime = w.IdleTime.ToString(@"hh\:mm\:ss"),
+                    IsStale = w.IdleTime > TimeSpan.FromMinutes(15)
+                }).ToList()
+            },
+            ResultsSummary = new ResultsSummary
+            {
+                Included = stats.TotalWorkspaces,
+                Total = stats.TotalWorkspaces,
+                HasMore = false
+            },
+            Insights = GenerateInsights(stats, memoryMB),
+            Actions = GenerateNextActions(stats),
+            Meta = new ToolExecutionMetadata
+            {
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            }
+        };
+        
+        return Task.FromResult(result);
     }
 
-    private List<string> GenerateInsights(WorkspaceStatistics stats, System.Diagnostics.Process process)
+    private List<string> GenerateInsights(WorkspaceStatistics stats, long memoryMB)
     {
         var insights = new List<string>();
         
         // Workspace usage
-        var usage = (double)stats.TotalWorkspaces / stats.MaxWorkspaces * 100;
-        insights.Add($"Workspace capacity at {usage:F0}% ({stats.TotalWorkspaces}/{stats.MaxWorkspaces})");
+        var usage = stats.TotalWorkspaces == 0 ? 0 : (double)stats.TotalWorkspaces / stats.MaxWorkspaces * 100;
+        insights.Add($"📊 Workspace capacity at {usage:F0}% ({stats.TotalWorkspaces}/{stats.MaxWorkspaces})");
         
         // Memory usage
-        var memoryMB = process.WorkingSet64 / (1024 * 1024);
-        insights.Add($"Process memory usage: {memoryMB}MB");
+        insights.Add($"💾 Process memory usage: {memoryMB}MB");
         
         // Idle workspaces
         var idleCount = stats.WorkspaceDetails.Count(w => w.IdleTime > TimeSpan.FromMinutes(15));
         if (idleCount > 0)
         {
-            insights.Add($"{idleCount} workspace(s) idle for more than 15 minutes");
+            insights.Add($"⏱️ {idleCount} workspace(s) idle for more than 15 minutes");
         }
         
         // Access patterns
-        if (stats.TotalAccessCount > 0)
+        if (stats.TotalWorkspaces > 0 && stats.TotalAccessCount > 0)
         {
             var avgAccess = (double)stats.TotalAccessCount / stats.TotalWorkspaces;
-            insights.Add($"Average {avgAccess:F1} accesses per workspace");
+            insights.Add($"📈 Average {avgAccess:F1} accesses per workspace");
         }
         
         // Recommendations
         if (usage > 80)
         {
-            insights.Add("Consider closing unused workspaces to free resources");
+            insights.Add("⚠️ Consider closing unused workspaces to free resources");
         }
         
         if (memoryMB > 1500)
         {
-            insights.Add("High memory usage detected - idle workspaces may be evicted");
+            insights.Add("⚠️ High memory usage detected - idle workspaces may be evicted");
         }
         
         return insights;
     }
 
-    private List<NextAction> GenerateNextActions(WorkspaceStatistics stats, long memoryMB)
+    private List<AIAction> GenerateNextActions(WorkspaceStatistics stats)
     {
-        var actions = new List<NextAction>();
-
-        // If there are idle workspaces, suggest cleaning them up
-        var idleCount = stats.WorkspaceDetails.Count(w => w.IdleTime > TimeSpan.FromMinutes(15));
-        if (idleCount > 0)
-        {
-            var oldestIdle = stats.WorkspaceDetails
-                .Where(w => w.IdleTime > TimeSpan.FromMinutes(15))
-                .OrderByDescending(w => w.IdleTime)
-                .FirstOrDefault();
-
-            if (oldestIdle != null)
-            {
-                actions.Add(new NextAction
-                {
-                    Id = "close_idle_workspace",
-                    Description = $"Close idle workspace (idle for {oldestIdle.IdleTime})",
-                    ToolName = "workspace_close", // Future tool
-                    Parameters = new
-                    {
-                        workspaceId = oldestIdle.WorkspaceId
-                    },
-                    Priority = "medium"
-                });
-            }
-        }
+        var actions = new List<AIAction>();
 
         // If no workspaces are loaded, suggest loading one
         if (stats.TotalWorkspaces == 0)
         {
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = "load_solution",
+                Action = "csharp_load_solution",
                 Description = "Load a solution to start working",
-                ToolName = "csharp_load_solution",
-                Parameters = new
+                Parameters = new Dictionary<string, object>
                 {
-                    solutionPath = "<path-to-your-solution.sln>"
+                    ["solutionPath"] = "<path-to-your-solution.sln>"
                 },
-                Priority = "high"
-            });
-        }
-
-        // If memory usage is high, suggest garbage collection
-        if (memoryMB > 1500)
-        {
-            actions.Add(new NextAction
-            {
-                Id = "force_gc",
-                Description = "Force garbage collection to free memory",
-                ToolName = "system_gc", // Future tool
-                Parameters = new { },
-                Priority = "low"
+                Priority = 90
             });
         }
 
         // Always suggest refreshing stats
-        actions.Add(new NextAction
+        actions.Add(new AIAction
         {
-            Id = "refresh_stats",
+            Action = "csharp_get_workspace_statistics",
             Description = "Refresh workspace statistics",
-            ToolName = "csharp_get_workspace_statistics",
-            Parameters = new { },
-            Priority = "low"
+            Parameters = new Dictionary<string, object>(),
+            Priority = 30
         });
 
         return actions;
+    }
+
+    protected override int EstimateTokenUsage()
+    {
+        // Statistics typically return moderate amount of data
+        return 1500;
     }
 }
 

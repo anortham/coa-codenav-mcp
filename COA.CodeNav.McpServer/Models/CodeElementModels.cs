@@ -87,6 +87,27 @@ public class SymbolInfo
 }
 
 /// <summary>
+/// Document symbol information with hierarchical support
+/// </summary>
+public class DocumentSymbol : SymbolInfo
+{
+    [JsonPropertyName("modifiers")]
+    public List<string>? Modifiers { get; set; }
+
+    [JsonPropertyName("typeParameters")]
+    public List<string>? TypeParameters { get; set; }
+
+    [JsonPropertyName("parameters")]
+    public List<string>? Parameters { get; set; }
+
+    [JsonPropertyName("returnType")]
+    public string? ReturnType { get; set; }
+
+    [JsonPropertyName("children")]
+    public List<DocumentSymbol> Children { get; set; } = new();
+}
+
+/// <summary>
 /// Hover information
 /// </summary>
 public class HoverInfo

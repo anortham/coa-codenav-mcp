@@ -1,11 +1,13 @@
-using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
-using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
@@ -14,216 +16,141 @@ namespace COA.CodeNav.McpServer.Tools;
 /// <summary>
 /// MCP tool that provides symbol search functionality across the solution
 /// </summary>
-[McpServerToolType]
-public class SymbolSearchTool : ITool
+public class SymbolSearchTool : McpToolBase<SymbolSearchParams, SymbolSearchToolResult>
 {
     private readonly ILogger<SymbolSearchTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
-    
-    // Removed hard limit - now using dynamic token estimation
 
-    public string ToolName => "csharp_symbol_search";
-    public string Description => "Search for symbols by name or pattern across the solution";
+    public override string Name => ToolNames.SymbolSearch;
+    public override string Description => @"Search for symbols by name or pattern across the entire solution.
+Returns: List of matching symbols with their locations, types, and metadata.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if no workspace is loaded.
+Use cases: Finding symbols by name/pattern, discovering types, locating methods, exploring namespaces.
+Not for: Finding references to a symbol (use csharp_find_all_references), navigating to definition (use csharp_goto_definition).";
 
     public SymbolSearchTool(
         ILogger<SymbolSearchTool> logger,
         RoslynWorkspaceService workspaceService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_symbol_search")]
-    [Description(@"Search for symbols by name or pattern across the entire solution.
-Returns: List of matching symbols with their locations, types, and metadata.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if no workspace is loaded.
-Use cases: Finding symbols by name/pattern, discovering types, locating methods, exploring namespaces.
-Not for: Finding references to a symbol (use csharp_find_all_references), navigating to definition (use csharp_goto_definition).")]
-    public async Task<object> ExecuteAsync(SymbolSearchParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<SymbolSearchToolResult> ExecuteInternalAsync(
+        SymbolSearchParams parameters,
+        CancellationToken cancellationToken)
     {
         _logger.LogDebug("SymbolSearch request received: Query={Query}, SearchType={SearchType}, SymbolKinds={SymbolKinds}", 
             parameters.Query, parameters.SearchType, string.Join(",", parameters.SymbolKinds ?? Array.Empty<string>()));
             
         var startTime = DateTime.UtcNow;
-            
-        try
+
+        _logger.LogInformation("Processing SymbolSearch for query: {Query}", parameters.Query);
+
+        // Check if any workspaces are loaded
+        var workspaces = _workspaceService.GetActiveWorkspaces();
+        if (!workspaces.Any())
         {
-            _logger.LogInformation("Processing SymbolSearch for query: {Query}", parameters.Query);
-
-            // Check if any workspaces are loaded
-            var workspaces = _workspaceService.GetActiveWorkspaces();
-            if (!workspaces.Any())
-            {
-                _logger.LogWarning("No workspace loaded");
-                return new SymbolSearchToolResult
-                {
-                    Success = false,
-                    Message = "No workspace loaded. Please load a solution or project first.",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.WORKSPACE_NOT_LOADED,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Load a solution using csharp_load_solution",
-                                "Or load a project using csharp_load_project",
-                                "Then retry the symbol search"
-                            },
-                            SuggestedActions = new List<SuggestedAction>
-                            {
-                                new SuggestedAction
-                                {
-                                    Tool = "csharp_load_solution",
-                                    Description = "Load a solution file",
-                                    Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
-                                }
-                            }
-                        }
-                    },
-                    Query = new SymbolSearchQuery 
-                    { 
-                        SearchPattern = parameters.Query,
-                        SearchType = parameters.SearchType ?? "contains",
-                        SymbolKinds = parameters.SymbolKinds?.ToList()
-                    },
-                    Meta = new ToolMetadata { ExecutionTime = "0ms" }
-                };
-            }
-
-            // Get all solutions from all workspaces
-            var allProjects = new List<Project>();
-            foreach (var workspace in workspaces)
-            {
-                allProjects.AddRange(workspace.Solution.Projects);
-            }
-            var symbols = new ConcurrentBag<Models.SymbolInfo>();
-            var searchPattern = BuildSearchPattern(parameters.Query, parameters.SearchType);
-
-            // Process all projects in parallel
-            var tasks = allProjects.Select(project => Task.Run(async () =>
-            {
-                try
-                {
-                    var compilation = await project.GetCompilationAsync(cancellationToken);
-                    if (compilation == null) return;
-
-                    // Search in global namespace
-                    await SearchSymbolsInNamespace(
-                        compilation.GlobalNamespace, 
-                        searchPattern, 
-                        parameters, 
-                        symbols,
-                        project.Name,
-                        cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error searching symbols in project {ProjectName}", project.Name);
-                }
-            }, cancellationToken));
-
-            await Task.WhenAll(tasks);
-
-            // Sort all symbols
-            var allSymbols = symbols
-                .OrderBy(s => s.Name)
-                .ThenBy(s => s.FullName)
-                .ToList();
-                
-            // Apply token management
-            var response = TokenEstimator.CreateTokenAwareResponse(
-                allSymbols,
-                syms => EstimateSymbolTokens(syms),
-                requestedMax: parameters.MaxResults ?? 100, // Default to 100 symbols
-                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                toolName: "csharp_symbol_search"
-            );
-
-            if (!response.Items.Any())
-            {
-                return new SymbolSearchToolResult
-                {
-                    Success = false,
-                    Message = $"No symbols found matching '{parameters.Query}'",
-                    Insights = new List<string>
-                    {
-                        "Try using wildcards: *Service to find symbols ending with 'Service'",
-                        "Use fuzzy search by appending ~: UserSrvc~ to find similar names",
-                        "Check if the solution is fully loaded and compiled"
-                    },
-                    Query = new SymbolSearchQuery 
-                    { 
-                        SearchPattern = parameters.Query,
-                        SearchType = parameters.SearchType ?? "contains",
-                        SymbolKinds = parameters.SymbolKinds?.ToList()
-                    },
-                    Summary = new SummaryInfo
-                    {
-                        TotalFound = 0,
-                        Returned = 0,
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            // Generate insights (use all symbols for accurate insights)
-            var insights = GenerateInsights(allSymbols, response.Items, parameters);
-            
-            // Add truncation message if needed
-            if (response.WasTruncated)
-            {
-                insights.Insert(0, response.GetTruncationMessage());
-            }
-            
-            // Generate next actions
-            var nextActions = GenerateNextActions(response.Items);
-            
-            // Add action to get more results if truncated
-            if (response.WasTruncated)
-            {
-                nextActions.Insert(0, new NextAction
-                {
-                    Id = "get_more_symbols",
-                    Description = "Get additional symbols",
-                    ToolName = "csharp_symbol_search",
-                    Parameters = new
-                    {
-                        query = parameters.Query,
-                        searchType = parameters.SearchType,
-                        maxResults = Math.Min(allSymbols.Count, 500)
-                    },
-                    Priority = "high"
-                });
-            }
-            
-            // Store full results if truncated
-            string? resourceUri = null;
-            if (response.WasTruncated && _resourceProvider != null)
-            {
-                resourceUri = _resourceProvider.StoreAnalysisResult("symbol-search",
-                    new { query = parameters.Query, results = allSymbols, totalCount = allSymbols.Count },
-                    $"All {allSymbols.Count} symbols matching: {parameters.Query}");
-            }
-            
+            _logger.LogWarning("No workspace loaded");
             return new SymbolSearchToolResult
             {
-                Success = true,
-                Message = response.WasTruncated 
-                    ? $"Found {allSymbols.Count} symbols matching '{parameters.Query}' (showing {response.ReturnedCount})"
-                    : $"Found {allSymbols.Count} symbols matching '{parameters.Query}'",
-                Symbols = response.Items,
-                Insights = insights,
-                Actions = nextActions,
-                ResourceUri = resourceUri,
+                Success = false,
+                Message = "No workspace loaded. Please load a solution or project first.",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.WORKSPACE_NOT_LOADED,
+                    Message = "No workspace loaded. Please load a solution or project first.",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Load a solution using csharp_load_solution",
+                            "Or load a project using csharp_load_project",
+                            "Then retry the symbol search"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
+                            {
+                                Tool = "csharp_load_solution",
+                                Description = "Load a solution file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
+                            }
+                        }
+                    }
+                },
+                Query = new SymbolSearchQuery 
+                { 
+                    SearchPattern = parameters.Query,
+                    SearchType = parameters.SearchType ?? "contains",
+                    SymbolKinds = parameters.SymbolKinds?.ToList()
+                },
+                Meta = new ToolExecutionMetadata { ExecutionTime = "0ms" }
+            };
+        }
+
+        // Get all solutions from all workspaces
+        var allProjects = new List<Project>();
+        foreach (var workspace in workspaces)
+        {
+            allProjects.AddRange(workspace.Solution.Projects);
+        }
+        var symbols = new ConcurrentBag<Models.SymbolInfo>();
+        var searchPattern = BuildSearchPattern(parameters.Query, parameters.SearchType);
+
+        // Process all projects in parallel
+        var tasks = allProjects.Select(project => Task.Run(async () =>
+        {
+            try
+            {
+                var compilation = await project.GetCompilationAsync(cancellationToken);
+                if (compilation == null) return;
+
+                // Search in global namespace
+                await SearchSymbolsInNamespace(
+                    compilation.GlobalNamespace, 
+                    searchPattern, 
+                    parameters, 
+                    symbols,
+                    project.Name,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error searching symbols in project {ProjectName}", project.Name);
+            }
+        }, cancellationToken));
+
+        await Task.WhenAll(tasks);
+
+        // Sort all symbols
+        var allSymbols = symbols
+            .OrderBy(s => s.Name)
+            .ThenBy(s => s.FullName)
+            .ToList();
+
+        // Apply max results limit if specified
+        var maxResults = parameters.MaxResults ?? 100;
+        var returnedSymbols = allSymbols.Take(maxResults).ToList();
+        var wasTruncated = allSymbols.Count > returnedSymbols.Count;
+
+        if (!allSymbols.Any())
+        {
+            return new SymbolSearchToolResult
+            {
+                Success = false,
+                Message = $"No symbols found matching '{parameters.Query}'",
+                Insights = new List<string>
+                {
+                    "Try using wildcards: *Service to find symbols ending with 'Service'",
+                    "Use fuzzy search by appending ~: UserSrvc~ to find similar names",
+                    "Check if the solution is fully loaded and compiled"
+                },
                 Query = new SymbolSearchQuery 
                 { 
                     SearchPattern = parameters.Query,
@@ -232,56 +159,112 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
                 },
                 Summary = new SummaryInfo
                 {
-                    TotalFound = allSymbols.Count,
-                    Returned = response.ReturnedCount,
+                    TotalFound = 0,
+                    Returned = 0,
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                 },
-                ResultsSummary = new ResultsSummary
-                {
-                    Included = response.ReturnedCount,
-                    Total = allSymbols.Count,
-                    HasMore = response.WasTruncated
-                },
-                Meta = new ToolMetadata 
-                { 
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    Truncated = response.WasTruncated,
-                    Tokens = response.EstimatedTokens
-                }
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in Symbol Search");
-            return new SymbolSearchToolResult
-            {
-                Success = false,
-                Message = $"Error: {ex.Message}",
-                Error = new ErrorInfo
-                {
-                    Code = ErrorCodes.INTERNAL_ERROR,
-                    Recovery = new RecoveryInfo
-                    {
-                        Steps = new List<string>
-                        {
-                            "Check the server logs for detailed error information",
-                            "Verify the solution/project is loaded correctly",
-                            "Try the operation again"
-                        }
-                    }
-                },
-                Query = new SymbolSearchQuery 
-                { 
-                    SearchPattern = parameters.Query,
-                    SearchType = parameters.SearchType ?? "contains",
-                    SymbolKinds = parameters.SymbolKinds?.ToList()
-                },
-                Meta = new ToolMetadata 
+                Meta = new ToolExecutionMetadata 
                 { 
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                 }
             };
         }
+
+        // Generate insights
+        var insights = GenerateInsights(allSymbols, returnedSymbols, parameters);
+        
+        // Add truncation message if needed
+        if (wasTruncated)
+        {
+            insights.Insert(0, $"⚠️ Showing {returnedSymbols.Count} of {allSymbols.Count} symbols. Use maxResults parameter to get more.");
+        }
+        
+        // Generate next actions
+        var nextActions = GenerateNextActions(returnedSymbols);
+        
+        // Add action to get more results if truncated
+        if (wasTruncated)
+        {
+            nextActions.Insert(0, new AIAction
+            {
+                Action = ToolNames.SymbolSearch,
+                Description = "Get additional symbols",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["query"] = parameters.Query,
+                    ["searchType"] = parameters.SearchType ?? "contains",
+                    ["maxResults"] = Math.Min(allSymbols.Count, 500)
+                },
+                Priority = 95,
+                Category = "pagination"
+            });
+        }
+        
+        // Store full results as a resource if truncated
+        string? resourceUri = null;
+        if (wasTruncated && _resourceProvider != null)
+        {
+            var fullData = new
+            {
+                query = parameters.Query,
+                searchType = parameters.SearchType,
+                totalFound = allSymbols.Count,
+                symbols = allSymbols,
+                executionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            };
+            
+            resourceUri = _resourceProvider.StoreAnalysisResult(
+                "symbol-search",
+                fullData,
+                $"All {allSymbols.Count} symbols matching '{parameters.Query}'"
+            );
+            
+            _logger.LogDebug("Stored full symbol search results as resource: {ResourceUri}", resourceUri);
+        }
+        
+        // Generate distribution information
+        var distribution = new SymbolDistribution
+        {
+            ByKind = allSymbols.GroupBy(s => s.Kind).ToDictionary(g => g.Key, g => g.Count()),
+            ByProject = allSymbols.GroupBy(s => s.ProjectName ?? "Unknown").ToDictionary(g => g.Key, g => g.Count()),
+            ByNamespace = allSymbols.GroupBy(s => s.Namespace ?? "Global").ToDictionary(g => g.Key, g => g.Count())
+        };
+        
+        return new SymbolSearchToolResult
+        {
+            Success = true,
+            Message = wasTruncated 
+                ? $"Found {allSymbols.Count} symbols matching '{parameters.Query}' (showing {returnedSymbols.Count})"
+                : $"Found {allSymbols.Count} symbols matching '{parameters.Query}'",
+            Symbols = returnedSymbols,
+            Insights = insights,
+            Actions = nextActions,
+            ResourceUri = resourceUri,
+            Query = new SymbolSearchQuery 
+            { 
+                SearchPattern = parameters.Query,
+                SearchType = parameters.SearchType ?? "contains",
+                SymbolKinds = parameters.SymbolKinds?.ToList()
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = allSymbols.Count,
+                Returned = returnedSymbols.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            },
+            ResultsSummary = new ResultsSummary
+            {
+                Included = returnedSymbols.Count,
+                Total = allSymbols.Count,
+                HasMore = wasTruncated
+            },
+            Distribution = distribution,
+            Meta = new ToolExecutionMetadata 
+            { 
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                Truncated = wasTruncated
+            }
+        };
     }
 
     private async Task SearchSymbolsInNamespace(
@@ -477,21 +460,10 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
 
         return patternIndex == pattern.Length;
     }
-
-    private int EstimateSymbolTokens(List<Models.SymbolInfo> symbols)
-    {
-        return TokenEstimator.EstimateCollection(
-            symbols,
-            symbol => TokenEstimator.Roslyn.EstimateSymbol(symbol),
-            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
-        );
-    }
     
     private List<string> GenerateInsights(List<Models.SymbolInfo> allSymbols, List<Models.SymbolInfo> returnedSymbols, SymbolSearchParams parameters)
     {
         var insights = new List<string>();
-
-        // Truncation is now handled by TokenEstimator
 
         // Distribution by symbol kind
         var kindGroups = allSymbols.GroupBy(s => s.Kind).OrderByDescending(g => g.Count());
@@ -507,7 +479,6 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
         // Common patterns
         if (parameters.SearchType == "wildcard" && parameters.Query.Contains("*"))
         {
-            var pattern = parameters.Query.Replace("*", "");
             insights.Add($"All results match the pattern '{parameters.Query}'");
         }
 
@@ -521,79 +492,88 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
         return insights;
     }
 
-    private List<NextAction> GenerateNextActions(List<Models.SymbolInfo> symbols)
+    private List<AIAction> GenerateNextActions(List<Models.SymbolInfo> symbols)
     {
-        var actions = new List<NextAction>();
+        var actions = new List<AIAction>();
 
         // Take first few symbols for next actions
         foreach (var symbol in symbols.Take(3))
         {
             if (symbol.Location != null)
             {
-                actions.Add(new NextAction
+                actions.Add(new AIAction
                 {
-                    Id = $"goto_{symbol.Name.ToLower()}",
+                    Action = ToolNames.GoToDefinition,
                     Description = $"Go to definition of '{symbol.Name}'",
-                    ToolName = "csharp_goto_definition",
-                    Parameters = new
+                    Parameters = new Dictionary<string, object>
                     {
-                        filePath = symbol.Location.FilePath,
-                        line = symbol.Location.Line,
-                        column = symbol.Location.Column
+                        ["filePath"] = symbol.Location.FilePath,
+                        ["line"] = symbol.Location.Line,
+                        ["column"] = symbol.Location.Column
                     },
-                    Priority = "medium"
+                    Priority = 80,
+                    Category = "navigation"
                 });
 
-                actions.Add(new NextAction
+                actions.Add(new AIAction
                 {
-                    Id = $"refs_{symbol.Name.ToLower()}",
+                    Action = ToolNames.FindAllReferences,
                     Description = $"Find references to '{symbol.Name}'",
-                    ToolName = "csharp_find_all_references",
-                    Parameters = new
+                    Parameters = new Dictionary<string, object>
                     {
-                        filePath = symbol.Location.FilePath,
-                        line = symbol.Location.Line,
-                        column = symbol.Location.Column
+                        ["filePath"] = symbol.Location.FilePath,
+                        ["line"] = symbol.Location.Line,
+                        ["column"] = symbol.Location.Column
                     },
-                    Priority = "medium"
+                    Priority = 75,
+                    Category = "navigation"
                 });
             }
         }
 
         return actions;
     }
+
+    protected override int EstimateTokenUsage()
+    {
+        // Estimate for typical SymbolSearch response
+        // Base response structure + typical symbol count
+        return 5000;
+    }
 }
 
+/// <summary>
+/// Parameters for SymbolSearch tool
+/// </summary>
 public class SymbolSearchParams
 {
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Query is required")]
     [JsonPropertyName("query")]
-    [Description("Symbol name or pattern to search for (e.g., 'UserService', 'User*', 'IUser.*')")]
-    public required string Query { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Symbol name or pattern to search for (e.g., 'UserService', 'User*', 'IUser.*')")]
+    public string Query { get; set; } = string.Empty;
 
     [JsonPropertyName("searchType")]
-    [Description("Search type: 'contains' (default), 'exact', 'startswith', 'endswith', 'wildcard', 'regex', 'fuzzy'")]
+    [COA.Mcp.Framework.Attributes.Description("Search type: 'contains' (default), 'exact', 'startswith', 'endswith', 'wildcard', 'regex', 'fuzzy'")]
     public string? SearchType { get; set; }
 
     [JsonPropertyName("symbolKinds")]
-    [Description("Filter by symbol kinds: 'Class', 'Interface', 'Method', 'Property', 'Field', 'Event', 'Namespace', 'Struct', 'Enum', 'Delegate'")]
+    [COA.Mcp.Framework.Attributes.Description("Filter by symbol kinds: 'Class', 'Interface', 'Method', 'Property', 'Field', 'Event', 'Namespace', 'Struct', 'Enum', 'Delegate'")]
     public string[]? SymbolKinds { get; set; }
 
     [JsonPropertyName("includePrivate")]
-    [Description("Include private symbols (default: false)")]
+    [COA.Mcp.Framework.Attributes.Description("Include private symbols (default: false)")]
     public bool? IncludePrivate { get; set; }
 
     [JsonPropertyName("namespaceFilter")]
-    [Description("Filter by namespace (contains match)")]
+    [COA.Mcp.Framework.Attributes.Description("Filter by namespace (contains match)")]
     public string? NamespaceFilter { get; set; }
 
     [JsonPropertyName("projectFilter")]
-    [Description("Filter by project name (contains match)")]
+    [COA.Mcp.Framework.Attributes.Description("Filter by project name (contains match)")]
     public string? ProjectFilter { get; set; }
 
+    [System.ComponentModel.DataAnnotations.Range(1, 500, ErrorMessage = "MaxResults must be between 1 and 500")]
     [JsonPropertyName("maxResults")]
-    [Description("Maximum number of results to return (default: 100, max: 500)")]
+    [COA.Mcp.Framework.Attributes.Description("Maximum number of results to return (default: 100, max: 500)")]
     public int? MaxResults { get; set; }
 }
-
-// Result classes have been moved to COA.CodeNav.McpServer.Models namespace
-// Note: SymbolInfo for SymbolSearchTool remains in Models namespace but with enhanced properties

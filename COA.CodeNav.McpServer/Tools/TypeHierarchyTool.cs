@@ -1,34 +1,42 @@
-using System.Text.Json.Serialization;
-using COA.CodeNav.McpServer.Attributes;
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
-using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.Interfaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
+using DataAnnotations = System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace COA.CodeNav.McpServer.Tools;
 
 /// <summary>
 /// MCP tool that generates type hierarchy information including inheritance chains and interface implementations
 /// </summary>
-[McpServerToolType]
-public class TypeHierarchyTool : ITool
+public class TypeHierarchyTool : McpToolBase<TypeHierarchyParams, TypeHierarchyResult>
 {
     private readonly ILogger<TypeHierarchyTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_type_hierarchy";
-    public string Description => "View inheritance hierarchy and interface implementations for types";
+    public override string Name => "csharp_type_hierarchy";
+    public override string Description => @"View the complete type hierarchy including base classes, derived types, and interface implementations.
+Returns: Hierarchical view of type relationships with inheritance chains and implementations.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if type is not found.
+Use cases: Understanding inheritance relationships, finding all implementations, exploring type hierarchies.
+AI benefit: Provides complete view of type relationships for better code understanding.";
 
     public TypeHierarchyTool(
         ILogger<TypeHierarchyTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -36,293 +44,227 @@ public class TypeHierarchyTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_type_hierarchy")]
-    [Description(@"View the complete type hierarchy including base classes, derived types, and interface implementations.
-Returns: Hierarchical view of type relationships with inheritance chains and implementations.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if type is not found.
-Use cases: Understanding inheritance relationships, finding all implementations, exploring type hierarchies.
-AI benefit: Provides complete view of type relationships for better code understanding.")]
-    public async Task<object> ExecuteAsync(TypeHierarchyParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<TypeHierarchyResult> ExecuteInternalAsync(
+        TypeHierarchyParams parameters,
+        CancellationToken cancellationToken)
     {
-        var startTime = DateTime.UtcNow;
         _logger.LogDebug("TypeHierarchy request: FilePath={FilePath}, Line={Line}, Column={Column}", 
             parameters.FilePath, parameters.Line, parameters.Column);
 
-        try
+        var startTime = DateTime.UtcNow;
+
+        var document = await _documentService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            var document = await _documentService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
-            {
-                return new TypeHierarchyResult
-                {
-                    Success = false,
-                    Message = $"Document not found: {parameters.FilePath}",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.DOCUMENT_NOT_FOUND,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Verify the file path is correct and absolute",
-                                "Ensure the solution or project containing this file is loaded",
-                                "Use csharp_load_solution or csharp_load_project if needed"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo 
-                    { 
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            var tree = await document.GetSyntaxTreeAsync(cancellationToken);
-            if (tree == null)
-            {
-                return new TypeHierarchyResult
-                {
-                    Success = false,
-                    Message = "Failed to get syntax tree",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.INTERNAL_ERROR,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Check if the file contains valid C# code",
-                                "Try reloading the solution"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo 
-                    { 
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            var position = tree.GetText().Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
-                parameters.Line - 1, parameters.Column - 1));
-            
-            var root = await tree.GetRootAsync(cancellationToken);
-            var token = root.FindToken(position);
-            
-            // Find the type declaration
-            var typeDeclaration = token.Parent?.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().FirstOrDefault();
-            if (typeDeclaration == null)
-            {
-                return new TypeHierarchyResult
-                {
-                    Success = false,
-                    Message = "No type found at the specified position",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Ensure the cursor is positioned on a class, struct, or interface declaration",
-                                "Try adjusting the column position to the type name"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo 
-                    { 
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            if (semanticModel == null)
-            {
-                return new TypeHierarchyResult
-                {
-                    Success = false,
-                    Message = "Failed to get semantic model",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.INTERNAL_ERROR,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Ensure the project compiles without errors",
-                                "Try reloading the solution"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo 
-                    { 
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration) as INamedTypeSymbol;
-            if (typeSymbol == null)
-            {
-                return new TypeHierarchyResult
-                {
-                    Success = false,
-                    Message = "Failed to resolve type symbol",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.SYMBOL_NOT_FOUND,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "Ensure the type declaration is valid",
-                                "Check if there are compilation errors"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo 
-                    { 
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            var workspace = _workspaceService.GetActiveWorkspaces().FirstOrDefault();
-            if (workspace == null)
-            {
-                return new TypeHierarchyResult
-                {
-                    Success = false,
-                    Message = "No workspace loaded",
-                    Error = new ErrorInfo
-                    {
-                        Code = ErrorCodes.WORKSPACE_NOT_LOADED,
-                        Recovery = new RecoveryInfo
-                        {
-                            Steps = new List<string>
-                            {
-                                "This should not happen as document was found",
-                                "Try reloading the solution"
-                            }
-                        }
-                    },
-                    Query = new QueryInfo 
-                    { 
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            var solution = workspace.Solution;
-            var insights = new List<string>();
-            var actions = new List<NextAction>();
-
-            // Build the hierarchy
-            var hierarchy = new TypeHierarchyInfo
-            {
-                Type = CreateTypeInfo(typeSymbol),
-                BaseTypes = await GetBaseTypesAsync(typeSymbol, solution, parameters.MaxDepth, cancellationToken),
-                DerivedTypes = await GetDerivedTypesAsync(typeSymbol, solution, parameters.IncludeDerived, cancellationToken),
-                ImplementedInterfaces = GetImplementedInterfaces(typeSymbol, parameters.MaxDepth),
-                ImplementingTypes = await GetImplementingTypesAsync(typeSymbol, solution, parameters.IncludeImplementations, cancellationToken)
-            };
-
-            // Generate insights
-            GenerateInsights(hierarchy, typeSymbol, insights);
-
-            // Generate next actions
-            GenerateNextActions(hierarchy, typeSymbol, parameters, actions);
-
-            return new TypeHierarchyResult
-            {
-                Success = true,
-                Message = $"Type hierarchy for '{typeSymbol.Name}'",
-                Query = new QueryInfo 
-                { 
-                    FilePath = parameters.FilePath,
-                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
-                    TargetSymbol = typeSymbol.ToDisplayString()
-                },
-                Hierarchy = hierarchy,
-                Summary = new TypeHierarchySummary
-                {
-                    BaseTypeCount = CountBaseTypes(hierarchy.BaseTypes),
-                    DerivedTypeCount = hierarchy.DerivedTypes?.Count ?? 0,
-                    InterfaceCount = hierarchy.ImplementedInterfaces?.Count ?? 0,
-                    ImplementingTypeCount = hierarchy.ImplementingTypes?.Count ?? 0,
-                    TotalRelatedTypes = CountAllRelatedTypes(hierarchy)
-                },
-                Insights = insights,
-                Actions = actions,
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-                }
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error generating type hierarchy");
             return new TypeHierarchyResult
             {
                 Success = false,
-                Message = $"Error generating type hierarchy: {ex.Message}",
+                Message = $"Document not found: {parameters.FilePath}",
                 Error = new ErrorInfo
                 {
-                    Code = ErrorCodes.INTERNAL_ERROR,
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
+                    Message = $"Document not found: {parameters.FilePath}",
                     Recovery = new RecoveryInfo
                     {
-                        Steps = new List<string>
+                        Steps = new[]
                         {
-                            "Check the server logs for detailed error information",
-                            "Verify the file contains valid C# code",
-                            "Try reloading the solution"
+                            "Verify the file path is correct and absolute",
+                            "Ensure the solution or project containing this file is loaded",
+                            "Use csharp_load_solution or csharp_load_project if needed"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
+                            {
+                                Tool = "csharp_load_solution",
+                                Description = "Load the solution containing this file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
+                            }
                         }
                     }
-                },
-                Query = new QueryInfo 
-                { 
-                    FilePath = parameters.FilePath,
-                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                },
-                Meta = new ToolMetadata 
-                { 
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                 }
             };
         }
+
+        var tree = await document.GetSyntaxTreeAsync(cancellationToken);
+        if (tree == null)
+        {
+            return new TypeHierarchyResult
+            {
+                Success = false,
+                Message = "Failed to get syntax tree",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.INTERNAL_ERROR,
+                    Message = "Failed to get syntax tree",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Check if the file contains valid C# code",
+                            "Try reloading the solution"
+                        }
+                    }
+                }
+            };
+        }
+
+        var position = tree.GetText().Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
+            parameters.Line - 1, parameters.Column - 1));
+        
+        var root = await tree.GetRootAsync(cancellationToken);
+        var token = root.FindToken(position);
+        
+        // Find the type declaration
+        var typeDeclaration = token.Parent?.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().FirstOrDefault();
+        if (typeDeclaration == null)
+        {
+            return new TypeHierarchyResult
+            {
+                Success = false,
+                Message = "No type found at the specified position",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
+                    Message = "No type found at the specified position",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Ensure the cursor is positioned on a class, struct, or interface declaration",
+                            "Try adjusting the column position to the type name"
+                        }
+                    }
+                }
+            };
+        }
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+        if (semanticModel == null)
+        {
+            return new TypeHierarchyResult
+            {
+                Success = false,
+                Message = "Failed to get semantic model",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
+                    Message = "Failed to get semantic model",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Ensure the project compiles without errors",
+                            "Try reloading the solution"
+                        }
+                    }
+                }
+            };
+        }
+
+        var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration) as INamedTypeSymbol;
+        if (typeSymbol == null)
+        {
+            return new TypeHierarchyResult
+            {
+                Success = false,
+                Message = "Failed to resolve type symbol",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.SYMBOL_NOT_FOUND,
+                    Message = "Failed to resolve type symbol",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Ensure the type declaration is valid",
+                            "Check if there are compilation errors"
+                        }
+                    }
+                }
+            };
+        }
+
+        var workspace = _workspaceService.GetActiveWorkspaces().FirstOrDefault();
+        if (workspace == null)
+        {
+            return new TypeHierarchyResult
+            {
+                Success = false,
+                Message = "No workspace loaded",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.WORKSPACE_NOT_LOADED,
+                    Message = "No workspace loaded",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "This should not happen as document was found",
+                            "Try reloading the solution"
+                        }
+                    }
+                }
+            };
+        }
+
+        var solution = workspace.Solution;
+
+        // Build the hierarchy
+        var hierarchy = new TypeHierarchyInfo
+        {
+            Type = CreateTypeInfo(typeSymbol),
+            BaseTypes = await GetBaseTypesAsync(typeSymbol, solution, parameters.MaxDepth, cancellationToken),
+            DerivedTypes = await GetDerivedTypesAsync(typeSymbol, solution, parameters.IncludeDerived, cancellationToken),
+            ImplementedInterfaces = GetImplementedInterfaces(typeSymbol, parameters.MaxDepth),
+            ImplementingTypes = await GetImplementingTypesAsync(typeSymbol, solution, parameters.IncludeImplementations, cancellationToken)
+        };
+
+        // Generate insights and next actions
+        var insights = GenerateInsights(hierarchy, typeSymbol);
+        var nextActions = GenerateNextActions(hierarchy, typeSymbol, parameters);
+
+        var summary = new TypeHierarchySummary
+        {
+            BaseTypeCount = CountBaseTypes(hierarchy.BaseTypes),
+            DerivedTypeCount = hierarchy.DerivedTypes?.Count ?? 0,
+            InterfaceCount = hierarchy.ImplementedInterfaces?.Count ?? 0,
+            ImplementingTypeCount = hierarchy.ImplementingTypes?.Count ?? 0,
+            TotalRelatedTypes = CountAllRelatedTypes(hierarchy)
+        };
+
+        return new TypeHierarchyResult
+        {
+            Success = true,
+            Message = $"Type hierarchy for '{typeSymbol.Name}'",
+            Query = new QueryInfo 
+            { 
+                FilePath = parameters.FilePath,
+                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                TargetSymbol = typeSymbol.ToDisplayString()
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = summary.TotalRelatedTypes,
+                Returned = summary.TotalRelatedTypes,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                SymbolInfo = new SymbolSummary
+                {
+                    Name = typeSymbol.Name,
+                    Kind = typeSymbol.TypeKind.ToString(),
+                    ContainingType = typeSymbol.ContainingType?.ToDisplayString(),
+                    Namespace = typeSymbol.ContainingNamespace?.ToDisplayString()
+                }
+            },
+            Hierarchy = hierarchy,
+            TypeSummary = summary,
+            Insights = insights,
+            Actions = nextActions,
+            Meta = new ToolExecutionMetadata
+            {
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            }
+        };
     }
 
     private Task<List<TypeReference>> GetBaseTypesAsync(INamedTypeSymbol typeSymbol, Solution solution, 
@@ -368,14 +310,12 @@ AI benefit: Provides complete view of type relationships for better code underst
 
         var derivedTypes = new List<TypeReference>();
 
-        // Search all projects in the solution
         foreach (var project in solution.Projects)
         {
             var compilation = await project.GetCompilationAsync(cancellationToken);
             if (compilation == null)
                 continue;
 
-            // Get all types in the project
             var types = GetAllTypes(compilation.GlobalNamespace);
 
             foreach (var type in types)
@@ -384,7 +324,6 @@ AI benefit: Provides complete view of type relationships for better code underst
                 {
                     var derivedType = CreateTypeInfo(type);
                     
-                    // Add location if available
                     var location = type.Locations.FirstOrDefault(l => l.IsInSource);
                     if (location != null)
                     {
@@ -416,7 +355,6 @@ AI benefit: Provides complete view of type relationships for better code underst
         {
             var interfaceInfo = CreateTypeInfo(interfaceType);
             
-            // Add location if available
             var location = interfaceType.Locations.FirstOrDefault(l => l.IsInSource);
             if (location != null)
             {
@@ -431,9 +369,7 @@ AI benefit: Provides complete view of type relationships for better code underst
                 };
             }
 
-            // Mark if directly implemented vs inherited
             interfaceInfo.IsDirect = typeSymbol.Interfaces.Contains(interfaceType, SymbolEqualityComparer.Default);
-
             interfaces.Add(interfaceInfo);
         }
 
@@ -448,14 +384,12 @@ AI benefit: Provides complete view of type relationships for better code underst
 
         var implementingTypes = new List<TypeReference>();
 
-        // Search all projects in the solution
         foreach (var project in solution.Projects)
         {
             var compilation = await project.GetCompilationAsync(cancellationToken);
             if (compilation == null)
                 continue;
 
-            // Get all types in the project
             var types = GetAllTypes(compilation.GlobalNamespace);
 
             foreach (var type in types)
@@ -464,7 +398,6 @@ AI benefit: Provides complete view of type relationships for better code underst
                 {
                     var implementingType = CreateTypeInfo(type);
                     
-                    // Add location if available
                     var location = type.Locations.FirstOrDefault(l => l.IsInSource);
                     if (location != null)
                     {
@@ -493,14 +426,12 @@ AI benefit: Provides complete view of type relationships for better code underst
         {
             yield return type;
             
-            // Recursively get nested types
             foreach (var nestedType in GetNestedTypes(type))
             {
                 yield return nestedType;
             }
         }
 
-        // Recursively process nested namespaces
         foreach (var nestedNamespace in namespaceSymbol.GetNamespaceMembers())
         {
             foreach (var type in GetAllTypes(nestedNamespace))
@@ -516,7 +447,6 @@ AI benefit: Provides complete view of type relationships for better code underst
         {
             yield return nestedType;
             
-            // Recursively get nested types
             foreach (var deeperNestedType in GetNestedTypes(nestedType))
             {
                 yield return deeperNestedType;
@@ -555,67 +485,73 @@ AI benefit: Provides complete view of type relationships for better code underst
                (hierarchy.ImplementingTypes?.Count ?? 0);
     }
 
-    private void GenerateInsights(TypeHierarchyInfo hierarchy, INamedTypeSymbol typeSymbol, List<string> insights)
+    private List<string> GenerateInsights(TypeHierarchyInfo hierarchy, INamedTypeSymbol typeSymbol)
     {
+        var insights = new List<string>();
+
         // Type characteristics
         if (typeSymbol.IsAbstract)
-            insights.Add($"🔷 Abstract {typeSymbol.TypeKind.ToString().ToLower()} - cannot be instantiated directly");
+            insights.Add($"Abstract {typeSymbol.TypeKind.ToString().ToLower()} - cannot be instantiated directly");
         else if (typeSymbol.IsSealed)
-            insights.Add($"🔒 Sealed {typeSymbol.TypeKind.ToString().ToLower()} - cannot be inherited");
+            insights.Add($"Sealed {typeSymbol.TypeKind.ToString().ToLower()} - cannot be inherited");
         else if (typeSymbol.IsStatic)
-            insights.Add($"📊 Static {typeSymbol.TypeKind.ToString().ToLower()} - cannot be instantiated or inherited");
+            insights.Add($"Static {typeSymbol.TypeKind.ToString().ToLower()} - cannot be instantiated or inherited");
 
         // Inheritance depth
         var inheritanceDepth = hierarchy.BaseTypes?.Count ?? 0;
         if (inheritanceDepth > 3)
-            insights.Add($"⚠️ Deep inheritance hierarchy ({inheritanceDepth} levels) - consider composition");
+            insights.Add($"Deep inheritance hierarchy ({inheritanceDepth} levels) - consider composition");
         else if (inheritanceDepth == 0 && typeSymbol.TypeKind == TypeKind.Class)
-            insights.Add("📌 Inherits directly from System.Object");
+            insights.Add("Inherits directly from System.Object");
 
         // Interface implementation
         var interfaceCount = hierarchy.ImplementedInterfaces?.Count ?? 0;
         if (interfaceCount > 0)
         {
             var directCount = hierarchy.ImplementedInterfaces?.Count(i => i.IsDirect) ?? 0;
-            insights.Add($"🔌 Implements {interfaceCount} interface(s) ({directCount} directly)");
+            insights.Add($"Implements {interfaceCount} interface(s) ({directCount} directly)");
         }
 
         // Derived types
         var derivedCount = hierarchy.DerivedTypes?.Count ?? 0;
         if (derivedCount > 0)
-            insights.Add($"🌳 Has {derivedCount} derived type(s) - changes may impact them");
+            insights.Add($"Has {derivedCount} derived type(s) - changes may impact them");
 
         // If interface, implementing types
         if (typeSymbol.TypeKind == TypeKind.Interface)
         {
             var implementingCount = hierarchy.ImplementingTypes?.Count ?? 0;
             if (implementingCount > 0)
-                insights.Add($"✅ Implemented by {implementingCount} type(s)");
+                insights.Add($"Implemented by {implementingCount} type(s)");
             else
-                insights.Add("⚠️ No implementations found in the solution");
+                insights.Add("No implementations found in the solution");
         }
 
         // Generic type info
         if (typeSymbol.IsGenericType)
-            insights.Add($"🔤 Generic type with {typeSymbol.Arity} type parameter(s)");
+            insights.Add($"Generic type with {typeSymbol.Arity} type parameter(s)");
+
+        return insights;
     }
 
-    private void GenerateNextActions(TypeHierarchyInfo hierarchy, INamedTypeSymbol typeSymbol, 
-        TypeHierarchyParams parameters, List<NextAction> actions)
+    private List<AIAction> GenerateNextActions(TypeHierarchyInfo hierarchy, INamedTypeSymbol typeSymbol, 
+        TypeHierarchyParams parameters)
     {
+        var actions = new List<AIAction>();
+
         // Suggest finding all references
-        actions.Add(new NextAction
+        actions.Add(new AIAction
         {
-            Id = "find_type_references",
+            Action = "csharp_find_all_references",
             Description = $"Find all references to '{typeSymbol.Name}'",
-            ToolName = "csharp_find_all_references",
-            Parameters = new
+            Parameters = new Dictionary<string, object>
             {
-                filePath = parameters.FilePath,
-                line = parameters.Line,
-                column = parameters.Column
+                ["filePath"] = parameters.FilePath,
+                ["line"] = parameters.Line,
+                ["column"] = parameters.Column
             },
-            Priority = "high"
+            Priority = 90,
+            Category = "navigation"
         });
 
         // If has derived types, suggest analyzing them
@@ -624,18 +560,18 @@ AI benefit: Provides complete view of type relationships for better code underst
             var firstDerived = hierarchy.DerivedTypes.First();
             if (firstDerived.Location != null)
             {
-                actions.Add(new NextAction
+                actions.Add(new AIAction
                 {
-                    Id = "analyze_derived",
+                    Action = "csharp_type_hierarchy",
                     Description = $"Analyze derived type '{firstDerived.Name}'",
-                    ToolName = "csharp_type_hierarchy",
-                    Parameters = new
+                    Parameters = new Dictionary<string, object>
                     {
-                        filePath = firstDerived.Location.FilePath,
-                        line = firstDerived.Location.Line,
-                        column = firstDerived.Location.Column
+                        ["filePath"] = firstDerived.Location.FilePath,
+                        ["line"] = firstDerived.Location.Line,
+                        ["column"] = firstDerived.Location.Column
                     },
-                    Priority = "medium"
+                    Priority = 70,
+                    Category = "exploration"
                 });
             }
         }
@@ -644,80 +580,81 @@ AI benefit: Provides complete view of type relationships for better code underst
         if (hierarchy.ImplementedInterfaces?.Any(i => i.IsDirect && i.Location != null) == true)
         {
             var firstInterface = hierarchy.ImplementedInterfaces.First(i => i.IsDirect && i.Location != null);
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = "explore_interface",
+                Action = "csharp_get_type_members",
                 Description = $"Explore interface '{firstInterface.Name}'",
-                ToolName = ToolNames.GetTypeMembers,
-                Parameters = new
+                Parameters = new Dictionary<string, object>
                 {
-                    filePath = firstInterface.Location!.FilePath,
-                    line = firstInterface.Location.Line,
-                    column = firstInterface.Location.Column
+                    ["filePath"] = firstInterface.Location!.FilePath,
+                    ["line"] = firstInterface.Location.Line,
+                    ["column"] = firstInterface.Location.Column
                 },
-                Priority = "medium"
+                Priority = 60,
+                Category = "exploration"
             });
         }
 
-        // Suggest finding unused code if sealed with no derived types
-        if (typeSymbol.IsSealed && (hierarchy.DerivedTypes?.Count ?? 0) == 0)
-        {
-            actions.Add(new NextAction
-            {
-                Id = "check_usage",
-                Description = "Check if this sealed type is unused",
-                ToolName = "csharp_find_unused_code",
-                Parameters = new
-                {
-                    scope = "file",
-                    filePath = parameters.FilePath,
-                    symbolKinds = new[] { "Class" }
-                },
-                Priority = "low"
-            });
-        }
+        return actions;
+    }
+
+    protected override int EstimateTokenUsage()
+    {
+        // Estimate for typical type hierarchy response
+        return 3000;
     }
 }
 
+/// <summary>
+/// Parameters for TypeHierarchy tool
+/// </summary>
 public class TypeHierarchyParams
 {
+    [DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file")]
-    public required string FilePath { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Path to the source file")]
+    public string FilePath { get; set; } = string.Empty;
 
+    [DataAnnotations.Required]
+    [DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Line must be positive")]
     [JsonPropertyName("line")]
-    [Description("Line number (1-based) where the type is declared")]
+    [COA.Mcp.Framework.Attributes.Description("Line number (1-based) where the type is declared")]
     public int Line { get; set; }
 
+    [DataAnnotations.Required]
+    [DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Column must be positive")]
     [JsonPropertyName("column")]
-    [Description("Column number (1-based) where the type is declared")]
+    [COA.Mcp.Framework.Attributes.Description("Column number (1-based) where the type is declared")]
     public int Column { get; set; }
 
     [JsonPropertyName("includeDerived")]
-    [Description("Include types that derive from this type (default: true)")]
+    [COA.Mcp.Framework.Attributes.Description("Include types that derive from this type (default: true)")]
     public bool IncludeDerived { get; set; } = true;
 
     [JsonPropertyName("includeImplementations")]
-    [Description("Include types that implement this interface (default: true)")]
+    [COA.Mcp.Framework.Attributes.Description("Include types that implement this interface (default: true)")]
     public bool IncludeImplementations { get; set; } = true;
 
     [JsonPropertyName("maxDepth")]
-    [Description("Maximum depth for base type hierarchy (default: 10)")]
+    [COA.Mcp.Framework.Attributes.Description("Maximum depth for base type hierarchy (default: 10)")]
     public int MaxDepth { get; set; } = 10;
 }
 
 public class TypeHierarchyResult : ToolResultBase
 {
-    public override string Operation => ToolNames.TypeHierarchy;
+    public override string Operation => "csharp_type_hierarchy";
 
     [JsonPropertyName("query")]
     public QueryInfo? Query { get; set; }
+    
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
 
     [JsonPropertyName("hierarchy")]
     public TypeHierarchyInfo? Hierarchy { get; set; }
 
-    [JsonPropertyName("summary")]
-    public TypeHierarchySummary? Summary { get; set; }
+    [JsonPropertyName("typeSummary")]
+    public TypeHierarchySummary? TypeSummary { get; set; }
 }
 
 public class TypeHierarchyInfo

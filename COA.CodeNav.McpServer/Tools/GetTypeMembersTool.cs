@@ -1,7 +1,9 @@
-using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
-using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -12,24 +14,24 @@ using System.Text.Json.Serialization;
 namespace COA.CodeNav.McpServer.Tools;
 
 /// <summary>
-/// MCP tool that lists all members of a type with documentation
+/// MCP tool that lists all members of a type with documentation using COA.Mcp.Framework v1.1.0
 /// </summary>
-[McpServerToolType]
-public class GetTypeMembersTool : ITool
+public class GetTypeMembersTool : McpToolBase<GetTypeMembersParams, GetTypeMembersToolResult>
 {
     private readonly ILogger<GetTypeMembersTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_get_type_members";
-    public string Description => "List all members of a type with their signatures and documentation";
+    public override string Name => ToolNames.GetTypeMembers;
+    public override string Description => "List all members of a type including methods, properties, fields, and events with their documentation.";
 
     public GetTypeMembersTool(
         ILogger<GetTypeMembersTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -37,317 +39,276 @@ public class GetTypeMembersTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_get_type_members")]
-    [Description(@"List all members of a type including methods, properties, fields, and events with their documentation.
-Returns: Detailed list of type members with signatures, documentation, and metadata.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if type is not found.
-Use cases: Exploring type APIs, understanding type structure, generating documentation, finding specific members.
-Not for: Finding implementations (use csharp_find_implementations), searching across types (use csharp_symbol_search).")]
-    public async Task<object> ExecuteAsync(GetTypeMembersParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<GetTypeMembersToolResult> ExecuteInternalAsync(
+        GetTypeMembersParams parameters,
+        CancellationToken cancellationToken)
     {
+        var startTime = DateTime.UtcNow;
+
         _logger.LogDebug("GetTypeMembers request received: FilePath={FilePath}, Line={Line}, Column={Column}", 
             parameters.FilePath, parameters.Line, parameters.Column);
-            
-        try
+
+        // Get the document
+        _logger.LogDebug("Retrieving document from workspace: {FilePath}", parameters.FilePath);
+        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            _logger.LogInformation("Processing GetTypeMembers for {FilePath} at {Line}:{Column}", 
-                parameters.FilePath, parameters.Line, parameters.Column);
-
-            // Get the document
-            _logger.LogDebug("Retrieving document from workspace: {FilePath}", parameters.FilePath);
-            var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
+            _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
+            return new GetTypeMembersToolResult
             {
-                _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return new GetTypeMembersResult
+                Success = false,
+                Message = $"Document not found in workspace: {parameters.FilePath}",
+                Error = new ErrorInfo
                 {
-                    Found = false,
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
                     Message = $"Document not found in workspace: {parameters.FilePath}",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.DOCUMENT_NOT_FOUND,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
+                            "Ensure the file path is correct and absolute",
+                            "Verify the solution/project containing this file is loaded",
+                            "Use csharp_load_solution or csharp_load_project to load the containing project"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
                             {
-                                "Ensure the file path is correct and absolute",
-                                "Verify the solution/project containing this file is loaded",
-                                "Use csharp_load_solution or csharp_load_project to load the containing project"
-                            },
-                            SuggestedActions = new List<SuggestedAction>
-                            {
-                                new SuggestedAction
-                                {
-                                    Tool = "csharp_load_solution",
-                                    Description = "Load the solution containing this file",
-                                    Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
-                                }
+                                Tool = "csharp_load_solution",
+                                Description = "Load the solution containing this file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                             }
                         }
                     }
-                };
-            }
+                }
+            };
+        }
 
-            // Get the source text
-            var sourceText = await document.GetTextAsync(cancellationToken);
-            
-            // Convert line/column to position (adjusting for 0-based indexing)
-            var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
-                parameters.Line - 1, 
-                parameters.Column - 1));
+        // Get the source text
+        var sourceText = await document.GetTextAsync(cancellationToken);
+        
+        // Convert line/column to position (adjusting for 0-based indexing)
+        var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
+            parameters.Line - 1, 
+            parameters.Column - 1));
 
-            // Get semantic model
-            _logger.LogDebug("Getting semantic model for document");
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            if (semanticModel == null)
+        // Get semantic model
+        _logger.LogDebug("Getting semantic model for document");
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+        if (semanticModel == null)
+        {
+            _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
+            return new GetTypeMembersToolResult
             {
-                _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
-                return new GetTypeMembersResult
+                Success = false,
+                Message = "Could not get semantic model for document",
+                Error = new ErrorInfo
                 {
-                    Found = false,
+                    Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
                     Message = "Could not get semantic model for document",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
-                            {
-                                "Ensure the project is fully loaded and compiled",
-                                "Check for compilation errors in the project",
-                                "Try reloading the solution"
-                            }
+                            "Ensure the project is fully loaded and compiled",
+                            "Check for compilation errors in the project",
+                            "Try reloading the solution"
                         }
                     }
-                };
-            }
+                }
+            };
+        }
 
-            // Find symbol at position
-            _logger.LogDebug("Searching for symbol at position {Position}", position);
-            var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
-                semanticModel, 
-                position, 
-                document.Project.Solution.Workspace, 
-                cancellationToken);
+        // Find symbol at position
+        _logger.LogDebug("Searching for symbol at position {Position}", position);
+        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
+            semanticModel, 
+            position, 
+            document.Project.Solution.Workspace, 
+            cancellationToken);
 
-            if (symbol == null)
+        if (symbol == null)
+        {
+            _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
+                parameters.Line, parameters.Column, parameters.FilePath);
+            return new GetTypeMembersToolResult
             {
-                _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
-                    parameters.Line, parameters.Column, parameters.FilePath);
-                return new GetTypeMembersResult
+                Success = false,
+                Message = "No symbol found at the specified position",
+                Error = new ErrorInfo
                 {
-                    Found = false,
+                    Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
                     Message = "No symbol found at the specified position",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
-                            {
-                                "Verify the line and column numbers are correct (1-based)",
-                                "Ensure the cursor is on a type symbol",
-                                "Try adjusting the column position to the start of the type name"
-                            }
-                        }
-                    }
-                };
-            }
-
-            // Get the type symbol (if symbol is a member, get its containing type)
-            INamedTypeSymbol? typeSymbol = symbol as INamedTypeSymbol;
-            if (typeSymbol == null && symbol.ContainingType != null)
-            {
-                typeSymbol = symbol.ContainingType;
-            }
-
-            if (typeSymbol == null)
-            {
-                return new GetTypeMembersResult
-                {
-                    Found = false,
-                    SymbolName = symbol.ToDisplayString(),
-                    SymbolKind = symbol.Kind.ToString(),
-                    Message = $"Symbol '{symbol.Name}' is not a type or is not contained in a type",
-                    Insights = new List<string>
-                    {
-                        "This tool works with classes, interfaces, structs, records, and enums",
-                        "For namespace members, use Document Symbols tool"
-                    }
-                };
-            }
-
-            // Get all members
-            var allMembers = new List<TypeMemberInfo>();
-            var allSymbolMembers = typeSymbol.GetMembers();
-
-            foreach (var member in allSymbolMembers)
-            {
-                // Skip compiler-generated members unless requested
-                if (!parameters.IncludeCompilerGenerated.GetValueOrDefault() && IsCompilerGenerated(member))
-                    continue;
-
-                // Apply filters
-                if (!ShouldIncludeMember(member, parameters))
-                    continue;
-
-                var memberInfo = CreateMemberInfo(member, parameters.IncludeDocumentation ?? true);
-                if (memberInfo != null)
-                {
-                    allMembers.Add(memberInfo);
-                }
-            }
-
-            // Include inherited members if requested
-            if (parameters.IncludeInherited.GetValueOrDefault())
-            {
-                var baseType = typeSymbol.BaseType;
-                while (baseType != null && baseType.SpecialType != SpecialType.System_Object)
-                {
-                    foreach (var member in baseType.GetMembers())
-                    {
-                        if (!ShouldIncludeMember(member, parameters))
-                            continue;
-
-                        if (IsOverriddenInDerived(member, typeSymbol))
-                            continue;
-
-                        var memberInfo = CreateMemberInfo(member, parameters.IncludeDocumentation ?? true);
-                        if (memberInfo != null)
-                        {
-                            memberInfo.IsInherited = true;
-                            memberInfo.DeclaringType = baseType.ToDisplayString();
-                            allMembers.Add(memberInfo);
-                        }
-                    }
-                    baseType = baseType.BaseType;
-                }
-
-                // Include interface members
-                foreach (var iface in typeSymbol.AllInterfaces)
-                {
-                    foreach (var member in iface.GetMembers())
-                    {
-                        if (!ShouldIncludeMember(member, parameters))
-                            continue;
-
-                        var memberInfo = CreateMemberInfo(member, parameters.IncludeDocumentation ?? true);
-                        if (memberInfo != null)
-                        {
-                            memberInfo.IsInherited = true;
-                            memberInfo.DeclaringType = iface.ToDisplayString();
-                            memberInfo.IsInterfaceMember = true;
-                            allMembers.Add(memberInfo);
+                            "Verify the line and column numbers are correct (1-based)",
+                            "Ensure the cursor is on a type symbol",
+                            "Try adjusting the column position to the start of the type name"
                         }
                     }
                 }
+            };
+        }
+
+        // Get the type symbol (if symbol is a member, get its containing type)
+        INamedTypeSymbol? typeSymbol = symbol as INamedTypeSymbol;
+        if (typeSymbol == null && symbol.ContainingType != null)
+        {
+            typeSymbol = symbol.ContainingType;
+        }
+
+        if (typeSymbol == null)
+        {
+            return new GetTypeMembersToolResult
+            {
+                Success = false,
+                Message = $"Symbol '{symbol.Name}' is not a type or is not contained in a type",
+                Insights = new List<string>
+                {
+                    "This tool works with classes, interfaces, structs, records, and enums",
+                    "For namespace members, use Document Symbols tool"
+                }
+            };
+        }
+
+        // Get all members
+        var allMembers = new List<TypeMemberInfo>();
+        var allSymbolMembers = typeSymbol.GetMembers();
+
+        foreach (var member in allSymbolMembers)
+        {
+            // Skip compiler-generated members unless requested
+            if (!parameters.IncludeCompilerGenerated && IsCompilerGenerated(member))
+                continue;
+
+            // Apply filters
+            if (!ShouldIncludeMember(member, parameters))
+                continue;
+
+            var memberInfo = CreateMemberInfo(member, parameters.IncludeDocumentation);
+            if (memberInfo != null)
+            {
+                allMembers.Add(memberInfo);
+            }
+        }
+
+        // Include inherited members if requested
+        if (parameters.IncludeInherited)
+        {
+            var baseType = typeSymbol.BaseType;
+            while (baseType != null && baseType.SpecialType != SpecialType.System_Object)
+            {
+                foreach (var member in baseType.GetMembers())
+                {
+                    if (!ShouldIncludeMember(member, parameters))
+                        continue;
+
+                    if (IsOverriddenInDerived(member, typeSymbol))
+                        continue;
+
+                    var memberInfo = CreateMemberInfo(member, parameters.IncludeDocumentation);
+                    if (memberInfo != null)
+                    {
+                        memberInfo.IsInherited = true;
+                        memberInfo.DeclaringType = baseType.ToDisplayString();
+                        allMembers.Add(memberInfo);
+                    }
+                }
+                baseType = baseType.BaseType;
             }
 
-            // Sort members
-            allMembers = SortMembers(allMembers, parameters.SortBy ?? "Kind");
-            
-            // Apply token management
-            var response = TokenEstimator.CreateTokenAwareResponse(
-                allMembers,
-                members => EstimateTypeMemberTokens(members, parameters.IncludeDocumentation ?? true),
-                requestedMax: parameters.MaxResults ?? 100, // Default to 100 members
-                safetyLimit: parameters.IncludeDocumentation ?? true 
-                    ? TokenEstimator.DEFAULT_SAFETY_LIMIT 
-                    : TokenEstimator.DEFAULT_SAFETY_LIMIT * 2, // Allow more without docs
-                toolName: "csharp_get_type_members"
-            );
-
-            // Generate insights (use all members for accurate insights)
-            var insights = GenerateInsights(typeSymbol, allMembers);
-            
-            // Add truncation message if needed
-            if (response.WasTruncated)
+            // Include interface members
+            foreach (var iface in typeSymbol.AllInterfaces)
             {
-                insights.Insert(0, response.GetTruncationMessage());
-                
-                // Suggest excluding documentation if it was included
-                if (parameters.IncludeDocumentation ?? true)
+                foreach (var member in iface.GetMembers())
                 {
-                    insights.Add("💡 TIP: Set includeDocumentation=false to see more members within token limits");
+                    if (!ShouldIncludeMember(member, parameters))
+                        continue;
+
+                    var memberInfo = CreateMemberInfo(member, parameters.IncludeDocumentation);
+                    if (memberInfo != null)
+                    {
+                        memberInfo.IsInherited = true;
+                        memberInfo.DeclaringType = iface.ToDisplayString();
+                        memberInfo.IsInterfaceMember = true;
+                        allMembers.Add(memberInfo);
+                    }
                 }
             }
+        }
 
-            // Generate next actions
-            var nextActions = GenerateNextActions(typeSymbol, response.Items);
-            
-            // Add action to get more results if truncated
-            if (response.WasTruncated)
-            {
-                nextActions.Insert(0, new NextAction
-                {
-                    Id = "get_more_members",
-                    Description = "Get additional members",
-                    ToolName = "csharp_get_type_members",
-                    Parameters = new
-                    {
-                        filePath = parameters.FilePath,
-                        line = parameters.Line,
-                        column = parameters.Column,
-                        maxResults = Math.Min(allMembers.Count, 500),
-                        includeDocumentation = false // Suggest without docs for more results
-                    },
-                    Priority = "high"
-                });
-            }
+        // Sort members
+        allMembers = SortMembers(allMembers, parameters.SortBy ?? "Kind");
+        
+        // Apply max results limit
+        var returnedMembers = allMembers.Take(parameters.MaxResults).ToList();
+        var wasTruncated = returnedMembers.Count < allMembers.Count;
 
-            // Store full result if truncated
-            string? resourceUri = null;
-            if (response.WasTruncated && _resourceProvider != null)
-            {
-                resourceUri = _resourceProvider.StoreAnalysisResult("type-members",
-                    new { type = typeSymbol.ToDisplayString(), members = allMembers, totalCount = allMembers.Count },
-                    $"All {allMembers.Count} members of {typeSymbol.Name}");
-            }
+        // Generate insights
+        var insights = GenerateInsights(typeSymbol, allMembers, wasTruncated, parameters.IncludeDocumentation);
+        
+        // Generate next actions
+        var actions = GenerateNextActions(typeSymbol, returnedMembers, wasTruncated, parameters);
 
-            return new GetTypeMembersResult
+        // Create distribution
+        var distribution = CreateDistribution(allMembers);
+
+        // Store full result if truncated
+        string? resourceUri = null;
+        if (wasTruncated && _resourceProvider != null)
+        {
+            resourceUri = _resourceProvider.StoreAnalysisResult("type-members",
+                new { type = typeSymbol.ToDisplayString(), members = allMembers, totalCount = allMembers.Count },
+                $"All {allMembers.Count} members of {typeSymbol.Name}");
+        }
+
+        return new GetTypeMembersToolResult
+        {
+            Success = true,
+            Message = wasTruncated 
+                ? $"Found {allMembers.Count} members - showing {returnedMembers.Count}"
+                : $"Found {allMembers.Count} members in '{typeSymbol.Name}'",
+            Query = new GetTypeMembersQuery
             {
-                Found = true,
+                FilePath = parameters.FilePath,
+                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                TargetSymbol = typeSymbol.ToDisplayString(),
+                IncludeInherited = parameters.IncludeInherited,
+                IncludePrivate = parameters.IncludePrivate,
+                IncludeDocumentation = parameters.IncludeDocumentation,
+                MemberKinds = parameters.MemberKinds?.ToList(),
+                SortBy = parameters.SortBy,
+                MaxResults = parameters.MaxResults
+            },
+            Summary = new GetTypeMembersSummary
+            {
                 TypeName = typeSymbol.ToDisplayString(),
                 TypeKind = typeSymbol.TypeKind.ToString(),
                 TotalMembers = allMembers.Count,
-                Members = response.Items,
-                Message = response.WasTruncated 
-                    ? $"Found {allMembers.Count} members - showing {response.ReturnedCount}"
-                    : $"Found {allMembers.Count} members in '{typeSymbol.Name}'",
-                Insights = insights,
-                NextActions = nextActions,
-                ResourceUri = resourceUri,
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = "0ms", // TODO: Add timing
-                    Truncated = response.WasTruncated,
-                    Tokens = response.EstimatedTokens
-                }
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in Get Type Members");
-            return new GetTypeMembersResult
+                PublicMembers = allMembers.Count(m => m.Accessibility == "Public"),
+                VirtualMembers = allMembers.Count(m => m.IsVirtual || m.IsAbstract),
+                InheritedMembers = allMembers.Count(m => m.IsInherited),
+                Returned = returnedMembers.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            },
+            Members = returnedMembers,
+            ResultsSummary = new ResultsSummary
             {
-                Found = false,
-                Message = $"Error: {ex.Message}",
-                Error = new ErrorInfo
-                {
-                    Code = ErrorCodes.INTERNAL_ERROR,
-                    Recovery = new RecoveryInfo
-                    {
-                        Steps = new List<string>
-                        {
-                            "Check the server logs for detailed error information",
-                            "Verify the solution/project is loaded correctly",
-                            "Try the operation again"
-                        }
-                    }
-                }
-            };
-        }
+                Total = allMembers.Count,
+                Included = returnedMembers.Count,
+                HasMore = wasTruncated
+            },
+            Distribution = distribution,
+            ResourceUri = resourceUri,
+            Insights = insights,
+            Actions = actions,
+            Meta = new ToolExecutionMetadata 
+            { 
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+            }
+        };
     }
 
     private bool IsCompilerGenerated(ISymbol symbol)
@@ -360,10 +321,10 @@ Not for: Finding implementations (use csharp_find_implementations), searching ac
     private bool ShouldIncludeMember(ISymbol member, GetTypeMembersParams parameters)
     {
         // Filter by accessibility
-        if (!parameters.IncludePrivate.GetValueOrDefault() && member.DeclaredAccessibility == Accessibility.Private)
+        if (!parameters.IncludePrivate && member.DeclaredAccessibility == Accessibility.Private)
             return false;
 
-        if (!parameters.IncludeProtected.GetValueOrDefault() && member.DeclaredAccessibility == Accessibility.Protected)
+        if (!parameters.IncludeProtected && member.DeclaredAccessibility == Accessibility.Protected)
             return false;
 
         // Filter by member kinds
@@ -701,7 +662,7 @@ Not for: Finding implementations (use csharp_find_implementations), searching ac
         };
     }
 
-    private List<string> GenerateInsights(INamedTypeSymbol typeSymbol, List<TypeMemberInfo> members)
+    private List<string> GenerateInsights(INamedTypeSymbol typeSymbol, List<TypeMemberInfo> members, bool wasTruncated, bool includeDocumentation)
     {
         var insights = new List<string>();
 
@@ -739,37 +700,51 @@ Not for: Finding implementations (use csharp_find_implementations), searching ac
         }
 
         // Documentation coverage
-        var documented = members.Count(m => !string.IsNullOrEmpty(m.Documentation));
-        if (documented < members.Count)
+        if (includeDocumentation)
         {
-            var percentage = (documented * 100) / members.Count;
-            insights.Add($"Documentation coverage: {percentage}% ({documented}/{members.Count})");
+            var documented = members.Count(m => !string.IsNullOrEmpty(m.Documentation));
+            if (documented < members.Count)
+            {
+                var percentage = (documented * 100) / members.Count;
+                insights.Add($"Documentation coverage: {percentage}% ({documented}/{members.Count})");
+            }
+        }
+
+        if (wasTruncated)
+        {
+            insights.Add($"Response truncated to stay within token limits");
+            if (includeDocumentation)
+            {
+                insights.Add("Set includeDocumentation=false to see more members within token limits");
+            }
         }
 
         return insights;
     }
 
-    private int EstimateTypeMemberTokens(List<TypeMemberInfo> members, bool includeDocumentation)
+    private List<AIAction> GenerateNextActions(INamedTypeSymbol typeSymbol, List<TypeMemberInfo> members, bool wasTruncated, GetTypeMembersParams originalParams)
     {
-        return TokenEstimator.EstimateCollection(
-            members,
-            member => {
-                var tokens = TokenEstimator.Roslyn.EstimateTypeMember(member);
-                if (!includeDocumentation && member.Documentation != null)
-                {
-                    // Subtract documentation tokens if excluded
-                    // Documentation is now a single string in TypeMemberInfo
-                    tokens -= TokenEstimator.EstimateString(member.Documentation) / 2;
-                }
-                return Math.Max(tokens, 50); // Minimum 50 tokens per member
-            },
-            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
-        );
-    }
+        var actions = new List<AIAction>();
 
-    private List<NextAction> GenerateNextActions(INamedTypeSymbol typeSymbol, List<TypeMemberInfo> members)
-    {
-        var actions = new List<NextAction>();
+        // Suggest getting more results if truncated
+        if (wasTruncated)
+        {
+            actions.Add(new AIAction
+            {
+                Action = ToolNames.GetTypeMembers,
+                Description = "Get additional members without documentation",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["filePath"] = originalParams.FilePath,
+                    ["line"] = originalParams.Line,
+                    ["column"] = originalParams.Column,
+                    ["maxResults"] = Math.Min(originalParams.MaxResults * 2, 500),
+                    ["includeDocumentation"] = false
+                },
+                Priority = 95,
+                Category = "pagination"
+            });
+        }
 
         // Suggest finding implementations if abstract or interface
         if (typeSymbol.IsAbstract || typeSymbol.TypeKind == TypeKind.Interface)
@@ -778,18 +753,18 @@ Not for: Finding implementations (use csharp_find_implementations), searching ac
             if (location != null)
             {
                 var lineSpan = location.GetLineSpan();
-                actions.Add(new NextAction
+                actions.Add(new AIAction
                 {
-                    Id = "find_implementations",
+                    Action = ToolNames.FindImplementations,
                     Description = $"Find implementations of {typeSymbol.Name}",
-                    ToolName = "csharp_find_implementations",
-                    Parameters = new
+                    Parameters = new Dictionary<string, object>
                     {
-                        filePath = lineSpan.Path,
-                        line = lineSpan.StartLinePosition.Line + 1,
-                        column = lineSpan.StartLinePosition.Character + 1
+                        ["filePath"] = lineSpan.Path,
+                        ["line"] = lineSpan.StartLinePosition.Line + 1,
+                        ["column"] = lineSpan.StartLinePosition.Character + 1
                     },
-                    Priority = "high"
+                    Priority = 90,
+                    Category = "navigation"
                 });
             }
         }
@@ -801,19 +776,19 @@ Not for: Finding implementations (use csharp_find_implementations), searching ac
 
         foreach (var method in publicMethods)
         {
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = $"trace_{method.Name.ToLower()}",
+                Action = ToolNames.TraceCallStack,
                 Description = $"Trace calls to {method.Name}",
-                ToolName = "csharp_trace_call_stack",
-                Parameters = new
+                Parameters = new Dictionary<string, object>
                 {
-                    filePath = method.Location!.FilePath,
-                    line = method.Location.Line,
-                    column = method.Location.Column,
-                    direction = "backward"
+                    ["filePath"] = method.Location!.FilePath,
+                    ["line"] = method.Location.Line,
+                    ["column"] = method.Location.Column,
+                    ["direction"] = "backward"
                 },
-                Priority = "medium"
+                Priority = 70,
+                Category = "analysis"
             });
         }
 
@@ -822,121 +797,97 @@ Not for: Finding implementations (use csharp_find_implementations), searching ac
         if (typeLocation != null)
         {
             var lineSpan = typeLocation.GetLineSpan();
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = "find_type_usage",
+                Action = ToolNames.FindAllReferences,
                 Description = $"Find where {typeSymbol.Name} is used",
-                ToolName = "csharp_find_all_references",
-                Parameters = new
+                Parameters = new Dictionary<string, object>
                 {
-                    filePath = lineSpan.Path,
-                    line = lineSpan.StartLinePosition.Line + 1,
-                    column = lineSpan.StartLinePosition.Character + 1
+                    ["filePath"] = lineSpan.Path,
+                    ["line"] = lineSpan.StartLinePosition.Line + 1,
+                    ["column"] = lineSpan.StartLinePosition.Character + 1
                 },
-                Priority = "low"
+                Priority = 60,
+                Category = "navigation"
             });
         }
 
         return actions;
     }
+
+    private TypeMembersDistribution CreateDistribution(List<TypeMemberInfo> members)
+    {
+        return new TypeMembersDistribution
+        {
+            ByKind = members.GroupBy(m => m.Kind)
+                           .ToDictionary(g => g.Key, g => g.Count()),
+            ByAccessibility = members.GroupBy(m => m.Accessibility)
+                                   .ToDictionary(g => g.Key, g => g.Count()),
+            BySource = members.GroupBy(m => m.IsInherited ? "Inherited" : "Own")
+                             .ToDictionary(g => g.Key, g => g.Count())
+        };
+    }
+
+    protected override int EstimateTokenUsage()
+    {
+        // Conservative estimate for type members response
+        // Base response + per-member cost (varies with documentation)
+        return 5000;
+    }
 }
 
+/// <summary>
+/// Parameters for GetTypeMembers tool
+/// </summary>
 public class GetTypeMembersParams
 {
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file")]
-    public required string FilePath { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Path to the source file")]
+    public string FilePath { get; set; } = string.Empty;
 
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Line must be positive")]
     [JsonPropertyName("line")]
-    [Description("Line number (1-based) where the type is defined")]
-    public required int Line { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Line number (1-based) where the type is defined")]
+    public int Line { get; set; }
 
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Column must be positive")]
     [JsonPropertyName("column")]
-    [Description("Column number (1-based) where the type is defined")]
-    public required int Column { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Column number (1-based) where the type is defined")]
+    public int Column { get; set; }
 
     [JsonPropertyName("includeInherited")]
-    [Description("Include inherited members from base classes and interfaces (default: false)")]
-    public bool? IncludeInherited { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Include inherited members from base classes and interfaces (default: false)")]
+    public bool IncludeInherited { get; set; }
 
     [JsonPropertyName("includePrivate")]
-    [Description("Include private members (default: false)")]
-    public bool? IncludePrivate { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Include private members (default: false)")]
+    public bool IncludePrivate { get; set; }
 
     [JsonPropertyName("includeProtected")]
-    [Description("Include protected members (default: true)")]
-    public bool? IncludeProtected { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Include protected members (default: true)")]
+    public bool IncludeProtected { get; set; } = true;
 
     [JsonPropertyName("includeCompilerGenerated")]
-    [Description("Include compiler-generated members (default: false)")]
-    public bool? IncludeCompilerGenerated { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Include compiler-generated members (default: false)")]
+    public bool IncludeCompilerGenerated { get; set; }
     
     [JsonPropertyName("includeDocumentation")]
-    [Description("Include XML documentation (default: true). Set to false to see more members within token limits.")]
-    public bool? IncludeDocumentation { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Include XML documentation (default: true). Set to false to see more members within token limits.")]
+    public bool IncludeDocumentation { get; set; } = true;
 
     [JsonPropertyName("memberKinds")]
-    [Description("Filter by member kinds: 'Method', 'Property', 'Field', 'Event', 'Constructor', 'NestedType'")]
+    [COA.Mcp.Framework.Attributes.Description("Filter by member kinds: 'Method', 'Property', 'Field', 'Event', 'Constructor', 'NestedType'")]
     public string[]? MemberKinds { get; set; }
 
     [JsonPropertyName("sortBy")]
-    [Description("Sort members by: 'Name', 'Kind', 'Accessibility' (default: 'Kind')")]
+    [COA.Mcp.Framework.Attributes.Description("Sort members by: 'Name', 'Kind', 'Accessibility' (default: 'Kind')")]
     public string? SortBy { get; set; }
     
+    [System.ComponentModel.DataAnnotations.Range(1, 500, ErrorMessage = "MaxResults must be between 1 and 500")]
     [JsonPropertyName("maxResults")]
-    [Description("Maximum number of members to return (default: 100, max: 500)")]
-    public int? MaxResults { get; set; }
-}
-
-public class GetTypeMembersResult
-{
-    public bool Found { get; set; }
-    public string? TypeName { get; set; }
-    public string? TypeKind { get; set; }
-    public string? SymbolName { get; set; }
-    public string? SymbolKind { get; set; }
-    public int TotalMembers { get; set; }
-    public List<TypeMemberInfo>? Members { get; set; }
-    public string? Message { get; set; }
-    public List<string>? Insights { get; set; }
-    public List<NextAction>? NextActions { get; set; }
-    public ErrorInfo? Error { get; set; }
-    public string? ResourceUri { get; set; }
-    public ToolMetadata? Meta { get; set; }
-}
-
-public class TypeMemberInfo
-{
-    public required string Name { get; set; }
-    public required string Kind { get; set; }
-    public string? Signature { get; set; }
-    public required string Accessibility { get; set; }
-    public LocationInfo? Location { get; set; }
-    public string? Documentation { get; set; }
-    public string? ReturnType { get; set; }
-    public List<MemberParameterInfo>? Parameters { get; set; }
-    public List<string>? TypeParameters { get; set; }
-    public bool IsStatic { get; set; }
-    public bool IsAbstract { get; set; }
-    public bool IsVirtual { get; set; }
-    public bool IsOverride { get; set; }
-    public bool IsSealed { get; set; }
-    public bool IsReadOnly { get; set; }
-    public bool IsWriteOnly { get; set; }
-    public bool IsConst { get; set; }
-    public string? ConstantValue { get; set; }
-    public bool HasGetter { get; set; }
-    public bool HasSetter { get; set; }
-    public bool IsInherited { get; set; }
-    public string? DeclaringType { get; set; }
-    public bool IsInterfaceMember { get; set; }
-}
-
-public class MemberParameterInfo
-{
-    public required string Name { get; set; }
-    public required string Type { get; set; }
-    public bool IsOptional { get; set; }
-    public bool HasDefaultValue { get; set; }
-    public string? DefaultValue { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Maximum number of members to return (default: 100, max: 500)")]
+    public int MaxResults { get; set; } = 100;
 }

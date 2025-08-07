@@ -1,33 +1,42 @@
-using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
-using System.IO;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using System.IO;
 
 namespace COA.CodeNav.McpServer.Tools;
 
 /// <summary>
 /// MCP tool that finds all implementations of interfaces and overrides of virtual/abstract members
 /// </summary>
-[McpServerToolType]
-public class FindImplementationsTool : ITool
+public class FindImplementationsTool : McpToolBase<FindImplementationsParams, FindImplementationsToolResult>
 {
     private readonly ILogger<FindImplementationsTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_find_implementations";
-    public string Description => "Find all implementations of an interface or abstract/virtual member";
+    public override string Name => ToolNames.FindImplementations;
+    public override string Description => @"Find all implementations of interfaces and overrides of virtual/abstract methods.
+Returns: List of implementing types/members with their locations and metadata.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if symbol is not found.
+Use cases: Finding concrete implementations, discovering derived classes, locating overrides.
+Not for: Finding references (use csharp_find_all_references), finding base types (use csharp_goto_definition).";
 
     public FindImplementationsTool(
         ILogger<FindImplementationsTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -35,198 +44,208 @@ public class FindImplementationsTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_find_implementations")]
-    [Description(@"Find all implementations of interfaces and overrides of virtual/abstract methods.
-Returns: List of implementing types/members with their locations and metadata.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if symbol is not found.
-Use cases: Finding concrete implementations, discovering derived classes, locating overrides.
-Not for: Finding references (use csharp_find_all_references), finding base types (use csharp_goto_definition).")]
-    public async Task<object> ExecuteAsync(FindImplementationsParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<FindImplementationsToolResult> ExecuteInternalAsync(
+        FindImplementationsParams parameters,
+        CancellationToken cancellationToken)
     {
         _logger.LogDebug("FindImplementations request received: FilePath={FilePath}, Line={Line}, Column={Column}", 
             parameters.FilePath, parameters.Line, parameters.Column);
             
         var startTime = DateTime.UtcNow;
-            
-        try
+
+        // Get the document
+        _logger.LogDebug("Retrieving document from workspace: {FilePath}", parameters.FilePath);
+        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            _logger.LogInformation("Processing FindImplementations for {FilePath} at {Line}:{Column}", 
-                parameters.FilePath, parameters.Line, parameters.Column);
-
-            // Get the document
-            _logger.LogDebug("Retrieving document from workspace: {FilePath}", parameters.FilePath);
-            var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
+            _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
+            return new FindImplementationsToolResult
             {
-                _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return new FindImplementationsToolResult
+                Success = false,
+                Message = $"Document not found in workspace: {parameters.FilePath}",
+                Error = new ErrorInfo
                 {
-                    Success = false,
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
                     Message = $"Document not found in workspace: {parameters.FilePath}",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.DOCUMENT_NOT_FOUND,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
+                            "Ensure the file path is correct and absolute",
+                            "Verify the solution/project containing this file is loaded",
+                            "Use csharp_load_solution or csharp_load_project to load the containing project"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
                             {
-                                "Ensure the file path is correct and absolute",
-                                "Verify the solution/project containing this file is loaded",
-                                "Use csharp_load_solution or csharp_load_project to load the containing project"
-                            },
-                            SuggestedActions = new List<SuggestedAction>
-                            {
-                                new SuggestedAction
-                                {
-                                    Tool = "csharp_load_solution",
-                                    Description = "Load the solution containing this file",
-                                    Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
-                                }
+                                Tool = "csharp_load_solution",
+                                Description = "Load the solution containing this file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
                             }
                         }
-                    },
-                    Query = new QueryInfo
-                    {
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata { ExecutionTime = "0ms" }
-                };
-            }
+                    }
+                }
+            };
+        }
 
-            // Get the source text
-            var sourceText = await document.GetTextAsync(cancellationToken);
-            
-            // Convert line/column to position (adjusting for 0-based indexing)
-            var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
-                parameters.Line - 1, 
-                parameters.Column - 1));
+        // Get the source text
+        var sourceText = await document.GetTextAsync(cancellationToken);
+        
+        // Convert line/column to position (adjusting for 0-based indexing)
+        var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
+            parameters.Line - 1, 
+            parameters.Column - 1));
 
-            // Get semantic model
-            _logger.LogDebug("Getting semantic model for document");
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            if (semanticModel == null)
+        // Get semantic model
+        _logger.LogDebug("Getting semantic model for document");
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+        if (semanticModel == null)
+        {
+            _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
+            return new FindImplementationsToolResult
             {
-                _logger.LogError("Failed to get semantic model for document: {FilePath}", parameters.FilePath);
-                return new FindImplementationsToolResult
+                Success = false,
+                Message = "Could not get semantic model for document",
+                Error = new ErrorInfo
                 {
-                    Success = false,
+                    Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
                     Message = "Could not get semantic model for document",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
-                            {
-                                "Ensure the project is fully loaded and compiled",
-                                "Check for compilation errors in the project",
-                                "Try reloading the solution"
-                            }
+                            "Ensure the project is fully loaded and compiled",
+                            "Check for compilation errors in the project",
+                            "Try reloading the solution"
                         }
-                    },
-                    Query = new QueryInfo
-                    {
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
-                };
-            }
+                }
+            };
+        }
 
-            // Find symbol at position
-            _logger.LogDebug("Searching for symbol at position {Position}", position);
-            var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
-                semanticModel, 
-                position, 
-                document.Project.Solution.Workspace, 
-                cancellationToken);
+        // Find symbol at position
+        _logger.LogDebug("Searching for symbol at position {Position}", position);
+        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
+            semanticModel, 
+            position, 
+            document.Project.Solution.Workspace, 
+            cancellationToken);
 
-            if (symbol == null)
+        if (symbol == null)
+        {
+            _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
+                parameters.Line, parameters.Column, parameters.FilePath);
+            return new FindImplementationsToolResult
             {
-                _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
-                    parameters.Line, parameters.Column, parameters.FilePath);
-                return new FindImplementationsToolResult
+                Success = false,
+                Message = "No symbol found at the specified position",
+                Error = new ErrorInfo
                 {
-                    Success = false,
+                    Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
                     Message = "No symbol found at the specified position",
-                    Error = new ErrorInfo
+                    Recovery = new RecoveryInfo
                     {
-                        Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
-                        Recovery = new RecoveryInfo
+                        Steps = new[]
                         {
-                            Steps = new List<string>
-                            {
-                                "Verify the line and column numbers are correct (1-based)",
-                                "Ensure the cursor is on a symbol that can have implementations",
-                                "Try adjusting the column position to the start of the symbol name"
-                            }
+                            "Verify the line and column numbers are correct (1-based)",
+                            "Ensure the cursor is on a symbol that can have implementations",
+                            "Try adjusting the column position to the start of the symbol name"
                         }
-                    },
-                    Query = new QueryInfo
-                    {
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                     }
-                };
-            }
+                }
+            };
+        }
 
-            // Check if symbol can have implementations
-            if (!CanHaveImplementations(symbol))
+        // Check if symbol can have implementations
+        if (!CanHaveImplementations(symbol))
+        {
+            return new FindImplementationsToolResult
             {
-                return new FindImplementationsToolResult
+                Success = false,
+                Message = $"Symbol '{symbol.Name}' of kind '{symbol.Kind}' cannot have implementations",
+                Insights = new List<string>
                 {
-                    Success = false,
-                    Message = $"Symbol '{symbol.Name}' of kind '{symbol.Kind}' cannot have implementations",
-                    Insights = new List<string>
+                    "Only interfaces, abstract classes, abstract methods, and virtual methods can have implementations",
+                    "For concrete types, use 'Find All References' to see where they are used"
+                },
+                Query = new QueryInfo
+                {
+                    FilePath = parameters.FilePath,
+                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                    TargetSymbol = symbol.ToDisplayString()
+                },
+                Meta = new ToolExecutionMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
+                }
+            };
+        }
+
+        // Find implementations
+        _logger.LogDebug("Finding implementations for symbol '{SymbolName}' of kind {SymbolKind}", 
+            symbol.ToDisplayString(), symbol.Kind);
+
+        var implementations = new List<ImplementationInfo>();
+        
+        // Use SymbolFinder.FindImplementationsAsync which works for all symbol types
+        var foundImplementations = await SymbolFinder.FindImplementationsAsync(
+            symbol, 
+            document.Project.Solution, 
+            cancellationToken: cancellationToken);
+
+        foreach (var impl in foundImplementations)
+        {
+            if (impl.Locations.Any(l => l.IsInSource))
+            {
+                var location = impl.Locations.First(l => l.IsInSource);
+                var lineSpan = location.GetLineSpan();
+                
+                var implementationInfo = new ImplementationInfo
+                {
+                    ImplementingType = impl is INamedTypeSymbol ? impl.ToDisplayString() : impl.ContainingType?.ToDisplayString(),
+                    ImplementingMember = impl is not INamedTypeSymbol ? impl.ToDisplayString() : null,
+                    Location = new LocationInfo
                     {
-                        "Only interfaces, abstract classes, abstract methods, and virtual methods can have implementations",
-                        "For concrete types, use 'Find All References' to see where they are used"
+                        FilePath = lineSpan.Path,
+                        Line = lineSpan.StartLinePosition.Line + 1,
+                        Column = lineSpan.StartLinePosition.Character + 1,
+                        EndLine = lineSpan.EndLinePosition.Line + 1,
+                        EndColumn = lineSpan.EndLinePosition.Character + 1
                     },
-                    Query = new QueryInfo
-                    {
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
-                        TargetSymbol = symbol.ToDisplayString()
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
+                    IsDirectImplementation = true,
+                    IsExplicitImplementation = IsExplicitImplementation(impl, symbol),
+                    ImplementationType = GetImplementationTypeDescription(impl, symbol)
                 };
+                
+                implementations.Add(implementationInfo);
             }
+        }
 
-            // Find implementations
-            _logger.LogDebug("Finding implementations for symbol '{SymbolName}' of kind {SymbolKind}", 
-                symbol.ToDisplayString(), symbol.Kind);
-
-            var implementations = new List<ImplementationInfo>();
-            
-            // Use SymbolFinder.FindImplementationsAsync which works for all symbol types
-            var foundImplementations = await SymbolFinder.FindImplementationsAsync(
-                symbol, 
-                document.Project.Solution, 
+        // For types, also find derived classes
+        if (symbol is INamedTypeSymbol typeSymbol && typeSymbol.IsAbstract)
+        {
+            var derivedClasses = await SymbolFinder.FindDerivedClassesAsync(
+                typeSymbol, 
+                document.Project.Solution,
+                transitive: true,
                 cancellationToken: cancellationToken);
-
-            foreach (var impl in foundImplementations)
+            
+            foreach (var derived in derivedClasses)
             {
-                if (impl.Locations.Any(l => l.IsInSource))
+                // Skip if already added
+                if (implementations.Any(i => i.ImplementingType == derived.ToDisplayString()))
+                    continue;
+                    
+                if (derived.Locations.Any(l => l.IsInSource))
                 {
-                    var location = impl.Locations.First(l => l.IsInSource);
+                    var location = derived.Locations.First(l => l.IsInSource);
                     var lineSpan = location.GetLineSpan();
                     
-                    var implementationInfo = new ImplementationInfo
+                    implementations.Add(new ImplementationInfo
                     {
-                        ImplementingType = impl is INamedTypeSymbol ? impl.ToDisplayString() : impl.ContainingType?.ToDisplayString(),
-                        ImplementingMember = impl is not INamedTypeSymbol ? impl.ToDisplayString() : null,
+                        ImplementingType = derived.ToDisplayString(),
+                        ImplementingMember = null,
                         Location = new LocationInfo
                         {
                             FilePath = lineSpan.Path,
@@ -235,100 +254,21 @@ Not for: Finding references (use csharp_find_all_references), finding base types
                             EndLine = lineSpan.EndLinePosition.Line + 1,
                             EndColumn = lineSpan.EndLinePosition.Character + 1
                         },
-                        IsDirectImplementation = true,
-                        IsExplicitImplementation = IsExplicitImplementation(impl, symbol),
-                        ImplementationType = GetImplementationTypeDescription(impl, symbol)
-                    };
-                    
-                    implementations.Add(implementationInfo);
+                        IsDirectImplementation = SymbolEqualityComparer.Default.Equals(derived.BaseType, typeSymbol),
+                        IsExplicitImplementation = false,
+                        ImplementationType = "Derived Class"
+                    });
                 }
             }
+        }
 
-            // For types, also find derived classes
-            if (symbol is INamedTypeSymbol typeSymbol && typeSymbol.IsAbstract)
-            {
-                var derivedClasses = await SymbolFinder.FindDerivedClassesAsync(
-                    typeSymbol, 
-                    document.Project.Solution,
-                    transitive: true,
-                    cancellationToken: cancellationToken);
-                
-                foreach (var derived in derivedClasses)
-                {
-                    // Skip if already added
-                    if (implementations.Any(i => i.ImplementingType == derived.ToDisplayString()))
-                        continue;
-                        
-                    if (derived.Locations.Any(l => l.IsInSource))
-                    {
-                        var location = derived.Locations.First(l => l.IsInSource);
-                        var lineSpan = location.GetLineSpan();
-                        
-                        implementations.Add(new ImplementationInfo
-                        {
-                            ImplementingType = derived.ToDisplayString(),
-                            ImplementingMember = null,
-                            Location = new LocationInfo
-                            {
-                                FilePath = lineSpan.Path,
-                                Line = lineSpan.StartLinePosition.Line + 1,
-                                Column = lineSpan.StartLinePosition.Character + 1,
-                                EndLine = lineSpan.EndLinePosition.Line + 1,
-                                EndColumn = lineSpan.EndLinePosition.Character + 1
-                            },
-                            IsDirectImplementation = SymbolEqualityComparer.Default.Equals(derived.BaseType, typeSymbol),
-                            IsExplicitImplementation = false,
-                            ImplementationType = "Derived Class"
-                        });
-                    }
-                }
-            }
-
-            if (!implementations.Any())
-            {
-                return new FindImplementationsToolResult
-                {
-                    Success = false,
-                    Message = $"No implementations found for '{symbol.Name}'",
-                    Insights = GenerateNoImplementationsInsights(symbol),
-                    Query = new QueryInfo
-                    {
-                        FilePath = parameters.FilePath,
-                        Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
-                        TargetSymbol = symbol.ToDisplayString()
-                    },
-                    Summary = new SummaryInfo
-                    {
-                        TotalFound = 0,
-                        Returned = 0,
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                        SymbolInfo = new SymbolSummary
-                        {
-                            Name = symbol.Name,
-                            Kind = symbol.Kind.ToString(),
-                            ContainingType = symbol.ContainingType?.ToDisplayString(),
-                            Namespace = symbol.ContainingNamespace?.ToDisplayString()
-                        }
-                    },
-                    Meta = new ToolMetadata 
-                    { 
-                        ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                    }
-                };
-            }
-
-            var insights = GenerateInsights(symbol, implementations);
-            var actions = GenerateActions(symbol, implementations);
-
-            var resourceUri = _resourceProvider?.StoreAnalysisResult("find-implementations",
-                new { symbol = symbol.ToDisplayString(), implementations },
-                $"Implementations of {symbol.Name}");
-
+        if (!implementations.Any())
+        {
             return new FindImplementationsToolResult
             {
-                Success = true,
-                Message = $"Found {implementations.Count} implementation(s) of '{symbol.Name}'",
-                Implementations = implementations,
+                Success = false,
+                Message = $"No implementations found for '{symbol.Name}'",
+                Insights = GenerateNoImplementationsInsights(symbol),
                 Query = new QueryInfo
                 {
                     FilePath = parameters.FilePath,
@@ -337,8 +277,8 @@ Not for: Finding references (use csharp_find_all_references), finding base types
                 },
                 Summary = new SummaryInfo
                 {
-                    TotalFound = implementations.Count,
-                    Returned = implementations.Count,
+                    TotalFound = 0,
+                    Returned = 0,
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
                     SymbolInfo = new SymbolSummary
                     {
@@ -348,60 +288,66 @@ Not for: Finding references (use csharp_find_all_references), finding base types
                         Namespace = symbol.ContainingNamespace?.ToDisplayString()
                     }
                 },
-                ResultsSummary = new ResultsSummary
-                {
-                    Included = implementations.Count,
-                    Total = implementations.Count,
-                    HasMore = false
-                },
-                Distribution = new ImplementationDistribution
-                {
-                    ByType = implementations.GroupBy(i => i.ImplementationType ?? "Unknown")
-                        .ToDictionary(g => g.Key, g => g.Count()),
-                    ByProject = implementations.Where(i => i.Location != null)
-                        .GroupBy(i => Path.GetFileName(Path.GetDirectoryName(i.Location!.FilePath) ?? "Unknown"))
-                        .ToDictionary(g => g.Key, g => g.Count())
-                },
-                Insights = insights,
-                Actions = actions,
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-                },
-                ResourceUri = resourceUri
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in Find Implementations");
-            return new FindImplementationsToolResult
-            {
-                Success = false,
-                Message = $"Error: {ex.Message}",
-                Error = new ErrorInfo
-                {
-                    Code = ErrorCodes.INTERNAL_ERROR,
-                    Recovery = new RecoveryInfo
-                    {
-                        Steps = new List<string>
-                        {
-                            "Check the server logs for detailed error information",
-                            "Verify the solution/project is loaded correctly",
-                            "Try the operation again"
-                        }
-                    }
-                },
-                Query = new QueryInfo
-                {
-                    FilePath = parameters.FilePath,
-                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                },
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+                Meta = new ToolExecutionMetadata 
+                { 
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
                 }
             };
         }
+
+        var insights = GenerateInsights(symbol, implementations);
+        var actions = GenerateActions(symbol, implementations);
+
+        var resourceUri = _resourceProvider?.StoreAnalysisResult("find-implementations",
+            new { symbol = symbol.ToDisplayString(), implementations },
+            $"Implementations of {symbol.Name}");
+
+        return new FindImplementationsToolResult
+        {
+            Success = true,
+            Message = $"Found {implementations.Count} implementation(s) of '{symbol.Name}'",
+            Implementations = implementations,
+            Query = new QueryInfo
+            {
+                FilePath = parameters.FilePath,
+                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                TargetSymbol = symbol.ToDisplayString()
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = implementations.Count,
+                Returned = implementations.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                SymbolInfo = new SymbolSummary
+                {
+                    Name = symbol.Name,
+                    Kind = symbol.Kind.ToString(),
+                    ContainingType = symbol.ContainingType?.ToDisplayString(),
+                    Namespace = symbol.ContainingNamespace?.ToDisplayString()
+                }
+            },
+            ResultsSummary = new ResultsSummary
+            {
+                Included = implementations.Count,
+                Total = implementations.Count,
+                HasMore = false
+            },
+            Distribution = new ImplementationDistribution
+            {
+                ByType = implementations.GroupBy(i => i.ImplementationType ?? "Unknown")
+                    .ToDictionary(g => g.Key, g => g.Count()),
+                ByProject = implementations.Where(i => i.Location != null)
+                    .GroupBy(i => Path.GetFileName(Path.GetDirectoryName(i.Location!.FilePath) ?? "Unknown"))
+                    .ToDictionary(g => g.Key, g => g.Count())
+            },
+            Insights = insights,
+            Actions = actions,
+            Meta = new ToolExecutionMetadata
+            {
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            },
+            ResourceUri = resourceUri
+        };
     }
 
     private bool CanHaveImplementations(ISymbol symbol)
@@ -518,27 +464,27 @@ Not for: Finding references (use csharp_find_all_references), finding base types
         return insights;
     }
 
-    private List<NextAction> GenerateActions(ISymbol symbol, List<ImplementationInfo> implementations)
+    private List<AIAction> GenerateActions(ISymbol symbol, List<ImplementationInfo> implementations)
     {
-        var actions = new List<NextAction>();
+        var actions = new List<AIAction>();
 
         // Take first few implementations for next actions
         foreach (var impl in implementations.Take(3))
         {
             if (impl.Location != null)
             {
-                actions.Add(new NextAction
+                actions.Add(new AIAction
                 {
-                    Id = $"goto_impl_{impl.ImplementingType?.Replace(".", "_").ToLower()}",
+                    Action = ToolNames.GoToDefinition,
                     Description = $"Go to {impl.ImplementingType}",
-                    ToolName = "csharp_goto_definition",
-                    Parameters = new
+                    Parameters = new Dictionary<string, object>
                     {
-                        filePath = impl.Location.FilePath,
-                        line = impl.Location.Line,
-                        column = impl.Location.Column
+                        ["filePath"] = impl.Location.FilePath,
+                        ["line"] = impl.Location.Line,
+                        ["column"] = impl.Location.Column
                     },
-                    Priority = "high"
+                    Priority = 90,
+                    Category = "navigation"
                 });
             }
         }
@@ -549,37 +495,52 @@ Not for: Finding references (use csharp_find_all_references), finding base types
             var firstImpl = implementations.First();
             if (firstImpl.Location != null)
             {
-                actions.Add(new NextAction
+                actions.Add(new AIAction
                 {
-                    Id = "find_usage",
+                    Action = ToolNames.FindAllReferences,
                     Description = $"Find usages of implementations",
-                    ToolName = "csharp_find_all_references",
-                    Parameters = new
+                    Parameters = new Dictionary<string, object>
                     {
-                        filePath = firstImpl.Location.FilePath,
-                        line = firstImpl.Location.Line,
-                        column = firstImpl.Location.Column
+                        ["filePath"] = firstImpl.Location.FilePath,
+                        ["line"] = firstImpl.Location.Line,
+                        ["column"] = firstImpl.Location.Column
                     },
-                    Priority = "medium"
+                    Priority = 80,
+                    Category = "navigation"
                 });
             }
         }
 
         return actions;
     }
+
+    protected override int EstimateTokenUsage()
+    {
+        // Estimate for typical FindImplementations response
+        // Base response structure + per-implementation data
+        return 3000;
+    }
 }
 
+/// <summary>
+/// Parameters for FindImplementations tool
+/// </summary>
 public class FindImplementationsParams
 {
+    [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file")]
-    public required string FilePath { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Path to the source file")]
+    public string FilePath { get; set; } = string.Empty;
 
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Line must be positive")]
     [JsonPropertyName("line")]
-    [Description("Line number (1-based) where the symbol appears")]
-    public required int Line { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Line number (1-based) where the symbol appears")]
+    public int Line { get; set; }
 
+    [System.ComponentModel.DataAnnotations.Required]
+    [System.ComponentModel.DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Column must be positive")]
     [JsonPropertyName("column")]
-    [Description("Column number (1-based) where the symbol appears")]
-    public required int Column { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Column number (1-based) where the symbol appears")]
+    public int Column { get; set; }
 }

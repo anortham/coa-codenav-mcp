@@ -1,35 +1,44 @@
-using System.Text.Json.Serialization;
-using COA.CodeNav.McpServer.Attributes;
+using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
-using COA.CodeNav.McpServer.Utilities;
+using COA.Mcp.Framework.Base;
+using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.Interfaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
+using DataAnnotations = System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace COA.CodeNav.McpServer.Tools;
 
 /// <summary>
 /// MCP tool that provides a complete call hierarchy view (incoming and outgoing) at once
 /// </summary>
-[McpServerToolType]
-public class CallHierarchyTool : ITool
+public class CallHierarchyTool : McpToolBase<CallHierarchyParams, CallHierarchyResult>
 {
     private readonly ILogger<CallHierarchyTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
-    public string ToolName => "csharp_call_hierarchy";
-    public string Description => "Get complete call hierarchy (incoming and outgoing calls) for a method";
+    public override string Name => "csharp_call_hierarchy";
+    public override string Description => @"Get complete call hierarchy (incoming and outgoing calls) for a method at once.
+Returns: Bidirectional call tree with incoming (callers) and outgoing (callees) in a single view.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if method cannot be found.
+Use cases: Understanding method dependencies, impact analysis, refactoring planning, debugging entry points.
+AI benefit: Provides complete context that agents can't easily piece together from separate tools.";
 
     public CallHierarchyTool(
         ILogger<CallHierarchyTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         AnalysisResultResourceProvider? resourceProvider = null)
+        : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -37,219 +46,184 @@ public class CallHierarchyTool : ITool
         _resourceProvider = resourceProvider;
     }
 
-    [McpServerTool(Name = "csharp_call_hierarchy")]
-    [Description(@"Get complete call hierarchy (incoming and outgoing calls) for a method at once.
-Returns: Bidirectional call tree with incoming (callers) and outgoing (callees) in a single view.
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if method cannot be found.
-Use cases: Understanding method dependencies, impact analysis, refactoring planning, debugging entry points.
-AI benefit: Provides complete context that agents can't easily piece together from separate tools.")]
-    public async Task<object> ExecuteAsync(CallHierarchyParams parameters, CancellationToken cancellationToken = default)
+    protected override async Task<CallHierarchyResult> ExecuteInternalAsync(
+        CallHierarchyParams parameters,
+        CancellationToken cancellationToken)
     {
-        var startTime = DateTime.UtcNow;
         _logger.LogDebug("CallHierarchy request: FilePath={FilePath}, Line={Line}, Column={Column}", 
             parameters.FilePath, parameters.Line, parameters.Column);
             
-        try
+        var startTime = DateTime.UtcNow;
+
+        // Get the document
+        var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+        if (document == null)
         {
-            // Get the document
-            var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
-            if (document == null)
+            _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
+            return new CallHierarchyResult
             {
-                _logger.LogWarning("Document not found in workspace: {FilePath}", parameters.FilePath);
-                return CreateErrorResult(
-                    ErrorCodes.DOCUMENT_NOT_FOUND,
-                    $"Document not found in workspace: {parameters.FilePath}",
-                    new List<string>
-                    {
-                        "Ensure the file path is correct and absolute",
-                        "Verify the solution/project containing this file is loaded",
-                        "Use csharp_load_solution or csharp_load_project to load the containing project"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            // Get the method symbol at position
-            var sourceText = await document.GetTextAsync(cancellationToken);
-            var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
-                parameters.Line - 1, 
-                parameters.Column - 1));
-
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            if (semanticModel == null)
-            {
-                return CreateErrorResult(
-                    ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
-                    "Could not get semantic model for document",
-                    new List<string>
-                    {
-                        "Ensure the project is fully loaded and compiled",
-                        "Check for compilation errors in the project",
-                        "Try reloading the solution"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            // Find the method at position
-            var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
-            var root = await syntaxTree!.GetRootAsync(cancellationToken);
-            var token = root.FindToken(position);
-            
-            var methodSyntax = token.Parent?.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-            if (methodSyntax == null)
-            {
-                return CreateErrorResult(
-                    ErrorCodes.NO_SYMBOL_AT_POSITION,
-                    "No method found at the specified position",
-                    new List<string>
-                    {
-                        "Ensure the cursor is inside a method body or on the method name",
-                        "Verify the line and column numbers are correct (1-based)",
-                        "This tool works only with methods, not properties or fields"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            var methodSymbol = semanticModel.GetDeclaredSymbol(methodSyntax) as IMethodSymbol;
-            if (methodSymbol == null)
-            {
-                return CreateErrorResult(
-                    ErrorCodes.SYMBOL_NOT_FOUND,
-                    "Could not resolve method symbol",
-                    new List<string>
-                    {
-                        "Verify the method is properly declared",
-                        "Check for compilation errors in the file",
-                        "Try using csharp_get_diagnostics to identify issues"
-                    },
-                    parameters,
-                    startTime);
-            }
-
-            _logger.LogInformation("Building call hierarchy for method '{MethodName}'", methodSymbol.ToDisplayString());
-
-            // Build the hierarchy
-            var hierarchy = await BuildCallHierarchyAsync(
-                methodSymbol, 
-                document.Project.Solution,
-                parameters.MaxDepth ?? 3,
-                parameters.IncludeOverrides,
-                cancellationToken);
-
-            // Pre-estimate tokens
-            var allNodes = GetAllNodes(hierarchy);
-            var response = TokenEstimator.CreateTokenAwareResponse(
-                allNodes,
-                nodes => EstimateHierarchyTokens(nodes),
-                requestedMax: parameters.MaxNodes ?? 100,
-                safetyLimit: TokenEstimator.DEFAULT_SAFETY_LIMIT,
-                toolName: "csharp_call_hierarchy"
-            );
-
-            // Create limited hierarchy with only included nodes
-            var limitedHierarchy = CreateLimitedHierarchy(hierarchy, response.Items);
-
-            // Generate insights
-            var insights = GenerateInsights(hierarchy, methodSymbol);
-            if (response.WasTruncated)
-            {
-                insights.Insert(0, response.GetTruncationMessage());
-            }
-
-            // Generate next actions
-            var nextActions = GenerateNextActions(methodSymbol, parameters);
-            if (response.WasTruncated)
-            {
-                nextActions.Insert(0, new NextAction
+                Success = false,
+                Message = $"Document not found in workspace: {parameters.FilePath}",
+                Error = new ErrorInfo
                 {
-                    Id = "get_full_hierarchy",
-                    Description = "Get complete hierarchy without truncation",
-                    ToolName = "csharp_call_hierarchy",
-                    Parameters = new
+                    Code = ErrorCodes.DOCUMENT_NOT_FOUND,
+                    Message = $"Document not found in workspace: {parameters.FilePath}",
+                    Recovery = new RecoveryInfo
                     {
-                        filePath = parameters.FilePath,
-                        line = parameters.Line,
-                        column = parameters.Column,
-                        maxNodes = allNodes.Count,
-                        maxDepth = parameters.MaxDepth
-                    },
-                    Priority = "high"
-                });
-            }
-
-            // Store full result if truncated
-            string? resourceUri = null;
-            if (response.WasTruncated && _resourceProvider != null)
-            {
-                resourceUri = _resourceProvider.StoreAnalysisResult(
-                    "call-hierarchy",
-                    new { 
-                        method = methodSymbol.ToDisplayString(),
-                        hierarchy = hierarchy,
-                        totalNodes = allNodes.Count
-                    },
-                    $"Complete call hierarchy for {methodSymbol.Name}");
-            }
-
-            var result = new CallHierarchyResult
-            {
-                Success = true,
-                Message = response.WasTruncated 
-                    ? $"Call hierarchy for '{methodSymbol.Name}' (showing {response.ReturnedCount} of {allNodes.Count} nodes)"
-                    : $"Call hierarchy for '{methodSymbol.Name}'",
-                Query = new QueryInfo
-                {
-                    FilePath = parameters.FilePath,
-                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
-                    TargetSymbol = methodSymbol.ToDisplayString()
-                },
-                Summary = new SummaryInfo
-                {
-                    TotalFound = allNodes.Count,
-                    Returned = response.ReturnedCount,
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    SymbolInfo = new SymbolSummary
-                    {
-                        Name = methodSymbol.Name,
-                        Kind = methodSymbol.Kind.ToString(),
-                        ContainingType = methodSymbol.ContainingType?.ToDisplayString(),
-                        Namespace = methodSymbol.ContainingNamespace?.ToDisplayString()
+                        Steps = new[]
+                        {
+                            "Ensure the file path is correct and absolute",
+                            "Verify the solution/project containing this file is loaded",
+                            "Use csharp_load_solution or csharp_load_project to load the containing project"
+                        },
+                        SuggestedActions = new List<SuggestedAction>
+                        {
+                            new SuggestedAction
+                            {
+                                Tool = "csharp_load_solution",
+                                Description = "Load the solution containing this file",
+                                Parameters = new { solutionPath = "<path-to-your-solution.sln>" }
+                            }
+                        }
                     }
-                },
-                Hierarchy = limitedHierarchy,
-                Analysis = GenerateAnalysis(hierarchy, methodSymbol),
-                Insights = insights,
-                Actions = nextActions,
-                ResourceUri = resourceUri,
-                Meta = new ToolMetadata
-                {
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                    Truncated = response.WasTruncated,
-                    Tokens = response.EstimatedTokens
                 }
             };
+        }
 
-            _logger.LogInformation("Call hierarchy completed: {TotalNodes} nodes found", allNodes.Count);
-            return result;
-        }
-        catch (Exception ex)
+        // Get the method symbol at position
+        var sourceText = await document.GetTextAsync(cancellationToken);
+        var position = sourceText.Lines.GetPosition(new Microsoft.CodeAnalysis.Text.LinePosition(
+            parameters.Line - 1, 
+            parameters.Column - 1));
+
+        var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
+        if (semanticModel == null)
         {
-            _logger.LogError(ex, "Error in CallHierarchy");
-            return CreateErrorResult(
-                ErrorCodes.INTERNAL_ERROR,
-                $"Error: {ex.Message}",
-                new List<string>
+            return new CallHierarchyResult
+            {
+                Success = false,
+                Message = "Could not get semantic model for document",
+                Error = new ErrorInfo
                 {
-                    "Check the server logs for detailed error information",
-                    "Verify the solution/project is loaded correctly",
-                    "Try the operation again"
-                },
-                parameters,
-                startTime);
+                    Code = ErrorCodes.SEMANTIC_MODEL_UNAVAILABLE,
+                    Message = "Could not get semantic model for document",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Ensure the project is fully loaded and compiled",
+                            "Check for compilation errors in the project",
+                            "Try reloading the solution"
+                        }
+                    }
+                }
+            };
         }
+
+        // Find the method at position
+        var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
+        var root = await syntaxTree!.GetRootAsync(cancellationToken);
+        var token = root.FindToken(position);
+        
+        var methodSyntax = token.Parent?.AncestorsAndSelf().OfType<MethodDeclarationSyntax>().FirstOrDefault();
+        if (methodSyntax == null)
+        {
+            return new CallHierarchyResult
+            {
+                Success = false,
+                Message = "No method found at the specified position",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
+                    Message = "No method found at the specified position",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Ensure the cursor is inside a method body or on the method name",
+                            "Verify the line and column numbers are correct (1-based)",
+                            "This tool works only with methods, not properties or fields"
+                        }
+                    }
+                }
+            };
+        }
+
+        var methodSymbol = semanticModel.GetDeclaredSymbol(methodSyntax) as IMethodSymbol;
+        if (methodSymbol == null)
+        {
+            return new CallHierarchyResult
+            {
+                Success = false,
+                Message = "Could not resolve method symbol",
+                Error = new ErrorInfo
+                {
+                    Code = ErrorCodes.SYMBOL_NOT_FOUND,
+                    Message = "Could not resolve method symbol",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Verify the method is properly declared",
+                            "Check for compilation errors in the file",
+                            "Try using csharp_get_diagnostics to identify issues"
+                        }
+                    }
+                }
+            };
+        }
+
+        _logger.LogInformation("Building call hierarchy for method '{MethodName}'", methodSymbol.ToDisplayString());
+
+        // Build the hierarchy
+        var hierarchy = await BuildCallHierarchyAsync(
+            methodSymbol, 
+            document.Project.Solution,
+            parameters.MaxDepth ?? 3,
+            parameters.IncludeOverrides,
+            cancellationToken);
+
+        // Generate insights
+        var insights = GenerateInsights(hierarchy, methodSymbol);
+        var analysis = GenerateAnalysis(hierarchy, methodSymbol);
+
+        // Generate next actions
+        var nextActions = GenerateNextActions(methodSymbol, parameters);
+
+        _logger.LogInformation("Call hierarchy completed for '{Method}'", methodSymbol.ToDisplayString());
+
+        return new CallHierarchyResult
+        {
+            Success = true,
+            Message = $"Call hierarchy for '{methodSymbol.Name}'",
+            Query = new QueryInfo
+            {
+                FilePath = parameters.FilePath,
+                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
+                TargetSymbol = methodSymbol.ToDisplayString()
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = analysis.TotalNodes,
+                Returned = analysis.TotalNodes,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                SymbolInfo = new SymbolSummary
+                {
+                    Name = methodSymbol.Name,
+                    Kind = methodSymbol.Kind.ToString(),
+                    ContainingType = methodSymbol.ContainingType?.ToDisplayString(),
+                    Namespace = methodSymbol.ContainingNamespace?.ToDisplayString()
+                }
+            },
+            Hierarchy = hierarchy,
+            Analysis = analysis,
+            Insights = insights,
+            Actions = nextActions,
+            Meta = new ToolExecutionMetadata
+            {
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            }
+        };
     }
 
     private async Task<CallHierarchyNode> BuildCallHierarchyAsync(
@@ -354,7 +328,6 @@ AI benefit: Provides complete context that agents can't easily piece together fr
         // Include overrides if requested
         if (includeOverrides && (method.IsVirtual || method.IsAbstract))
         {
-            // For virtual/abstract methods, find implementations
             var implementations = await SymbolFinder.FindImplementationsAsync(
                 method, 
                 solution, 
@@ -383,7 +356,6 @@ AI benefit: Provides complete context that agents can't easily piece together fr
         }
         else if (includeOverrides && method.IsOverride)
         {
-            // For override methods, find the base method
             var baseMethod = method.OverriddenMethod;
             if (baseMethod != null && !parentNode.Incoming.Any(n => n.Method == baseMethod.ToDisplayString()))
             {
@@ -418,7 +390,6 @@ AI benefit: Provides complete context that agents can't easily piece together fr
 
         visited.Add(method);
 
-        // Get method body
         var references = method.DeclaringSyntaxReferences;
         if (!references.Any()) return;
 
@@ -426,7 +397,6 @@ AI benefit: Provides complete context that agents can't easily piece together fr
         var syntax = await syntaxRef.GetSyntaxAsync(cancellationToken) as MethodDeclarationSyntax;
         if (syntax?.Body == null && syntax?.ExpressionBody == null) return;
 
-        // Get the document for this syntax
         var syntaxTree = syntax.SyntaxTree;
         var document = solution.Projects
             .SelectMany(p => p.Documents)
@@ -437,7 +407,6 @@ AI benefit: Provides complete context that agents can't easily piece together fr
         var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
         if (semanticModel == null) return;
 
-        // Find all method invocations
         var invocations = syntax.DescendantNodes()
             .OfType<InvocationExpressionSyntax>()
             .ToList();
@@ -447,7 +416,6 @@ AI benefit: Provides complete context that agents can't easily piece together fr
             var symbolInfo = semanticModel.GetSymbolInfo(invocation, cancellationToken);
             if (symbolInfo.Symbol is IMethodSymbol calledMethod)
             {
-                // Skip framework methods unless they're important
                 if (IsFrameworkMethod(calledMethod) && !IsImportantFrameworkMethod(calledMethod))
                     continue;
 
@@ -468,7 +436,6 @@ AI benefit: Provides complete context that agents can't easily piece together fr
 
                     parentNode.Outgoing.Add(calleeNode);
 
-                    // Recursively build callees (only for non-framework methods)
                     if (!calleeNode.IsFramework)
                     {
                         await BuildOutgoingCallsAsync(
@@ -492,7 +459,6 @@ AI benefit: Provides complete context that agents can't easily piece together fr
     private bool IsImportantFrameworkMethod(IMethodSymbol method)
     {
         var name = method.Name;
-        // Include important framework methods like database operations, HTTP calls, etc.
         return name.Contains("ExecuteAsync") ||
                name.Contains("SaveChanges") ||
                name.Contains("HttpClient") ||
@@ -508,6 +474,26 @@ AI benefit: Provides complete context that agents can't easily piece together fr
             return $"{lineSpan.Path}:{lineSpan.StartLinePosition.Line + 1}";
         }
         return "<external>";
+    }
+
+    private CallHierarchyAnalysis GenerateAnalysis(CallHierarchyNode hierarchy, IMethodSymbol method)
+    {
+        var allNodes = GetAllNodes(hierarchy);
+        var incomingCount = CountNodes(hierarchy, true);
+        var outgoingCount = CountNodes(hierarchy, false);
+
+        return new CallHierarchyAnalysis
+        {
+            TotalNodes = allNodes.Count,
+            IncomingCallsCount = incomingCount,
+            OutgoingCallsCount = outgoingCount,
+            MaxIncomingDepth = GetMaxDepth(hierarchy, true),
+            MaxOutgoingDepth = GetMaxDepth(hierarchy, false),
+            IsEntryPoint = incomingCount == 0,
+            IsLeafMethod = outgoingCount == 0,
+            HasOverrides = allNodes.Any(n => n.IsOverrideRelation),
+            CallsFramework = allNodes.Any(n => n.IsFramework)
+        };
     }
 
     private List<CallHierarchyNode> GetAllNodes(CallHierarchyNode root)
@@ -535,86 +521,6 @@ AI benefit: Provides complete context that agents can't easily piece together fr
         }
 
         return nodes;
-    }
-
-    private CallHierarchyNode CreateLimitedHierarchy(CallHierarchyNode original, List<CallHierarchyNode> includedNodes)
-    {
-        var includedMethods = new HashSet<string>(includedNodes.Select(n => n.Method));
-        return CreateLimitedNode(original, includedMethods, new HashSet<string>());
-    }
-
-    private CallHierarchyNode CreateLimitedNode(CallHierarchyNode node, HashSet<string> includedMethods, HashSet<string> processed)
-    {
-        if (!includedMethods.Contains(node.Method) || processed.Contains(node.Method))
-            return null!;
-
-        processed.Add(node.Method);
-
-        var limitedNode = new CallHierarchyNode
-        {
-            Method = node.Method,
-            MethodName = node.MethodName,
-            Location = node.Location,
-            IsVirtual = node.IsVirtual,
-            IsAbstract = node.IsAbstract,
-            IsOverride = node.IsOverride,
-            IsFramework = node.IsFramework,
-            IsOverrideRelation = node.IsOverrideRelation,
-            IsTruncated = node.IsTruncated,
-            Incoming = new List<CallHierarchyNode>(),
-            Outgoing = new List<CallHierarchyNode>()
-        };
-
-        foreach (var child in node.Incoming)
-        {
-            var limitedChild = CreateLimitedNode(child, includedMethods, processed);
-            if (limitedChild != null)
-                limitedNode.Incoming.Add(limitedChild);
-        }
-
-        foreach (var child in node.Outgoing)
-        {
-            var limitedChild = CreateLimitedNode(child, includedMethods, processed);
-            if (limitedChild != null)
-                limitedNode.Outgoing.Add(limitedChild);
-        }
-
-        return limitedNode;
-    }
-
-    private int EstimateHierarchyTokens(List<CallHierarchyNode> nodes)
-    {
-        return TokenEstimator.EstimateCollection(
-            nodes,
-            node => {
-                var tokens = 100; // Base for node structure
-                tokens += TokenEstimator.EstimateString(node.Method);
-                tokens += TokenEstimator.EstimateString(node.Location);
-                tokens += 50; // Boolean flags and metadata
-                return tokens;
-            },
-            baseTokens: TokenEstimator.BASE_RESPONSE_TOKENS
-        );
-    }
-
-    private CallHierarchyAnalysis GenerateAnalysis(CallHierarchyNode hierarchy, IMethodSymbol method)
-    {
-        var allNodes = GetAllNodes(hierarchy);
-        var incomingCount = CountNodes(hierarchy, true);
-        var outgoingCount = CountNodes(hierarchy, false);
-
-        return new CallHierarchyAnalysis
-        {
-            TotalNodes = allNodes.Count,
-            IncomingCallsCount = incomingCount,
-            OutgoingCallsCount = outgoingCount,
-            MaxIncomingDepth = GetMaxDepth(hierarchy, true),
-            MaxOutgoingDepth = GetMaxDepth(hierarchy, false),
-            IsEntryPoint = incomingCount == 0,
-            IsLeafMethod = outgoingCount == 0,
-            HasOverrides = allNodes.Any(n => n.IsOverrideRelation),
-            CallsFramework = allNodes.Any(n => n.IsFramework)
-        };
     }
 
     private int CountNodes(CallHierarchyNode node, bool incoming, HashSet<string>? visited = null)
@@ -685,119 +591,99 @@ AI benefit: Provides complete context that agents can't easily piece together fr
         return insights;
     }
 
-    private List<NextAction> GenerateNextActions(IMethodSymbol method, CallHierarchyParams parameters)
+    private List<AIAction> GenerateNextActions(IMethodSymbol method, CallHierarchyParams parameters)
     {
-        var actions = new List<NextAction>();
+        var actions = new List<AIAction>();
 
-        // Suggest finding all overrides if virtual/abstract
         if (method.IsVirtual || method.IsAbstract)
         {
-            actions.Add(new NextAction
+            actions.Add(new AIAction
             {
-                Id = "find_overrides",
+                Action = "csharp_find_all_overrides",
                 Description = "Find all overrides of this virtual/abstract method",
-                ToolName = "csharp_find_all_overrides",
-                Parameters = new
+                Parameters = new Dictionary<string, object>
                 {
-                    filePath = parameters.FilePath,
-                    line = parameters.Line,
-                    column = parameters.Column
+                    ["filePath"] = parameters.FilePath,
+                    ["line"] = parameters.Line,
+                    ["column"] = parameters.Column
                 },
-                Priority = "high"
+                Priority = 90,
+                Category = "navigation"
             });
         }
 
-        // Suggest rename if many references
-        actions.Add(new NextAction
+        actions.Add(new AIAction
         {
-            Id = "rename_method",
+            Action = "csharp_rename_symbol",
             Description = $"Rename '{method.Name}' across the solution",
-            ToolName = "csharp_rename_symbol",
-            Parameters = new
+            Parameters = new Dictionary<string, object>
             {
-                filePath = parameters.FilePath,
-                line = parameters.Line,
-                column = parameters.Column,
-                preview = true
+                ["filePath"] = parameters.FilePath,
+                ["line"] = parameters.Line,
+                ["column"] = parameters.Column,
+                ["preview"] = true
             },
-            Priority = "medium"
+            Priority = 70,
+            Category = "refactoring"
         });
 
-        // Suggest trace call stack for detailed path analysis
-        actions.Add(new NextAction
+        actions.Add(new AIAction
         {
-            Id = "trace_paths",
+            Action = "csharp_trace_call_stack",
             Description = "Trace specific execution paths through this method",
-            ToolName = "csharp_trace_call_stack",
-            Parameters = new
+            Parameters = new Dictionary<string, object>
             {
-                filePath = parameters.FilePath,
-                line = parameters.Line,
-                column = parameters.Column,
-                direction = "backward"
+                ["filePath"] = parameters.FilePath,
+                ["line"] = parameters.Line,
+                ["column"] = parameters.Column,
+                ["direction"] = "backward"
             },
-            Priority = "medium"
+            Priority = 60,
+            Category = "analysis"
         });
 
         return actions;
     }
 
-    private CallHierarchyResult CreateErrorResult(
-        string errorCode,
-        string message,
-        List<string> recoverySteps,
-        CallHierarchyParams parameters,
-        DateTime startTime)
+    protected override int EstimateTokenUsage()
     {
-        return new CallHierarchyResult
-        {
-            Success = false,
-            Message = message,
-            Error = new ErrorInfo
-            {
-                Code = errorCode,
-                Recovery = new RecoveryInfo
-                {
-                    Steps = recoverySteps
-                }
-            },
-            Query = new QueryInfo
-            {
-                FilePath = parameters.FilePath,
-                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-            },
-            Meta = new ToolMetadata
-            {
-                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
-            }
-        };
+        // Estimate for typical call hierarchy response
+        return 5000;
     }
 }
 
+/// <summary>
+/// Parameters for CallHierarchy tool
+/// </summary>
 public class CallHierarchyParams
 {
+    [DataAnnotations.Required(ErrorMessage = "FilePath is required")]
     [JsonPropertyName("filePath")]
-    [Description("Path to the source file containing the method")]
-    public required string FilePath { get; set; }
+    [COA.Mcp.Framework.Attributes.Description("Path to the source file containing the method")]
+    public string FilePath { get; set; } = string.Empty;
 
+    [DataAnnotations.Required]
+    [DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Line must be positive")]
     [JsonPropertyName("line")]
-    [Description("Line number (1-based) where the method is declared")]
+    [COA.Mcp.Framework.Attributes.Description("Line number (1-based) where the method is declared")]
     public int Line { get; set; }
 
+    [DataAnnotations.Required]
+    [DataAnnotations.Range(1, int.MaxValue, ErrorMessage = "Column must be positive")]
     [JsonPropertyName("column")]
-    [Description("Column number (1-based) where the method is declared")]
+    [COA.Mcp.Framework.Attributes.Description("Column number (1-based) where the method is declared")]
     public int Column { get; set; }
     
     [JsonPropertyName("maxDepth")]
-    [Description("Maximum depth to traverse in each direction (default: 3)")]
+    [COA.Mcp.Framework.Attributes.Description("Maximum depth to traverse in each direction (default: 3)")]
     public int? MaxDepth { get; set; }
     
     [JsonPropertyName("includeOverrides")]
-    [Description("Include method overrides in the hierarchy (default: true)")]
+    [COA.Mcp.Framework.Attributes.Description("Include method overrides in the hierarchy (default: true)")]
     public bool IncludeOverrides { get; set; } = true;
     
     [JsonPropertyName("maxNodes")]
-    [Description("Maximum number of nodes to return (default: 100, max: 500)")]
+    [COA.Mcp.Framework.Attributes.Description("Maximum number of nodes to return (default: 100, max: 500)")]
     public int? MaxNodes { get; set; }
 }
 
