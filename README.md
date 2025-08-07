@@ -5,7 +5,7 @@ A powerful MCP (Model Context Protocol) server providing advanced C# code analys
 ## 🚀 Features
 
 - **Complete C# Code Analysis** - Full Roslyn compiler integration for accurate code understanding
-- **21 Powerful Tools** - Comprehensive suite covering navigation, analysis, refactoring, and code generation
+- **26 Powerful Tools** - Comprehensive suite covering navigation, analysis, refactoring, and code generation
 - **AI-Optimized Responses** - Structured outputs with insights, next actions, and error recovery
 - **Smart Token Management** - Automatic response truncation to prevent context overflow
 - **Workspace Management** - Load and analyze entire solutions or individual projects
@@ -79,6 +79,8 @@ If you prefer manual configuration, add to your Claude configuration file:
 | `csharp_symbol_search`       | Search symbols         | "Find all \*Service classes"        |
 | `csharp_get_diagnostics`     | Get errors/warnings    | "Show me all errors"                |
 | `csharp_rename_symbol`       | Rename across solution | "Rename UserService to UserManager" |
+| `csharp_call_hierarchy`      | View call graph        | "Show who calls ProcessOrder"       |
+| `csharp_code_clone_detection`| Find duplicate code    | "Find duplicated code blocks"       |
 
 ### Workspace Management
 
@@ -325,6 +327,88 @@ View the complete type hierarchy including base classes, derived types, and inte
 - "View the complete type hierarchy"
 - "What interfaces does this class implement?"
 
+### Advanced Analysis
+
+#### `csharp_call_hierarchy`
+
+View bidirectional call graph showing incoming and outgoing calls.
+
+**When to use:**
+- "Show all callers of this method"
+- "What methods does this function call?"
+- "View complete call hierarchy"
+- "Understand method dependencies"
+
+#### `csharp_find_all_overrides`
+
+Find all overrides of virtual/abstract methods and properties.
+
+**When to use:**
+- "What overrides this virtual method?"
+- "Find all implementations of abstract method"
+- "Show override hierarchy"
+
+#### `csharp_solution_wide_find_replace`
+
+Perform find and replace operations across the entire solution.
+
+**When to use:**
+- "Replace all TODO comments"
+- "Update deprecated API usage"
+- "Bulk text replacement"
+- "Find patterns across solution"
+
+**Example:**
+```json
+{
+  "findPattern": "// TODO:",
+  "replacePattern": "// TASK:",
+  "preview": true,
+  "useRegex": false,
+  "wholeWord": false
+}
+```
+
+#### `csharp_code_clone_detection`
+
+Detect duplicate code patterns for refactoring opportunities.
+
+**When to use:**
+- "Find duplicate code"
+- "Identify copy-paste code"
+- "Find refactoring opportunities"
+- "Detect code clones"
+
+**Features:**
+- Configurable similarity threshold
+- Timeout parameter for large codebases (30-300 seconds)
+- Type 1 (exact), Type 2 (renamed), Type 3 (modified) clone detection
+
+**Example:**
+```json
+{
+  "minLines": 6,
+  "minTokens": 50,
+  "similarityThreshold": 0.8,
+  "timeoutSeconds": 120
+}
+```
+
+#### `csharp_dependency_analysis`
+
+Analyze dependencies and coupling between types, namespaces, and projects.
+
+**When to use:**
+- "Analyze project dependencies"
+- "Find circular dependencies"
+- "Check coupling between namespaces"
+- "Understand architecture"
+
+**Analysis levels:**
+- `project` - Project-level dependencies
+- `namespace` - Namespace dependencies
+- `type` - Type-level dependencies
+
 ### Code Flow Analysis
 
 #### `csharp_trace_call_stack`
@@ -566,6 +650,46 @@ Code Review Results:
    - Make SaveOrder synchronous or add async operations
 ```
 
+## 📚 Complete Tool List
+
+The server provides 26 tools organized into these categories:
+
+### Workspace Management (3 tools)
+- `csharp_load_solution` - Load .sln files
+- `csharp_load_project` - Load .csproj files
+- `csharp_get_workspace_statistics` - View workspace info and memory usage
+
+### Code Navigation (8 tools)
+- `csharp_goto_definition` - Navigate to definitions
+- `csharp_find_all_references` - Find all usages
+- `csharp_find_implementations` - Find interface implementations
+- `csharp_hover` - Get symbol information
+- `csharp_trace_call_stack` - Trace execution paths
+- `csharp_symbol_search` - Search symbols by pattern
+- `csharp_document_symbols` - Get file structure
+- `csharp_get_type_members` - List type members
+
+### Refactoring (4 tools)
+- `csharp_rename_symbol` - Rename across solution
+- `csharp_extract_method` - Extract code to method
+- `csharp_add_missing_usings` - Add using directives
+- `csharp_format_document` - Format code
+
+### Diagnostics & Fixes (3 tools)
+- `csharp_get_diagnostics` - Get errors/warnings
+- `csharp_apply_code_fix` - Apply code fixes
+- `csharp_generate_code` - Generate boilerplate code
+
+### Advanced Analysis (8 tools)
+- `csharp_code_metrics` - Calculate complexity
+- `csharp_find_unused_code` - Find dead code
+- `csharp_type_hierarchy` - View inheritance
+- `csharp_call_hierarchy` - Bidirectional call graph
+- `csharp_find_all_overrides` - Find overrides
+- `csharp_solution_wide_find_replace` - Bulk operations
+- `csharp_code_clone_detection` - Find duplicates
+- `csharp_dependency_analysis` - Analyze dependencies
+
 ## 🏗️ Architecture
 
 ### Core Components
@@ -639,28 +763,38 @@ Logs are written to:
 
 ### Adding New Tools
 
-1. Create a new class in the `Tools` folder
-2. Add `[McpServerToolType]` attribute to the class
-3. Add `[McpServerTool]` and `[Description]` attributes to the method
+The server uses the COA.Mcp.Framework v1.1.6. To add a new tool:
+
+1. Create a new class in the `Tools` folder inheriting from `McpToolBase<TParams, TResult>`
+2. Override the `Name` and `Description` properties
+3. Implement `ExecuteInternalAsync` method
 4. Register the tool in `Program.cs`
 5. Follow the established result schema pattern
 
 Example tool implementation:
 
 ```csharp
-[McpServerToolType]
-public class MyNewTool
+public class MyNewTool : McpToolBase<MyParams, MyResult>
 {
-    [McpServerTool(Name = "csharp_my_tool")]
-    [Description(@"Brief description of what the tool does.
-    Returns: What the tool returns.
-    Prerequisites: Any requirements.
-    Use cases: When to use this tool.")]
-    public async Task<object> ExecuteAsync(MyToolParams parameters, CancellationToken cancellationToken)
+    public override string Name => "csharp_my_tool";
+    public override string Description => @"Brief description.
+Returns: What it returns.
+Prerequisites: Requirements.
+Use cases: When to use.";
+
+    protected override async Task<MyResult> ExecuteInternalAsync(
+        MyParams parameters, 
+        CancellationToken cancellationToken)
     {
         // Implementation
+        return new MyResult { Success = true, ... };
     }
 }
+```
+
+Register in `Program.cs`:
+```csharp
+builder.Services.AddScoped<MyNewTool>();
 ```
 
 ## 📄 License
@@ -676,7 +810,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📊 Project Status
 
-- ✅ **21 tools** implemented and tested
+- ✅ **26 tools** implemented and tested
 - ✅ **Full Roslyn integration** with MSBuild workspace support
 - ✅ **AI-optimized responses** with insights and next actions
 - ✅ **Smart token management** with automatic truncation
