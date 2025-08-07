@@ -90,12 +90,22 @@ public class DocumentService
     {
         var normalizedPath = Path.GetFullPath(filePath);
         
-        if (!_documentStates.TryGetValue(normalizedPath, out var state) || !state.IsOpen)
+        // First try to get from workspace service regardless of open state
+        // Documents don't need to be "open" to be accessed for analysis
+        var document = await _workspaceService.GetDocumentAsync(normalizedPath);
+        if (document != null)
         {
-            return null;
+            return document;
         }
-
-        return await _workspaceService.GetDocumentAsync(normalizedPath);
+        
+        // If not found and we have state, log for debugging
+        if (_documentStates.TryGetValue(normalizedPath, out var state))
+        {
+            _logger.LogDebug("Document state exists but document not found in workspace: {Path}, IsOpen: {IsOpen}", 
+                normalizedPath, state.IsOpen);
+        }
+        
+        return null;
     }
 
     public DocumentState? GetDocumentState(string filePath)

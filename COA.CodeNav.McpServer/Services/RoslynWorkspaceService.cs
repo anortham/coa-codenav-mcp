@@ -71,12 +71,16 @@ public class RoslynWorkspaceService : IDisposable
                 return existingInfo;
             }
 
+            _logger.LogInformation("Attempting to load project through workspace manager: {Path}", normalizedPath);
             var project = await _workspaceManager.LoadProjectAsync(normalizedPath);
             if (project == null)
             {
+                _logger.LogError("WorkspaceManager.LoadProjectAsync returned null for: {Path}", normalizedPath);
                 return null;
             }
 
+            _logger.LogInformation("Project loaded from workspace manager. Creating WorkspaceInfo for: {Name}", project.Name);
+            
             var info = new WorkspaceInfo
             {
                 Id = normalizedPath,
@@ -87,13 +91,26 @@ public class RoslynWorkspaceService : IDisposable
             };
 
             _activeWorkspaces[normalizedPath] = info;
-            _logger.LogInformation("Project loaded and registered: {Path}", normalizedPath);
+            _logger.LogInformation("Project loaded and registered: {Path} with {ProjectCount} projects in solution", 
+                normalizedPath, project.Solution.Projects.Count());
+            
+            // Register documents from the project
+            foreach (var doc in project.Documents)
+            {
+                if (doc.FilePath != null)
+                {
+                    var docPath = Path.GetFullPath(doc.FilePath);
+                    _openDocuments[docPath] = doc;
+                    _logger.LogDebug("Registered document: {DocPath}", docPath);
+                }
+            }
             
             return info;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load project: {Path}", projectPath);
+            _logger.LogError(ex, "Failed to load project in RoslynWorkspaceService: {Path}. Exception: {ExType}", 
+                projectPath, ex.GetType().Name);
             return null;
         }
     }

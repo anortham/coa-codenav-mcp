@@ -188,7 +188,15 @@ public class MSBuildWorkspaceManager : IDisposable
             var workspace = await GetOrCreateWorkspaceAsync(workspaceId);
             
             _logger.LogInformation("Loading project: {Path}", projectPath);
+            
+            // OpenProjectAsync loads a project and creates a new solution containing only that project
             var project = await workspace.OpenProjectAsync(projectPath, progress);
+            
+            if (project == null)
+            {
+                _logger.LogError("OpenProjectAsync returned null for project: {Path}", projectPath);
+                return null;
+            }
             
             // Track the loaded path
             if (_workspaces.TryGetValue(workspaceId, out var info))
@@ -196,12 +204,25 @@ public class MSBuildWorkspaceManager : IDisposable
                 info.LoadedPath = projectPath;
             }
             
-            _logger.LogInformation("Project loaded successfully: {Name}", project.Name);
+            _logger.LogInformation("Project loaded successfully: {Name} (Id: {Id})", 
+                project.Name, project.Id);
+            _logger.LogInformation("Project has {DocCount} documents and {RefCount} references", 
+                project.Documents.Count(), project.MetadataReferences.Count());
+            
             return project;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load project: {Path}", projectPath);
+            _logger.LogError(ex, "Failed to load project: {Path}. Exception Type: {ExType}, Message: {Message}", 
+                projectPath, ex.GetType().Name, ex.Message);
+            
+            // Log inner exception if present
+            if (ex.InnerException != null)
+            {
+                _logger.LogError(ex.InnerException, "Inner exception: {InnerMessage}", 
+                    ex.InnerException.Message);
+            }
+            
             return null;
         }
     }

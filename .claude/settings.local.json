@@ -65,7 +65,19 @@
       "Bash(for tool in SolutionWideFindReplaceTool CodeCloneDetectionTool TraceCallStackTool)",
       "Bash(do echo \"=== $tool ===\")",
       "Bash(done)",
-      "Bash(dotnet clean:*)"
+      "Bash(dotnet clean:*)",
+      "mcp__codenav__csharp_hover",
+      "mcp__codenav__csharp_trace_call_stack",
+      "mcp__codenav__csharp_document_symbols",
+      "mcp__codenav__csharp_get_diagnostics",
+      "mcp__codenav__csharp_type_hierarchy",
+      "mcp__codenav__csharp_get_type_members",
+      "mcp__codenav__csharp_load_project",
+      "mcp__codenav__csharp_format_document",
+      "mcp__codenav__csharp_extract_method",
+      "mcp__codenav__csharp_add_missing_usings",
+      "mcp__codenav__csharp_apply_code_fix",
+      "mcp__codenav__csharp_generate_code"
     ],
     "deny": []
   }

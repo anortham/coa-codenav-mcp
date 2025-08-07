@@ -22,7 +22,6 @@ public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosti
 
     // Token management constants
     private const int MAX_DIAGNOSTICS_PER_RESPONSE = 50;
-    private const int ESTIMATED_TOKENS_PER_DIAGNOSTIC = 100;
     private const int TOKEN_SAFETY_LIMIT = 10000;
 
     public override string Name => ToolNames.GetDiagnostics;

@@ -326,14 +326,14 @@ public class GenerateCodeTool : McpToolBase<GenerateCodeParams, GenerateCodeTool
     }
 
     // Simplified implementations of other generation methods
-    private async Task<GenerateCodeToolResult> GeneratePropertiesAsync(
+    private Task<GenerateCodeToolResult> GeneratePropertiesAsync(
         Document document,
         TypeDeclarationSyntax typeDeclaration,
         GenerateCodeParams parameters,
         CancellationToken cancellationToken)
     {
         // Simplified property generation
-        return new GenerateCodeToolResult
+        return Task.FromResult(new GenerateCodeToolResult
         {
             Success = true,
             Message = "Property generation not fully implemented in migration",
@@ -342,17 +342,17 @@ public class GenerateCodeTool : McpToolBase<GenerateCodeParams, GenerateCodeTool
                 FilePath = parameters.FilePath,
                 Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
             }
-        };
+        });
     }
 
-    private async Task<GenerateCodeToolResult> GenerateInterfaceImplementationAsync(
+    private Task<GenerateCodeToolResult> GenerateInterfaceImplementationAsync(
         Document document,
         TypeDeclarationSyntax typeDeclaration,
         GenerateCodeParams parameters,
         CancellationToken cancellationToken)
     {
         // Simplified interface implementation generation
-        return new GenerateCodeToolResult
+        return Task.FromResult(new GenerateCodeToolResult
         {
             Success = true,
             Message = "Interface implementation generation not fully implemented in migration",
@@ -361,17 +361,17 @@ public class GenerateCodeTool : McpToolBase<GenerateCodeParams, GenerateCodeTool
                 FilePath = parameters.FilePath,
                 Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
             }
-        };
+        });
     }
 
-    private async Task<GenerateCodeToolResult> GenerateEqualityMembersAsync(
+    private Task<GenerateCodeToolResult> GenerateEqualityMembersAsync(
         Document document,
         TypeDeclarationSyntax typeDeclaration,
         GenerateCodeParams parameters,
         CancellationToken cancellationToken)
     {
         // Simplified equality members generation
-        return new GenerateCodeToolResult
+        return Task.FromResult(new GenerateCodeToolResult
         {
             Success = true,
             Message = "Equality members generation not fully implemented in migration",
@@ -380,17 +380,17 @@ public class GenerateCodeTool : McpToolBase<GenerateCodeParams, GenerateCodeTool
                 FilePath = parameters.FilePath,
                 Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
             }
-        };
+        });
     }
 
-    private async Task<GenerateCodeToolResult> GenerateDisposablePatternAsync(
+    private Task<GenerateCodeToolResult> GenerateDisposablePatternAsync(
         Document document,
         TypeDeclarationSyntax typeDeclaration,
         GenerateCodeParams parameters,
         CancellationToken cancellationToken)
     {
         // Simplified disposable pattern generation
-        return new GenerateCodeToolResult
+        return Task.FromResult(new GenerateCodeToolResult
         {
             Success = true,
             Message = "Disposable pattern generation not fully implemented in migration",
@@ -399,7 +399,7 @@ public class GenerateCodeTool : McpToolBase<GenerateCodeParams, GenerateCodeTool
                 FilePath = parameters.FilePath,
                 Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
             }
-        };
+        });
     }
 
     private InsertionPoint FindConstructorInsertionPoint(TypeDeclarationSyntax typeDeclaration)

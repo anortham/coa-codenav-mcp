@@ -158,7 +158,7 @@ AI benefit: Reveals architectural issues and coupling patterns that impact maint
         }
     }
 
-    private async Task AnalyzeProjectDependencies(Solution solution, List<DependencyRelation> dependencies,
+    private Task AnalyzeProjectDependencies(Solution solution, List<DependencyRelation> dependencies,
         Dictionary<string, AnalysisNode> nodes, DependencyAnalysisParams parameters, CancellationToken cancellationToken)
     {
         foreach (var project in solution.Projects)
@@ -206,6 +206,8 @@ AI benefit: Reveals architectural issues and coupling patterns that impact maint
                 }
             }
         }
+
+        return Task.CompletedTask;
     }
 
     private async Task AnalyzeNamespaceDependencies(Solution solution, List<DependencyRelation> dependencies,
@@ -338,7 +340,7 @@ AI benefit: Reveals architectural issues and coupling patterns that impact maint
         }
     }
 
-    private async Task AnalyzeDocumentForNamespaces(SyntaxNode root, SemanticModel semanticModel,
+    private Task AnalyzeDocumentForNamespaces(SyntaxNode root, SemanticModel semanticModel,
         Dictionary<string, HashSet<string>> namespaceDeps, CancellationToken cancellationToken)
     {
         var namespaces = root.DescendantNodes().OfType<NamespaceDeclarationSyntax>();
@@ -375,9 +377,11 @@ AI benefit: Reveals architectural issues and coupling patterns that impact maint
                 }
             }
         }
+
+        return Task.CompletedTask;
     }
 
-    private async Task AnalyzeDocumentForTypes(SyntaxNode root, SemanticModel semanticModel,
+    private Task AnalyzeDocumentForTypes(SyntaxNode root, SemanticModel semanticModel,
         Dictionary<string, HashSet<string>> typeDeps, CancellationToken cancellationToken)
     {
         var types = root.DescendantNodes().OfType<TypeDeclarationSyntax>();
@@ -427,6 +431,8 @@ AI benefit: Reveals architectural issues and coupling patterns that impact maint
                 }
             }
         }
+
+        return Task.CompletedTask;
     }
 
     private bool IsFrameworkType(ISymbol symbol)

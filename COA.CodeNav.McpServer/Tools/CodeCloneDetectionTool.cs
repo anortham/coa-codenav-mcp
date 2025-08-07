@@ -53,6 +53,12 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
         var startTime = DateTime.UtcNow;
         _logger.LogDebug("CodeCloneDetection request: MinLines={MinLines}, SimilarityThreshold={Threshold}", 
             parameters.MinLines, parameters.SimilarityThreshold);
+        
+        // Add timeout to prevent hanging
+        var timeoutSeconds = parameters.TimeoutSeconds ?? 30; // Default to 30 seconds
+        if (timeoutSeconds > 300) timeoutSeconds = 300; // Cap at 5 minutes
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
         var workspace = _workspaceService.GetActiveWorkspaces().FirstOrDefault();
         if (workspace == null)
@@ -90,7 +96,7 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
                     if (!ShouldProcessDocument(document, parameters))
                         continue;
 
-                    var root = await document.GetSyntaxRootAsync(cancellationToken);
+                    var root = await document.GetSyntaxRootAsync(linkedCts.Token);
                     if (root == null) continue;
 
                     ExtractCodeBlocks(root, document, codeBlocks, parameters);
@@ -98,7 +104,7 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
             }
 
             // Find similar code blocks
-            var cloneGroups = FindCloneGroups(codeBlocks, parameters);
+            var cloneGroups = FindCloneGroups(codeBlocks, parameters, linkedCts.Token);
             
             // Store all groups before limiting
             var allGroups = cloneGroups.ToList();
@@ -173,6 +179,34 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
                 {
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
                     Truncated = wasTruncated
+                }
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("CodeCloneDetection operation timed out or was cancelled");
+            return new CodeCloneDetectionResult
+            {
+                Success = false,
+                Message = $"Operation timed out after {parameters.TimeoutSeconds ?? 30} seconds. Try with smaller scope or fewer files, or increase timeoutSeconds parameter (max: 300).",
+                Error = new ErrorInfo
+                {
+                    Code = "TIMEOUT",
+                    Message = $"Operation timed out after {parameters.TimeoutSeconds ?? 30} seconds",
+                    Recovery = new RecoveryInfo
+                    {
+                        Steps = new[]
+                        {
+                            "Try with a smaller minLines value",
+                            "Use filePattern to limit scope",
+                            "Reduce similarityThreshold for faster matching",
+                            "Increase timeoutSeconds parameter (e.g., timeoutSeconds: 120 for 2 minutes, max: 300)"
+                        }
+                    }
+                },
+                Meta = new ToolExecutionMetadata
+                {
+                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                 }
             };
         }
@@ -279,13 +313,15 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
         return Convert.ToHexString(hash);
     }
 
-    private List<CloneGroup> FindCloneGroups(List<CodeBlock> codeBlocks, CodeCloneDetectionParams parameters)
+    private List<CloneGroup> FindCloneGroups(List<CodeBlock> codeBlocks, CodeCloneDetectionParams parameters, CancellationToken cancellationToken)
     {
         var groups = new List<CloneGroup>();
         var processed = new HashSet<string>();
 
         for (int i = 0; i < codeBlocks.Count; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            
             if (processed.Contains(codeBlocks[i].Id))
                 continue;
 
@@ -340,6 +376,14 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
 
         if (content1.Length == 0 || content2.Length == 0)
             return 0.0;
+        
+        // Skip expensive calculation for very large strings
+        const int MAX_LENGTH = 5000;
+        if (content1.Length > MAX_LENGTH || content2.Length > MAX_LENGTH)
+        {
+            // Use simpler heuristic for large strings
+            return ComputeQuickSimilarity(content1, content2);
+        }
 
         var distance = ComputeLevenshteinDistance(content1, content2);
         var maxLength = Math.Max(content1.Length, content2.Length);
@@ -369,6 +413,24 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
         }
 
         return matrix[s1.Length, s2.Length];
+    }
+    
+    private double ComputeQuickSimilarity(string s1, string s2)
+    {
+        // Quick similarity based on common tokens
+        var tokens1 = s1.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        var tokens2 = s2.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        
+        if (tokens1.Count == 0 && tokens2.Count == 0)
+            return 1.0;
+        
+        if (tokens1.Count == 0 || tokens2.Count == 0)
+            return 0.0;
+        
+        var intersection = tokens1.Intersect(tokens2).Count();
+        var union = tokens1.Union(tokens2).Count();
+        
+        return (double)intersection / union; // Jaccard similarity
     }
 
     private List<string> GenerateInsights(List<CloneGroup> groups, int totalBlocks)
@@ -502,6 +564,10 @@ public class CodeCloneDetectionParams
     [JsonPropertyName("maxGroups")]
     [COA.Mcp.Framework.Attributes.Description("Maximum number of clone groups to return (default: 50)")]
     public int? MaxGroups { get; set; }
+
+    [JsonPropertyName("timeoutSeconds")]
+    [COA.Mcp.Framework.Attributes.Description("Timeout in seconds for the operation (default: 30, max: 300)")]
+    public int? TimeoutSeconds { get; set; }
 }
 
 public class CodeCloneDetectionResult : ToolResultBase
