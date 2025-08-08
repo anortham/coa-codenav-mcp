@@ -24,7 +24,12 @@ public class GetTypeMembersTool : McpToolBase<GetTypeMembersParams, GetTypeMembe
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.GetTypeMembers;
-    public override string Description => "List all members of a type including methods, properties, fields, and events with their documentation.";
+    public override string Description => @"List all members of a type including methods, properties, fields, and events with their documentation.
+Returns: Comprehensive list of type members with signatures, accessibility, and XML documentation.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if type cannot be found.
+Use cases: Exploring API surface, understanding class structure, generating documentation.
+Not for: Finding references to members (use csharp_find_all_references), navigating (use csharp_goto_definition).";
 
     public GetTypeMembersTool(
         ILogger<GetTypeMembersTool> logger,

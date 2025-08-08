@@ -28,7 +28,12 @@ public class ExtractMethodTool : McpToolBase<ExtractMethodParams, ExtractMethodR
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.ExtractMethod;
-    public override string Description => "Extract selected code into a new method.";
+    public override string Description => @"Extract selected code into a new method.
+Returns: Refactored code with new method and updated original location.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if extraction fails.
+Use cases: Code refactoring, reducing method complexity, improving code organization.
+Not for: Moving methods between classes, renaming methods (use csharp_rename_symbol).";
     
     public ExtractMethodTool(
         ILogger<ExtractMethodTool> logger,

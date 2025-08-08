@@ -26,7 +26,12 @@ public class RenameSymbolTool : McpToolBase<RenameSymbolParams, RenameSymbolTool
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.RenameSymbol;
-    public override string Description => "Rename a symbol across the entire solution with conflict detection and preview";
+    public override string Description => @"Rename a symbol across the entire solution with conflict detection and preview.
+Returns: Preview of all changes or applied changes with conflict resolution.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if rename fails or conflicts exist.
+Use cases: Refactoring symbol names, fixing naming conventions, large-scale renames.
+Not for: Moving symbols between namespaces, changing symbol types (use other refactoring tools).";
     
     public RenameSymbolTool(
         ILogger<RenameSymbolTool> logger,

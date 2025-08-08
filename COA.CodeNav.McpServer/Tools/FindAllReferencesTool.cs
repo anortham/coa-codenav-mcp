@@ -26,7 +26,12 @@ public class FindAllReferencesTool : McpToolBase<FindAllReferencesParams, FindAl
     private const int TOKENS_PER_REFERENCE = 100; // Estimate
 
     public override string Name => "csharp_find_all_references";
-    public override string Description => "Find all references to a symbol at a given position in a file";
+    public override string Description => @"Find all references to a symbol at a given position in a file.
+Returns: List of reference locations with file paths, line numbers, and context.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if symbol cannot be found.
+Use cases: Impact analysis, refactoring preparation, understanding symbol usage.
+Not for: Finding definitions (use csharp_goto_definition), searching by name (use csharp_symbol_search).";
 
     public FindAllReferencesTool(
         ILogger<FindAllReferencesTool> logger,

@@ -27,7 +27,12 @@ public class ApplyCodeFixTool : McpToolBase<ApplyCodeFixParams, ApplyCodeFixTool
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.ApplyCodeFix;
-    public override string Description => "Apply a code fix for a diagnostic at a specific location.";
+    public override string Description => @"Apply a code fix for a diagnostic at a specific location.
+Returns: Applied changes with file modifications and status.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if fix cannot be applied.
+Use cases: Automated code fixing, resolving compiler warnings, applying analyzer suggestions.
+Not for: Manual refactoring (use other refactoring tools), bulk fixes (use csharp_get_diagnostics first).";
     
     public ApplyCodeFixTool(
         ILogger<ApplyCodeFixTool> logger,

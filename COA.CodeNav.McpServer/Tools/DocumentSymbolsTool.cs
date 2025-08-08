@@ -23,7 +23,12 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.DocumentSymbols;
-    public override string Description => "Extract the symbol hierarchy from a C# document";
+    public override string Description => @"Extract the symbol hierarchy from a C# document.
+Returns: Hierarchical list of classes, methods, properties, and fields with their locations.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if document is not found.
+Use cases: Code outline, document structure analysis, quick navigation within files.
+Not for: Solution-wide search (use csharp_symbol_search), cross-references (use csharp_find_all_references).";
 
     public DocumentSymbolsTool(
         ILogger<DocumentSymbolsTool> logger,

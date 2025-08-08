@@ -24,7 +24,12 @@ public class GoToDefinitionTool : McpToolBase<GoToDefinitionParams, GoToDefiniti
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_goto_definition";
-    public override string Description => "Navigate to the definition of a symbol at a given position in a file";
+    public override string Description => @"Navigate to the definition of a symbol at a given position in a file.
+Returns: Symbol definition location with metadata and documentation.
+Prerequisites: Call csharp_load_solution or csharp_load_project first.
+Error handling: Returns specific error codes with recovery steps if symbol cannot be resolved.
+Use cases: Jumping to source code, understanding symbol origins, code navigation.
+Not for: Finding references (use csharp_find_all_references), searching symbols (use csharp_symbol_search).";
     
     public GoToDefinitionTool(
         ILogger<GoToDefinitionTool> logger,
