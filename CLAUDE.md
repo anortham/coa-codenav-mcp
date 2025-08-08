@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-COA.CodeNav.McpServer provides Roslyn-based C# code analysis and navigation tools via MCP (Model Context Protocol). Built on COA.Mcp.Framework v1.1.6.
+COA.CodeNav.McpServer provides Roslyn-based C# code analysis and navigation tools via MCP (Model Context Protocol). Built on COA.Mcp.Framework v1.4.1.
 
 ## Build Commands
 
@@ -136,4 +136,4 @@ return new MyResult
 ## Reference
 
 - Parent project: `C:\source\COA CodeSearch MCP` (search functionality)
-- Framework docs: COA.Mcp.Framework v1.1.6 documentation
+- Framework docs: COA.Mcp.Framework v1.4.1 documentation

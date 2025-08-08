@@ -14,7 +14,7 @@ using Serilog.Events;
 
 // Configure Serilog first
 var configuration = new ConfigurationBuilder()
-    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .AddEnvironmentVariables("CODENAV_")
     .Build();
 
