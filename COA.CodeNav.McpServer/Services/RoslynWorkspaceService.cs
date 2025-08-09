@@ -266,6 +266,149 @@ public class RoslynWorkspaceService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Refreshes a document by forcing it to be reloaded from disk
+    /// </summary>
+    public async Task<Document?> RefreshDocumentAsync(string filePath)
+    {
+        var normalizedPath = Path.GetFullPath(filePath);
+        
+        _logger.LogInformation("Refreshing document: {Path}", normalizedPath);
+        
+        // Remove from cache to force reload
+        _openDocuments.TryRemove(normalizedPath, out _);
+        
+        // Find the document in all workspaces and reload it
+        foreach (var workspaceInfo in _activeWorkspaces.Values)
+        {
+            var document = workspaceInfo.Solution.Projects
+                .SelectMany(p => p.Documents)
+                .FirstOrDefault(d => d.FilePath != null && Path.GetFullPath(d.FilePath) == normalizedPath);
+                
+            if (document != null)
+            {
+                try
+                {
+                    // Check if file exists and read current content
+                    if (File.Exists(normalizedPath))
+                    {
+                        var currentContent = await File.ReadAllTextAsync(normalizedPath);
+                        var sourceText = Microsoft.CodeAnalysis.Text.SourceText.From(currentContent);
+                        
+                        // Update document with fresh content from disk
+                        var newDocument = document.WithText(sourceText);
+                        var newSolution = workspaceInfo.Solution.WithDocumentText(document.Id, sourceText);
+                        
+                        // Update the workspace with the new solution
+                        workspaceInfo.Solution = newSolution;
+                        
+                        // Cache the refreshed document
+                        var refreshedDoc = newSolution.GetDocument(document.Id);
+                        if (refreshedDoc != null)
+                        {
+                            _openDocuments[normalizedPath] = refreshedDoc;
+                            _logger.LogInformation("Document refreshed successfully: {Path}", normalizedPath);
+                            return refreshedDoc;
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Cannot refresh document - file not found on disk: {Path}", normalizedPath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error refreshing document: {Path}", normalizedPath);
+                }
+            }
+        }
+        
+        _logger.LogWarning("Document not found in any workspace for refresh: {Path}", normalizedPath);
+        return null;
+    }
+
+    /// <summary>
+    /// Invalidates and reloads an entire workspace
+    /// </summary>
+    public async Task<bool> InvalidateWorkspaceAsync(string workspacePath)
+    {
+        var normalizedPath = Path.GetFullPath(workspacePath);
+        
+        _logger.LogInformation("Invalidating workspace: {Path}", normalizedPath);
+        
+        if (_activeWorkspaces.TryGetValue(normalizedPath, out var workspaceInfo))
+        {
+            // Clear document cache for this workspace
+            var documentsToRemove = _openDocuments
+                .Where(kvp => IsDocumentInWorkspace(kvp.Key, normalizedPath))
+                .Select(kvp => kvp.Key)
+                .ToList();
+                
+            foreach (var docPath in documentsToRemove)
+            {
+                _openDocuments.TryRemove(docPath, out _);
+                _logger.LogDebug("Removed cached document: {Path}", docPath);
+            }
+            
+            // Remove and reload the workspace
+            _activeWorkspaces.TryRemove(normalizedPath, out _);
+            _workspaceManager.CloseWorkspace(workspaceInfo.Id);
+            
+            // Reload based on workspace type
+            WorkspaceInfo? newWorkspace = null;
+            if (workspaceInfo.Type == WorkspaceType.Solution)
+            {
+                newWorkspace = await LoadSolutionAsync(normalizedPath);
+            }
+            else if (workspaceInfo.Type == WorkspaceType.Project)
+            {
+                newWorkspace = await LoadProjectAsync(normalizedPath);
+            }
+            
+            if (newWorkspace != null)
+            {
+                _logger.LogInformation("Workspace invalidated and reloaded successfully: {Path}", normalizedPath);
+                return true;
+            }
+        }
+        
+        _logger.LogWarning("Failed to invalidate workspace: {Path}", normalizedPath);
+        return false;
+    }
+
+    /// <summary>
+    /// Gets a document with option to force refresh from disk
+    /// </summary>
+    public async Task<Document?> GetDocumentAsync(string filePath, bool forceRefresh)
+    {
+        if (forceRefresh)
+        {
+            return await RefreshDocumentAsync(filePath);
+        }
+        
+        return await GetDocumentAsync(filePath);
+    }
+
+    /// <summary>
+    /// Checks if a document path belongs to a specific workspace
+    /// </summary>
+    private bool IsDocumentInWorkspace(string documentPath, string workspacePath)
+    {
+        try
+        {
+            var docDir = Path.GetDirectoryName(Path.GetFullPath(documentPath));
+            var workspaceDir = Path.GetDirectoryName(Path.GetFullPath(workspacePath));
+            
+            if (docDir == null || workspaceDir == null) return false;
+            
+            return docDir.StartsWith(workspaceDir, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public void Dispose()
     {
         _openDocuments.Clear();

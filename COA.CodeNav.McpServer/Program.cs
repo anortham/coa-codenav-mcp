@@ -134,6 +134,7 @@ builder.Services.AddScoped<FindAllOverridesTool>();
 builder.Services.AddScoped<SolutionWideFindReplaceTool>();
 builder.Services.AddScoped<CodeCloneDetectionTool>();
 builder.Services.AddScoped<DependencyAnalysisTool>();
+builder.Services.AddScoped<RefreshWorkspaceTool>();
 
 // Now discover and register all tools that inherit from McpToolBase
 // This finds the tools we registered above and sets them up as MCP tools

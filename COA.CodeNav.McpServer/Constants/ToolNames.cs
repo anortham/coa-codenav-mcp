@@ -40,4 +40,5 @@ public static class ToolNames
     public const string LoadSolution = "csharp_load_solution";
     public const string LoadProject = "csharp_load_project";
     public const string GetWorkspaceStatistics = "csharp_get_workspace_statistics";
+    public const string RefreshWorkspace = "csharp_refresh_workspace";
 }

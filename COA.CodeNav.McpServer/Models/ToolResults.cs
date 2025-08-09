@@ -406,3 +406,38 @@ public class TypeMembersDistribution
     [JsonPropertyName("bySource")]
     public Dictionary<string, int>? BySource { get; set; } // Own vs Inherited
 }
+
+/// <summary>
+/// Result for RefreshWorkspace tool
+/// </summary>
+public class RefreshWorkspaceToolResult : ToolResultBase
+{
+    public override string Operation => ToolNames.RefreshWorkspace;
+
+    [JsonPropertyName("query")]
+    public RefreshQuery? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
+
+    [JsonPropertyName("refreshedFiles")]
+    public List<string> RefreshedFiles { get; set; } = new();
+
+    [JsonPropertyName("failedFiles")]
+    public List<string> FailedFiles { get; set; } = new();
+}
+
+/// <summary>
+/// Query information for RefreshWorkspace tool
+/// </summary>
+public class RefreshQuery
+{
+    [JsonPropertyName("scope")]
+    public string? Scope { get; set; }
+
+    [JsonPropertyName("filePath")]
+    public string? FilePath { get; set; }
+
+    [JsonPropertyName("workspacePath")]
+    public string? WorkspacePath { get; set; }
+}

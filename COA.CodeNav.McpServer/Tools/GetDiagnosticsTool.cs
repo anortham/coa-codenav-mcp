@@ -70,7 +70,7 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
                     return CreateInvalidParametersResult("File path is required when scope is 'file'", parameters, startTime);
                 }
 
-                var document = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+                var document = await _workspaceService.GetDocumentAsync(parameters.FilePath, parameters.ForceRefresh ?? false);
                 if (document == null)
                 {
                     return CreateDocumentNotFoundResult(parameters, startTime);
@@ -83,7 +83,7 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
             case "project":
                 if (!string.IsNullOrEmpty(parameters.FilePath))
                 {
-                    var projectDoc = await _workspaceService.GetDocumentAsync(parameters.FilePath);
+                    var projectDoc = await _workspaceService.GetDocumentAsync(parameters.FilePath, parameters.ForceRefresh ?? false);
                     if (projectDoc != null)
                     {
                         projects.Add(projectDoc.Project);
@@ -899,4 +899,8 @@ public class GetDiagnosticsParams
     [System.ComponentModel.DataAnnotations.Range(1, 500)]
     [COA.Mcp.Framework.Attributes.Description("Maximum number of diagnostics to return (default: 50, max: 500)")]
     public int? MaxResults { get; set; }
+
+    [JsonPropertyName("forceRefresh")]
+    [COA.Mcp.Framework.Attributes.Description("Force refresh documents from disk before analysis (default: false)")]
+    public bool? ForceRefresh { get; set; }
 }
