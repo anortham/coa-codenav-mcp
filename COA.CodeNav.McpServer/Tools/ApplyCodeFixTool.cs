@@ -4,6 +4,7 @@ using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -24,6 +25,7 @@ public class ApplyCodeFixTool : McpToolBase<ApplyCodeFixParams, ApplyCodeFixTool
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly CodeFixService _codeFixService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.ApplyCodeFix;
@@ -39,10 +41,12 @@ Not for: Manual refactoring (use other refactoring tools), bulk fixes (use cshar
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         CodeFixService codeFixService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
+        _tokenEstimator = tokenEstimator;
         _workspaceService = workspaceService;
         _documentService = documentService;
         _codeFixService = codeFixService;

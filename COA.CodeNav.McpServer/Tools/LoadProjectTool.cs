@@ -3,6 +3,7 @@ using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.Extensions.Logging;
 
 namespace COA.CodeNav.McpServer.Tools;
@@ -15,6 +16,7 @@ public class LoadProjectTool : McpToolBase<LoadProjectParams, LoadProjectResult>
     private readonly ILogger<LoadProjectTool> _logger;
     private readonly MSBuildWorkspaceManager _workspaceManager;
     private readonly RoslynWorkspaceService _workspaceService;
+    private readonly ITokenEstimator _tokenEstimator;
 
     public override string Name => "csharp_load_project";
     public override string Description => "Load a C# project file into the Roslyn workspace";
@@ -22,12 +24,14 @@ public class LoadProjectTool : McpToolBase<LoadProjectParams, LoadProjectResult>
     public LoadProjectTool(
         ILogger<LoadProjectTool> logger,
         MSBuildWorkspaceManager workspaceManager,
-        RoslynWorkspaceService workspaceService)
+        RoslynWorkspaceService workspaceService,
+        ITokenEstimator tokenEstimator)
         : base(logger)
     {
         _logger = logger;
         _workspaceManager = workspaceManager;
         _workspaceService = workspaceService;
+        _tokenEstimator = tokenEstimator;
     }
 
     protected override async Task<LoadProjectResult> ExecuteInternalAsync(

@@ -4,6 +4,7 @@ using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -25,6 +26,7 @@ public class ExtractMethodTool : McpToolBase<ExtractMethodParams, ExtractMethodR
     private readonly ILogger<ExtractMethodTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.ExtractMethod;
@@ -39,10 +41,12 @@ Not for: Moving methods between classes, renaming methods (use csharp_rename_sym
         ILogger<ExtractMethodTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
+        _tokenEstimator = tokenEstimator;
         _workspaceService = workspaceService;
         _documentService = documentService;
         _resourceProvider = resourceProvider;

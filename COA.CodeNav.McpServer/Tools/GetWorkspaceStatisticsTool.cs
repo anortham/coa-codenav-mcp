@@ -4,6 +4,7 @@ using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.Extensions.Logging;
 
 namespace COA.CodeNav.McpServer.Tools;
@@ -15,17 +16,20 @@ public class GetWorkspaceStatisticsTool : McpToolBase<GetWorkspaceStatisticsPara
 {
     private readonly ILogger<GetWorkspaceStatisticsTool> _logger;
     private readonly MSBuildWorkspaceManager _workspaceManager;
+    private readonly ITokenEstimator _tokenEstimator;
 
     public override string Name => "csharp_get_workspace_statistics";
     public override string Description => "Get statistics about currently loaded workspaces and resource usage";
 
     public GetWorkspaceStatisticsTool(
         ILogger<GetWorkspaceStatisticsTool> logger,
-        MSBuildWorkspaceManager workspaceManager)
+        MSBuildWorkspaceManager workspaceManager,
+        ITokenEstimator tokenEstimator)
         : base(logger)
     {
         _logger = logger;
         _workspaceManager = workspaceManager;
+        _tokenEstimator = tokenEstimator;
     }
 
     protected override Task<GetWorkspaceStatisticsResult> ExecuteInternalAsync(

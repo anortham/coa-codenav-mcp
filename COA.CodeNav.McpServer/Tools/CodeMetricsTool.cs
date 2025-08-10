@@ -5,6 +5,7 @@ using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
 using COA.Mcp.Framework.Interfaces;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -22,6 +23,7 @@ public class CodeMetricsTool : McpToolBase<CodeMetricsParams, CodeMetricsResult>
     private readonly ILogger<CodeMetricsTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_code_metrics";
@@ -36,12 +38,14 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.";
         ILogger<CodeMetricsTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -159,6 +163,25 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.";
                 break;
         }
 
+        // Apply token optimization to prevent context overflow
+        var estimatedTokens = _tokenEstimator.EstimateObject(metrics);
+        var originalCount = metrics.Count;
+        var wasOptimized = false;
+        
+        if (estimatedTokens > 8000) // Code metrics can include detailed information
+        {
+            metrics = _tokenEstimator.ApplyProgressiveReduction(
+                metrics,
+                metric => _tokenEstimator.EstimateObject(metric),
+                8000,
+                new[] { 50, 30, 20, 10 }
+            );
+            wasOptimized = metrics.Count < originalCount;
+            
+            _logger.LogDebug("Applied token optimization: reduced from {Original} to {Reduced} metrics (estimated {EstimatedTokens} tokens)",
+                originalCount, metrics.Count, estimatedTokens);
+        }
+
         // Generate insights and next actions
         var insights = GenerateInsights(metrics);
         var nextActions = GenerateNextActions(metrics, parameters);
@@ -167,7 +190,7 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.";
         return new CodeMetricsResult
         {
             Success = true,
-            Message = $"Code metrics calculated for {metrics.Count} item(s)",
+            Message = $"Code metrics calculated for {originalCount} item(s){(wasOptimized ? " (showing " + metrics.Count + " due to token optimization)" : "")}",
             Query = new QueryInfo
             {
                 FilePath = parameters.FilePath,
@@ -177,7 +200,7 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.";
             },
             Summary = new SummaryInfo
             {
-                TotalFound = metrics.Count,
+                TotalFound = originalCount,
                 Returned = metrics.Count,
                 ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
             },

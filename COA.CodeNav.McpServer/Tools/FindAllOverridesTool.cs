@@ -5,6 +5,7 @@ using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
 using COA.Mcp.Framework.Interfaces;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,7 @@ public class FindAllOverridesTool : McpToolBase<FindAllOverridesParams, FindAllO
     private readonly ILogger<FindAllOverridesTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_find_all_overrides";
@@ -35,12 +37,14 @@ AI benefit: Provides complete override information that's difficult to piece tog
         ILogger<FindAllOverridesTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -187,11 +191,30 @@ AI benefit: Provides complete override information that's difficult to piece tog
         // Flatten hierarchy for counting
         var allOverrides = FlattenHierarchy(hierarchy);
         
-        // Apply limit if specified
+        // Apply token optimization to prevent context overflow
+        var estimatedTokens = _tokenEstimator.EstimateObject(allOverrides);
         var limitedOverrides = allOverrides;
-        if (parameters.MaxResults.HasValue && allOverrides.Count > parameters.MaxResults.Value)
+        var wasOptimized = false;
+        
+        if (estimatedTokens > 8000) // Override information can be verbose
         {
-            limitedOverrides = allOverrides.Take(parameters.MaxResults.Value).ToList();
+            var originalCount = allOverrides.Count;
+            limitedOverrides = _tokenEstimator.ApplyProgressiveReduction(
+                allOverrides,
+                override_ => _tokenEstimator.EstimateObject(override_),
+                8000,
+                new[] { 30, 20, 15, 10 }
+            );
+            wasOptimized = limitedOverrides.Count < originalCount;
+            
+            _logger.LogDebug("Applied token optimization: reduced from {Original} to {Reduced} overrides (estimated {EstimatedTokens} tokens)",
+                originalCount, limitedOverrides.Count, estimatedTokens);
+        }
+        
+        // Also respect MaxResults parameter if provided and stricter than token limit
+        if (parameters.MaxResults.HasValue && limitedOverrides.Count > parameters.MaxResults.Value)
+        {
+            limitedOverrides = limitedOverrides.Take(parameters.MaxResults.Value).ToList();
         }
 
         // Generate insights and analysis
@@ -205,7 +228,7 @@ AI benefit: Provides complete override information that's difficult to piece tog
         return new FindAllOverridesResult
         {
             Success = true,
-            Message = $"Found {allOverrides.Count} overrides for '{symbol.Name}'",
+            Message = $"Found {allOverrides.Count} overrides for '{symbol.Name}'{(wasOptimized ? " (showing " + limitedOverrides.Count + " due to token optimization)" : "")}",
             Query = new QueryInfo
             {
                 FilePath = parameters.FilePath,

@@ -4,6 +4,7 @@ using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
@@ -26,6 +27,7 @@ public class AddMissingUsingsTool : McpToolBase<AddMissingUsingsParams, AddMissi
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly CodeFixService _codeFixService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.AddMissingUsings;
@@ -41,12 +43,14 @@ Not for: Manual namespace management, removing unused usings (different feature)
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         CodeFixService codeFixService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _codeFixService = codeFixService;
         _resourceProvider = resourceProvider;
     }

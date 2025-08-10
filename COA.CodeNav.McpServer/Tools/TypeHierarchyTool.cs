@@ -5,6 +5,7 @@ using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
 using COA.Mcp.Framework.Interfaces;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,7 @@ public class TypeHierarchyTool : McpToolBase<TypeHierarchyParams, TypeHierarchyR
     private readonly ILogger<TypeHierarchyTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_type_hierarchy";
@@ -35,12 +37,14 @@ AI benefit: Provides complete view of type relationships for better code underst
         ILogger<TypeHierarchyTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -220,6 +224,45 @@ AI benefit: Provides complete view of type relationships for better code underst
             ImplementingTypes = await GetImplementingTypesAsync(typeSymbol, solution, parameters.IncludeImplementations, cancellationToken)
         };
 
+        // Apply token optimization to prevent context overflow
+        var estimatedTokens = _tokenEstimator.EstimateObject(hierarchy);
+        var wasOptimized = false;
+        
+        if (estimatedTokens > 8000) // TypeHierarchy can have deep nested structures
+        {
+            // Reduce derived types if they exceed limit
+            if (hierarchy.DerivedTypes?.Count > 0)
+            {
+                var originalDerivedCount = hierarchy.DerivedTypes.Count;
+                hierarchy.DerivedTypes = _tokenEstimator.ApplyProgressiveReduction(
+                    hierarchy.DerivedTypes,
+                    type => _tokenEstimator.EstimateObject(type),
+                    4000, // Half the limit for derived types
+                    new[] { 20, 15, 10, 5 }
+                );
+                wasOptimized = hierarchy.DerivedTypes.Count < originalDerivedCount;
+            }
+
+            // Reduce implementing types if they exceed limit
+            if (hierarchy.ImplementingTypes?.Count > 0 && !wasOptimized)
+            {
+                var originalImplementingCount = hierarchy.ImplementingTypes.Count;
+                hierarchy.ImplementingTypes = _tokenEstimator.ApplyProgressiveReduction(
+                    hierarchy.ImplementingTypes,
+                    type => _tokenEstimator.EstimateObject(type),
+                    4000, // Half the limit for implementing types
+                    new[] { 15, 10, 5 }
+                );
+                wasOptimized = hierarchy.ImplementingTypes.Count < originalImplementingCount;
+            }
+
+            if (wasOptimized)
+            {
+                _logger.LogDebug("Applied token optimization to type hierarchy: estimated {EstimatedTokens} tokens",
+                    estimatedTokens);
+            }
+        }
+
         // Generate insights and next actions
         var insights = GenerateInsights(hierarchy, typeSymbol);
         var nextActions = GenerateNextActions(hierarchy, typeSymbol, parameters);
@@ -236,7 +279,7 @@ AI benefit: Provides complete view of type relationships for better code underst
         return new TypeHierarchyResult
         {
             Success = true,
-            Message = $"Type hierarchy for '{typeSymbol.Name}'",
+            Message = $"Type hierarchy for '{typeSymbol.Name}'{(wasOptimized ? " (optimized for token limit)" : "")}",
             Query = new QueryInfo 
             { 
                 FilePath = parameters.FilePath,

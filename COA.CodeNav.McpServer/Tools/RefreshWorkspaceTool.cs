@@ -4,6 +4,7 @@ using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.Extensions.Logging;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
@@ -17,6 +18,7 @@ public class RefreshWorkspaceTool : McpToolBase<RefreshWorkspaceParams, RefreshW
 {
     private readonly ILogger<RefreshWorkspaceTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
+    private readonly ITokenEstimator _tokenEstimator;
 
     public override string Name => ToolNames.RefreshWorkspace;
     public override string Description => @"Refresh workspace or documents to resolve stale diagnostics and analysis results.
@@ -28,11 +30,13 @@ Not for: Loading new workspaces (use csharp_load_solution), searching files (use
 
     public RefreshWorkspaceTool(
         ILogger<RefreshWorkspaceTool> logger,
-        RoslynWorkspaceService workspaceService)
+        RoslynWorkspaceService workspaceService,
+        ITokenEstimator tokenEstimator)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
+        _tokenEstimator = tokenEstimator;
     }
 
     protected override async Task<RefreshWorkspaceToolResult> ExecuteInternalAsync(
