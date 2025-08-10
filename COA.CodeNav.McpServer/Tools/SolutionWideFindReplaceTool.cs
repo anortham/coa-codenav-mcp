@@ -169,7 +169,28 @@ AI benefit: Enables large-scale refactoring that would be tedious to do file by 
             var allMatchedFiles = matchedFiles.ToList();
             var wasTruncated = false;
             
-            // Limit results if needed
+            // Apply token optimization to prevent context overflow
+            var estimatedTokens = _tokenEstimator.EstimateObject(matchedFiles);
+            const int SAFETY_TOKEN_LIMIT = 10000;
+            
+            if (estimatedTokens > SAFETY_TOKEN_LIMIT)
+            {
+                // Use progressive reduction based on token estimation
+                var originalCount = matchedFiles.Count;
+                matchedFiles = _tokenEstimator.ApplyProgressiveReduction(
+                    matchedFiles,
+                    file => _tokenEstimator.EstimateObject(file),
+                    SAFETY_TOKEN_LIMIT,
+                    new[] { 50, 25, 10, 5 }
+                );
+                
+                wasTruncated = matchedFiles.Count < originalCount;
+                
+                _logger.LogDebug("Applied token optimization: reduced from {Original} to {Reduced} files (estimated {EstimatedTokens} tokens)",
+                    originalCount, matchedFiles.Count, estimatedTokens);
+            }
+            
+            // Also respect MaxFiles parameter if provided and stricter than token limit
             if (parameters.MaxFiles.HasValue && matchedFiles.Count > parameters.MaxFiles.Value)
             {
                 matchedFiles = matchedFiles.Take(parameters.MaxFiles.Value).ToList();

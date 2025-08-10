@@ -237,8 +237,36 @@ Not for: Static analysis (use other tools), finding implementations (use csharp_
             }
         }
         
-        // Apply Framework token management patterns
-        var finalPaths = allPaths.Take(parameters.MaxPaths ?? 10).ToList();
+        // Apply token optimization to prevent context overflow
+        var estimatedTokens = _tokenEstimator.EstimateObject(allPaths);
+        const int SAFETY_TOKEN_LIMIT = 10000;
+        
+        var finalPaths = allPaths.ToList();
+        var wasTokenOptimized = false;
+        
+        if (estimatedTokens > SAFETY_TOKEN_LIMIT)
+        {
+            // Use progressive reduction based on token estimation
+            var originalCount = allPaths.Count;
+            finalPaths = _tokenEstimator.ApplyProgressiveReduction(
+                allPaths,
+                path => _tokenEstimator.EstimateObject(path),
+                SAFETY_TOKEN_LIMIT,
+                new[] { 15, 10, 5 }
+            );
+            
+            wasTokenOptimized = finalPaths.Count < originalCount;
+            
+            _logger.LogDebug("Applied token optimization: reduced from {Original} to {Reduced} paths (estimated {EstimatedTokens} tokens)",
+                originalCount, finalPaths.Count, estimatedTokens);
+        }
+        
+        // Also respect MaxPaths parameter if provided and stricter than token limit
+        var maxPaths = parameters.MaxPaths ?? 10;
+        if (finalPaths.Count > maxPaths)
+        {
+            finalPaths = finalPaths.Take(maxPaths).ToList();
+        }
         
         // Generate insights
         var insights = GenerateInsights(allPaths, methodSymbol);
@@ -267,7 +295,7 @@ Not for: Static analysis (use other tools), finding implementations (use csharp_
             Paths = finalPaths,
             KeyFindings = keyFindings,
             Message = finalPaths.Count < allPaths.Count 
-                ? $"Traced {allPaths.Count} path(s) from {methodSymbol.Name} (showing {finalPaths.Count})"
+                ? $"Traced {allPaths.Count} path(s) from {methodSymbol.Name} (showing {finalPaths.Count}{(wasTokenOptimized ? " due to token optimization" : "")})"
                 : $"Traced {allPaths.Count} path(s) from {methodSymbol.Name}",
             Actions = nextActions,
             Insights = insights,

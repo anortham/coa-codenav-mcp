@@ -146,9 +146,29 @@ Not for: Moving symbols between namespaces, changing symbol types (use other ref
         var allChanges = await GetChangesAsync(solution, renameResult, cancellationToken);
         
         // Limit changes for token optimization
-        const int MAX_CHANGES_TO_SHOW = 5; // Only show first 5 files
-        var truncatedChanges = allChanges.Take(MAX_CHANGES_TO_SHOW).ToList();
-        var isTruncated = allChanges.Count > MAX_CHANGES_TO_SHOW;
+        // Apply token optimization to prevent context overflow
+        var estimatedTokens = _tokenEstimator.EstimateObject(allChanges);
+        const int SAFETY_TOKEN_LIMIT = 8000;
+        
+        var truncatedChanges = allChanges.ToList();
+        var isTruncated = false;
+        
+        if (estimatedTokens > SAFETY_TOKEN_LIMIT)
+        {
+            // Use progressive reduction based on token estimation
+            var originalCount = allChanges.Count;
+            truncatedChanges = _tokenEstimator.ApplyProgressiveReduction(
+                allChanges,
+                change => _tokenEstimator.EstimateObject(change),
+                SAFETY_TOKEN_LIMIT,
+                new[] { 20, 10, 5 }
+            );
+            
+            isTruncated = truncatedChanges.Count < originalCount;
+            
+            _logger.LogDebug("Applied token optimization: reduced from {Original} to {Reduced} changes (estimated {EstimatedTokens} tokens)",
+                originalCount, truncatedChanges.Count, estimatedTokens);
+        }
         
         if (parameters.Preview)
         {
@@ -159,7 +179,7 @@ Not for: Moving symbols between namespaces, changing symbol types (use other ref
             {
                 Success = true,
                 Message = isTruncated 
-                    ? $"Preview: Renaming '{symbol.Name}' to '{parameters.NewName}' would affect {allChanges.Count} file(s) (showing first {MAX_CHANGES_TO_SHOW})"
+                    ? $"Preview: Renaming '{symbol.Name}' to '{parameters.NewName}' would affect {allChanges.Count} file(s) (showing {truncatedChanges.Count} due to token optimization)"
                     : $"Preview: Renaming '{symbol.Name}' to '{parameters.NewName}' would affect {allChanges.Count} file(s)",
                 Changes = truncatedChanges,  // Only return truncated changes
                 Conflicts = conflicts,
@@ -220,7 +240,7 @@ Not for: Moving symbols between namespaces, changing symbol types (use other ref
         {
             Success = true,
             Message = isTruncated
-                ? $"Successfully renamed '{symbol.Name}' to '{parameters.NewName}' in {allChanges.Count} file(s) (showing first {MAX_CHANGES_TO_SHOW})"
+                ? $"Successfully renamed '{symbol.Name}' to '{parameters.NewName}' in {allChanges.Count} file(s) (showing {truncatedChanges.Count} due to token optimization)"
                 : $"Successfully renamed '{symbol.Name}' to '{parameters.NewName}' in {allChanges.Count} file(s)",
             Changes = truncatedChanges,  // Only return truncated changes
             Conflicts = conflicts,
