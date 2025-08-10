@@ -82,7 +82,12 @@
       "mcp__projectknowledge__create_checkpoint",
       "mcp__projectknowledge__store_knowledge",
       "mcp__projectknowledge__get_checkpoint",
-      "mcp__projectknowledge__get_timeline"
+      "mcp__projectknowledge__get_timeline",
+      "Bash(dotnet list package:*)",
+      "mcp__projectknowledge__find_knowledge",
+      "mcp__projectknowledge__save_checkpoint",
+      "mcp__projectknowledge__show_activity",
+      "mcp__projectknowledge__load_checkpoint"
     ],
     "deny": []
   }

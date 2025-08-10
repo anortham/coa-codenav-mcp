@@ -291,11 +291,6 @@ Not for: Navigation (use csharp_goto_definition), finding usages (use csharp_fin
         return result;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Hover typically returns moderate amount of data
-        return 2000;
-    }
 
     private HoverInfo BuildHoverInfo(ISymbol symbol, SyntaxNode node, SemanticModel semanticModel)
     {

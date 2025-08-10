@@ -754,11 +754,6 @@ AI benefit: Provides complete override information that's difficult to piece tog
         public string SymbolType { get; set; } = "";
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical find all overrides response
-        return 4000;
-    }
 }
 
 /// <summary>

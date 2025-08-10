@@ -9,9 +9,9 @@
 
   <ItemGroup>
     <!-- COA MCP Framework NuGet packages -->
-    <PackageReference Include="COA.Mcp.Framework" Version="1.4.2" />
-    <PackageReference Include="COA.Mcp.Framework.TokenOptimization" Version="1.4.2" />
-    <PackageReference Include="COA.Mcp.Framework.Testing" Version="1.4.2" />
+    <PackageReference Include="COA.Mcp.Framework" Version="1.4.9" />
+    <PackageReference Include="COA.Mcp.Framework.TokenOptimization" Version="1.4.9" />
+    <PackageReference Include="COA.Mcp.Framework.Testing" Version="1.4.9" />
     
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="FluentAssertions" Version="8.5.0" />

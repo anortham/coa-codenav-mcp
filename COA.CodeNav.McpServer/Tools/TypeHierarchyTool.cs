@@ -598,11 +598,6 @@ AI benefit: Provides complete view of type relationships for better code underst
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical type hierarchy response
-        return 3000;
-    }
 }
 
 /// <summary>

@@ -407,11 +407,6 @@ Not for: Manual refactoring (use other refactoring tools), bulk fixes (use cshar
         return actions;
     }
     
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical code fix response
-        return 3000;
-    }
 }
 
 /// <summary>

@@ -5,6 +5,7 @@ using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
 using COA.Mcp.Framework.Interfaces;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -23,6 +24,7 @@ public class CallHierarchyTool : McpToolBase<CallHierarchyParams, CallHierarchyR
     private readonly ILogger<CallHierarchyTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_call_hierarchy";
@@ -37,12 +39,14 @@ AI benefit: Provides complete context that agents can't easily piece together fr
         ILogger<CallHierarchyTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -183,9 +187,31 @@ AI benefit: Provides complete context that agents can't easily piece together fr
             parameters.IncludeOverrides,
             cancellationToken);
 
+        // Apply framework token optimization to hierarchy
+        var optimizedHierarchy = hierarchy;
+        var tokenLimitApplied = false;
+        
+        // Use framework's token estimation on the hierarchy
+        var estimatedTokens = _tokenEstimator.EstimateObject(hierarchy);
+        if (estimatedTokens > 12000) // Call hierarchies can be large
+        {
+            // For call hierarchies, we need to truncate the depth rather than individual nodes
+            // Start by limiting the number of incoming/outgoing calls at each level
+            optimizedHierarchy = TruncateHierarchyForTokens(hierarchy, 12000);
+            tokenLimitApplied = true;
+            
+            _logger.LogWarning("Token optimization applied to call hierarchy: estimated {EstimatedTokens} tokens, applied truncation", estimatedTokens);
+        }
+
         // Generate insights
-        var insights = GenerateInsights(hierarchy, methodSymbol);
-        var analysis = GenerateAnalysis(hierarchy, methodSymbol);
+        var insights = GenerateInsights(optimizedHierarchy, methodSymbol);
+        var analysis = GenerateAnalysis(optimizedHierarchy, methodSymbol);
+        
+        // Add insight about token optimization if applied
+        if (tokenLimitApplied)
+        {
+            insights.Insert(0, $"⚠️ Token optimization applied to call hierarchy. Some deep call paths may be truncated.");
+        }
 
         // Generate next actions
         var nextActions = GenerateNextActions(methodSymbol, parameters);
@@ -215,7 +241,7 @@ AI benefit: Provides complete context that agents can't easily piece together fr
                     Namespace = methodSymbol.ContainingNamespace?.ToDisplayString()
                 }
             },
-            Hierarchy = hierarchy,
+            Hierarchy = optimizedHierarchy,
             Analysis = analysis,
             Insights = insights,
             Actions = nextActions,
@@ -644,12 +670,71 @@ AI benefit: Provides complete context that agents can't easily piece together fr
 
         return actions;
     }
-
-    protected override int EstimateTokenUsage()
+    
+    private CallHierarchyNode TruncateHierarchyForTokens(CallHierarchyNode originalHierarchy, int tokenLimit)
     {
-        // Estimate for typical call hierarchy response
-        return 5000;
+        // Create a copy of the root node
+        var truncatedHierarchy = new CallHierarchyNode
+        {
+            Method = originalHierarchy.Method,
+            MethodName = originalHierarchy.MethodName,
+            Location = originalHierarchy.Location,
+            IsVirtual = originalHierarchy.IsVirtual,
+            IsAbstract = originalHierarchy.IsAbstract,
+            IsOverride = originalHierarchy.IsOverride,
+            IsOverrideRelation = originalHierarchy.IsOverrideRelation,
+            IsFramework = originalHierarchy.IsFramework,
+            IsTruncated = originalHierarchy.IsTruncated,
+            Incoming = new List<CallHierarchyNode>(),
+            Outgoing = new List<CallHierarchyNode>()
+        };
+        
+        // Limit incoming calls to top 5 most important
+        var incomingCount = Math.Min(5, originalHierarchy.Incoming.Count);
+        truncatedHierarchy.Incoming.AddRange(originalHierarchy.Incoming.Take(incomingCount));
+        
+        // Limit outgoing calls to top 8 most important  
+        var outgoingCount = Math.Min(8, originalHierarchy.Outgoing.Count);
+        truncatedHierarchy.Outgoing.AddRange(originalHierarchy.Outgoing.Take(outgoingCount));
+        
+        // Mark as truncated if we reduced the hierarchy
+        if (incomingCount < originalHierarchy.Incoming.Count || outgoingCount < originalHierarchy.Outgoing.Count)
+        {
+            truncatedHierarchy.IsTruncated = true;
+        }
+        
+        // For each child, recursively truncate but with more aggressive limits
+        foreach (var child in truncatedHierarchy.Incoming)
+        {
+            if (child.Incoming.Count > 3) 
+            {
+                child.Incoming = child.Incoming.Take(3).ToList();
+                child.IsTruncated = true;
+            }
+            if (child.Outgoing.Count > 3)
+            {
+                child.Outgoing = child.Outgoing.Take(3).ToList();
+                child.IsTruncated = true;
+            }
+        }
+        
+        foreach (var child in truncatedHierarchy.Outgoing)
+        {
+            if (child.Incoming.Count > 3)
+            {
+                child.Incoming = child.Incoming.Take(3).ToList();
+                child.IsTruncated = true;
+            }
+            if (child.Outgoing.Count > 3)
+            {
+                child.Outgoing = child.Outgoing.Take(3).ToList();
+                child.IsTruncated = true;
+            }
+        }
+        
+        return truncatedHierarchy;
     }
+
 }
 
 /// <summary>

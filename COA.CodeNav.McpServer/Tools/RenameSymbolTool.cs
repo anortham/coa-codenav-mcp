@@ -5,6 +5,7 @@ using COA.CodeNav.McpServer.Utilities;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Rename;
@@ -23,6 +24,7 @@ public class RenameSymbolTool : McpToolBase<RenameSymbolParams, RenameSymbolTool
     private readonly ILogger<RenameSymbolTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.RenameSymbol;
@@ -37,12 +39,14 @@ Not for: Moving symbols between namespaces, changing symbol types (use other ref
         ILogger<RenameSymbolTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -434,12 +438,6 @@ Not for: Moving symbols between namespaces, changing symbol types (use other ref
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical RenameSymbol response
-        // This can be quite large with file changes, so higher estimate
-        return 8000;
-    }
 }
 
 /// <summary>

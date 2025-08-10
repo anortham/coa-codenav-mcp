@@ -4,6 +4,7 @@ using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -20,6 +21,7 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
 {
     private readonly ILogger<DocumentSymbolsTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.DocumentSymbols;
@@ -33,11 +35,13 @@ Not for: Solution-wide search (use csharp_symbol_search), cross-references (use 
     public DocumentSymbolsTool(
         ILogger<DocumentSymbolsTool> logger,
         RoslynWorkspaceService workspaceService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -127,10 +131,40 @@ Not for: Solution-wide search (use csharp_symbol_search), cross-references (use 
             allSymbols = FilterSymbolsByKind(allSymbols, parameters.SymbolKinds);
         }
 
-        // Apply max results limit
-        var returnedSymbols = allSymbols.Take(parameters.MaxResults).ToList();
+        // Apply max results limit with token optimization
         var totalSymbolCount = CountSymbols(allSymbols);
-        var wasLimited = allSymbols.Count > parameters.MaxResults;
+        var requestedMaxResults = parameters.MaxResults;
+        List<DocumentSymbol> returnedSymbols;
+        bool wasLimited;
+
+        // Check if we need token optimization
+        var estimatedTokens = _tokenEstimator.EstimateObject(allSymbols);
+        if (estimatedTokens > 10000)
+        {
+            // Use framework's progressive reduction
+            returnedSymbols = _tokenEstimator.ApplyProgressiveReduction(
+                allSymbols,
+                symbol => _tokenEstimator.EstimateObject(symbol),
+                10000,
+                new[] { 100, 75, 50, 25, 10 }
+            );
+            var effectiveLimit = Math.Min(returnedSymbols.Count, requestedMaxResults);
+            returnedSymbols = returnedSymbols.Take(effectiveLimit).ToList();
+            wasLimited = true;
+            
+            _logger.LogWarning("Token optimization applied: reducing symbols from {Total} to {Safe}", 
+                allSymbols.Count, returnedSymbols.Count);
+        }
+        else if (allSymbols.Count > requestedMaxResults)
+        {
+            returnedSymbols = allSymbols.Take(requestedMaxResults).ToList();
+            wasLimited = true;
+        }
+        else
+        {
+            returnedSymbols = allSymbols;
+            wasLimited = false;
+        }
 
         // Generate insights
         var insights = GenerateInsights(allSymbols, totalSymbolCount);
@@ -735,12 +769,6 @@ Not for: Solution-wide search (use csharp_symbol_search), cross-references (use 
         }
 
         return actions;
-    }
-
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical DocumentSymbols response - can vary widely based on file size
-        return 5000;
     }
 }
 

@@ -5,6 +5,7 @@ using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
 using COA.Mcp.Framework.Interfaces;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ public class SolutionWideFindReplaceTool : McpToolBase<SolutionWideFindReplacePa
     private readonly ILogger<SolutionWideFindReplaceTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_solution_wide_find_replace";
@@ -36,12 +38,14 @@ AI benefit: Enables large-scale refactoring that would be tedious to do file by 
         ILogger<SolutionWideFindReplaceTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -477,11 +481,6 @@ AI benefit: Enables large-scale refactoring that would be tedious to do file by 
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical find/replace response
-        return 4500;
-    }
 }
 
 /// <summary>

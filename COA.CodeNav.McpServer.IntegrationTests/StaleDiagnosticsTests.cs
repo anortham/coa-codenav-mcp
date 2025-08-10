@@ -110,9 +110,13 @@ namespace TestProject
             NullLogger<RoslynWorkspaceService>.Instance,
             workspaceManager);
 
+        // Create token estimator from framework
+        var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
+        
         _diagnosticsTool = new GetDiagnosticsTool(
             NullLogger<GetDiagnosticsTool>.Instance,
             _workspaceService,
+            tokenEstimator,
             null);
 
         _refreshTool = new RefreshWorkspaceTool(

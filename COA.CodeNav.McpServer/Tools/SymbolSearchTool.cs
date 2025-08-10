@@ -1,9 +1,11 @@
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
+using COA.Mcp.Framework;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
-using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
@@ -21,6 +23,11 @@ public class SymbolSearchTool : McpToolBase<SymbolSearchParams, SymbolSearchTool
     private readonly ILogger<SymbolSearchTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
+    private readonly SymbolSearchResponseBuilder _responseBuilder;
+    private readonly ITokenEstimator _tokenEstimator;
+    
+    private const int DEFAULT_MAX_RESULTS = 100;
+    private const int AGGRESSIVE_MAX_RESULTS = 500; // For when we have token budget
 
     public override string Name => ToolNames.SymbolSearch;
     public override string Description => @"Search for symbols by name or pattern across the entire solution.
@@ -29,15 +36,20 @@ Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if no workspace is loaded.
 Use cases: Finding symbols by name/pattern, discovering types, locating methods, exploring namespaces.
 Not for: Finding references to a symbol (use csharp_find_all_references), navigating to definition (use csharp_goto_definition).";
+    public override ToolCategory Category => ToolCategory.Query;
 
     public SymbolSearchTool(
         ILogger<SymbolSearchTool> logger,
         RoslynWorkspaceService workspaceService,
+        SymbolSearchResponseBuilder responseBuilder,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
+        _responseBuilder = responseBuilder;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -134,10 +146,10 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
             .ThenBy(s => s.FullName)
             .ToList();
 
-        // Apply max results limit if specified
-        var maxResults = parameters.MaxResults ?? 100;
-        var returnedSymbols = allSymbols.Take(maxResults).ToList();
-        var wasTruncated = allSymbols.Count > returnedSymbols.Count;
+        // Build complete result with all symbols - let ResponseBuilder handle optimization
+        var requestedMaxResults = parameters.MaxResults ?? DEFAULT_MAX_RESULTS;
+        var returnedSymbols = allSymbols.Take(requestedMaxResults).ToList();
+        var wasTruncated = allSymbols.Count > requestedMaxResults;
 
         if (!allSymbols.Any())
         {
@@ -230,7 +242,8 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
             ByNamespace = allSymbols.GroupBy(s => s.Namespace ?? "Global").ToDictionary(g => g.Key, g => g.Count())
         };
         
-        return new SymbolSearchToolResult
+        // Build complete result with all symbols first
+        var completeResult = new SymbolSearchToolResult
         {
             Success = true,
             Message = wasTruncated 
@@ -265,6 +278,16 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
                 Truncated = wasTruncated
             }
         };
+
+        // Use ResponseBuilder for token optimization and AI-friendly formatting
+        var context = new COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext
+        {
+            ResponseMode = "optimized",
+            TokenLimit = parameters.MaxResults.HasValue ? parameters.MaxResults * 150 : 10000,
+            ToolName = Name
+        };
+
+        return (SymbolSearchToolResult)await _responseBuilder.BuildResponseAsync(completeResult, context);
     }
 
     private async Task SearchSymbolsInNamespace(
@@ -534,12 +557,6 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical SymbolSearch response
-        // Base response structure + typical symbol count
-        return 5000;
-    }
 }
 
 /// <summary>

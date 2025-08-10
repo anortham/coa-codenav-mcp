@@ -162,11 +162,6 @@ public class GetWorkspaceStatisticsTool : McpToolBase<GetWorkspaceStatisticsPara
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Statistics typically return moderate amount of data
-        return 1500;
-    }
 }
 
 public class GetWorkspaceStatisticsParams

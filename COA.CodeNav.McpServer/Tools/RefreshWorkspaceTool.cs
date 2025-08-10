@@ -254,10 +254,6 @@ Not for: Loading new workspaces (use csharp_load_solution), searching files (use
         };
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        return 1500; // Typical refresh response
-    }
 }
 
 /// <summary>

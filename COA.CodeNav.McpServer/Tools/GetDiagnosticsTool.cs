@@ -2,9 +2,12 @@ using System.Collections.Immutable;
 using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
+using COA.Mcp.Framework;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging;
@@ -17,12 +20,15 @@ namespace COA.CodeNav.McpServer.Tools;
 public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosticsToolResult>
 {
     private readonly ILogger<GetDiagnosticsTool> _logger;
+    
+    public override ToolCategory Category => ToolCategory.Diagnostics;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
+    private readonly DiagnosticsResponseBuilder _responseBuilder;
+    private readonly ITokenEstimator _tokenEstimator;
 
-    // Token management constants
+    // Result management constant
     private const int MAX_DIAGNOSTICS_PER_RESPONSE = 50;
-    private const int TOKEN_SAFETY_LIMIT = 10000;
 
     public override string Name => ToolNames.GetDiagnostics;
     public override string Description => @"Get compilation errors, warnings, and analyzer diagnostics for files, projects, or the entire solution.
@@ -35,11 +41,15 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
     public GetDiagnosticsTool(
         ILogger<GetDiagnosticsTool> logger,
         RoslynWorkspaceService workspaceService,
+        DiagnosticsResponseBuilder responseBuilder,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
+        _responseBuilder = responseBuilder;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -50,6 +60,12 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
         var startTime = DateTime.UtcNow;
 
         _logger.LogInformation("Processing GetDiagnostics with scope: {Scope}", parameters.Scope);
+
+        // Validate parameters first
+        if (parameters.Scope?.ToLower() == "file" && string.IsNullOrEmpty(parameters.FilePath))
+        {
+            return CreateInvalidParametersResult("File path is required when scope is 'file'", parameters, startTime);
+        }
 
         // Check if any workspaces are loaded
         var workspaces = _workspaceService.GetActiveWorkspaces();
@@ -65,12 +81,8 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
         switch (parameters.Scope?.ToLower())
         {
             case "file":
-                if (string.IsNullOrEmpty(parameters.FilePath))
-                {
-                    return CreateInvalidParametersResult("File path is required when scope is 'file'", parameters, startTime);
-                }
 
-                var document = await _workspaceService.GetDocumentAsync(parameters.FilePath, parameters.ForceRefresh ?? false);
+                var document = await _workspaceService.GetDocumentAsync(parameters.FilePath!, parameters.ForceRefresh ?? false);
                 if (document == null)
                 {
                     return CreateDocumentNotFoundResult(parameters, startTime);
@@ -127,42 +139,34 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
 
         // First, determine the actual number to return based on request
         var maxResults = Math.Min(requestedMaxResults, 500); // Hard limit of 500
-        var candidateDiagnostics = totalDiagnostics > maxResults
-            ? allDiagnostics.Take(maxResults).ToList()
-            : allDiagnostics;
-
-        // Pre-estimate response size with these candidates
-        var preEstimatedTokens = EstimateTokenUsage(candidateDiagnostics);
-        var safetyLimitApplied = false;
         List<DiagnosticInfo> returnedDiagnostics;
+        var tokenLimitApplied = false;
 
-        // Apply safety limit if needed
-        if (preEstimatedTokens > TOKEN_SAFETY_LIMIT)
+        // Use framework's token optimization
+        var estimatedTokens = _tokenEstimator.EstimateObject(allDiagnostics);
+        if (estimatedTokens > 10000)
         {
-            _logger.LogWarning("Pre-estimated response ({Tokens} tokens) exceeds safety threshold. Applying progressive reduction.", preEstimatedTokens);
-
-            // Progressive reduction strategy
-            var safeDiagnosticCount = 30; // Start with a safe default
-
-            // Try to find optimal count
-            for (int testCount = 50; testCount >= 10; testCount -= 10)
-            {
-                var testDiagnostics = allDiagnostics.Take(testCount).ToList();
-                var testTokens = EstimateTokenUsage(testDiagnostics);
-                if (testTokens <= TOKEN_SAFETY_LIMIT)
-                {
-                    safeDiagnosticCount = testCount;
-                    break;
-                }
-            }
-
-            returnedDiagnostics = allDiagnostics.Take(safeDiagnosticCount).ToList();
-            safetyLimitApplied = true;
-            maxResults = safeDiagnosticCount;
+            // Use framework's progressive reduction
+            returnedDiagnostics = _tokenEstimator.ApplyProgressiveReduction(
+                allDiagnostics,
+                diagnostic => _tokenEstimator.EstimateObject(diagnostic),
+                10000,
+                new[] { 50, 40, 30, 20, 10 } // Progressive reduction steps
+            );
+            var effectiveLimit = Math.Min(returnedDiagnostics.Count, maxResults);
+            returnedDiagnostics = returnedDiagnostics.Take(effectiveLimit).ToList();
+            tokenLimitApplied = true;
+            
+            _logger.LogWarning("Token optimization applied: reducing diagnostics from {Total} to {Safe}", 
+                allDiagnostics.Count, returnedDiagnostics.Count);
+        }
+        else if (totalDiagnostics > maxResults)
+        {
+            returnedDiagnostics = allDiagnostics.Take(maxResults).ToList();
         }
         else
         {
-            returnedDiagnostics = candidateDiagnostics;
+            returnedDiagnostics = allDiagnostics;
         }
 
         var shouldTruncate = totalDiagnostics > returnedDiagnostics.Count;
@@ -185,13 +189,13 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
         // Add insight about truncation if applicable
         if (shouldTruncate)
         {
-            if (safetyLimitApplied)
+            if (tokenLimitApplied)
             {
-                insights.Insert(0, $"⚠️ Response size limit applied ({preEstimatedTokens} tokens). Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics.");
+                insights.Insert(0, $"⚠️ Token limit applied. Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics.");
             }
             else
             {
-                insights.Insert(0, $"Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics to manage token usage");
+                insights.Insert(0, $"Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics (max results limit)");
             }
             if (resourceUri != null)
             {
@@ -207,7 +211,8 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
         // Generate next actions
         var nextActions = GenerateNextActions(allDiagnostics, parameters, shouldTruncate, totalDiagnostics);
 
-        return new GetDiagnosticsToolResult
+        // Build complete result first
+        var completeResult = new GetDiagnosticsToolResult
         {
             Success = true,
             Message = FormatSummaryMessage(allDiagnostics),
@@ -253,6 +258,16 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
             },
             ResourceUri = resourceUri
         };
+
+        // Use ResponseBuilder for token optimization and AI-friendly formatting
+        var context = new COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext
+        {
+            ResponseMode = "optimized",
+            TokenLimit = parameters.MaxResults.HasValue ? parameters.MaxResults * 200 : 12000,
+            ToolName = Name
+        };
+
+        return (GetDiagnosticsToolResult)await _responseBuilder.BuildResponseAsync(completeResult, context);
     }
 
     private GetDiagnosticsToolResult CreateWorkspaceNotLoadedResult(GetDiagnosticsParams parameters, DateTime startTime)
@@ -788,65 +803,6 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Default token usage - can vary significantly based on number of diagnostics
-        return 8000;
-    }
-
-    private int EstimateTokenUsage(List<DiagnosticInfo> diagnostics)
-    {
-        // Base tokens for response structure (metadata, insights, actions, etc.)
-        var baseTokens = 500;
-
-        // Estimate per-diagnostic tokens
-        var perDiagnosticTokens = 0;
-
-        if (diagnostics.Any())
-        {
-            // Sample first few diagnostics for more accurate estimation
-            var sample = diagnostics.Take(Math.Min(5, diagnostics.Count)).ToList();
-
-            foreach (var diagnostic in sample)
-            {
-                // Base structure
-                var tokens = 50;
-
-                // Message (major contributor)
-                tokens += (diagnostic.Message?.Length ?? 0) / 4;
-
-                // File paths (appear multiple times in response)
-                if (diagnostic.Location != null)
-                {
-                    tokens += (diagnostic.Location.FilePath?.Length ?? 0) / 2;
-                }
-
-                // Tags
-                tokens += (diagnostic.Tags?.Count ?? 0) * 5;
-
-                // Properties (can be large)
-                if (diagnostic.Properties != null)
-                {
-                    tokens += diagnostic.Properties.Count * 20;
-                }
-
-                perDiagnosticTokens += tokens;
-            }
-
-            // Average from sample
-            perDiagnosticTokens = perDiagnosticTokens / sample.Count;
-        }
-        else
-        {
-            // Conservative default if no diagnostics
-            perDiagnosticTokens = 300;
-        }
-
-        // Distribution and analysis add significant overhead
-        var analysisTokens = 300;
-
-        return baseTokens + (diagnostics.Count * perDiagnosticTokens) + analysisTokens;
-    }
 }
 
 public class GetDiagnosticsParams

@@ -184,11 +184,6 @@ public class LoadProjectTool : McpToolBase<LoadProjectParams, LoadProjectResult>
         }
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Loading project typically returns minimal data
-        return 500;
-    }
 }
 
 public class LoadProjectParams

@@ -490,11 +490,6 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.";
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical code metrics response
-        return 3500;
-    }
 }
 
 /// <summary>

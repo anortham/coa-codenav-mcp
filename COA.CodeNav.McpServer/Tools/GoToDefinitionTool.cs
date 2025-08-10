@@ -3,7 +3,6 @@ using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
-using COA.Mcp.Framework.Attributes;
 using COA.Mcp.Framework.Interfaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -406,11 +405,6 @@ Not for: Finding references (use csharp_find_all_references), searching symbols 
         return baseTokens + locationTokens;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical GoToDefinition response
-        return 2000;
-    }
 }
 
 /// <summary>

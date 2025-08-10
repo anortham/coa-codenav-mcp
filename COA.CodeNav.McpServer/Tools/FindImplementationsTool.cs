@@ -514,12 +514,6 @@ Not for: Finding references (use csharp_find_all_references), finding base types
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical FindImplementations response
-        // Base response structure + per-implementation data
-        return 3000;
-    }
 }
 
 /// <summary>

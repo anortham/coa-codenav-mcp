@@ -673,11 +673,6 @@ Not for: Moving methods between classes, renaming methods (use csharp_rename_sym
         };
     }
     
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical extract method response
-        return 3500;
-    }
 
     // Helper classes
     private class DataFlowAnalysisResult

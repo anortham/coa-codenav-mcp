@@ -57,16 +57,8 @@ var builder = new McpServerBuilder()
         logging.AddConfiguration(configuration.GetSection("Logging"));
     });
     // TODO: Enable token optimization when Framework exposes the configuration API
-    // .ConfigureTokenOptimization(options =>
-    // {
-    //     // Showcase Framework's token optimization capabilities
-    //     options.DefaultTokenLimit = 10000;  // Default limit for tool responses
-    //     options.Level = TokenOptimizationLevel.Balanced;  // Balanced between performance and token usage
-    //     options.EnableAdaptiveLearning = true;  // Learn from usage patterns
-    //     options.EnableResourceStorage = true;  // Store large results as resources
-    //     options.EnableCaching = true;  // Cache frequently accessed results
-    //     options.CacheExpiration = TimeSpan.FromMinutes(15);  // Cache for 15 minutes
-    // });
+    // The framework doesn't expose ConfigureTokenOptimization yet in v1.4.2
+    // We'll implement manual token optimization service instead
 
 // Register configuration
 builder.Services.Configure<COA.CodeNav.McpServer.Configuration.WorkspaceManagerConfig>(
@@ -78,12 +70,32 @@ builder.Services.Configure<COA.CodeNav.McpServer.Configuration.StartupConfigurat
 builder.Services.AddSingleton<COA.CodeNav.McpServer.Utilities.SolutionFinder>();
 builder.Services.AddSingleton<IPathResolutionService, PathResolutionService>();
 
+// Register Token Optimization services from framework
+builder.Services.AddSingleton<ITokenEstimator, DefaultTokenEstimator>();
+builder.Services.AddSingleton<COA.Mcp.Framework.TokenOptimization.Intelligence.IInsightGenerator, COA.Mcp.Framework.TokenOptimization.Intelligence.InsightGenerator>();
+builder.Services.AddSingleton<COA.Mcp.Framework.TokenOptimization.Actions.IActionGenerator, COA.Mcp.Framework.TokenOptimization.Actions.ActionGenerator>();
+builder.Services.AddSingleton<COA.Mcp.Framework.TokenOptimization.Caching.IResponseCacheService, COA.Mcp.Framework.TokenOptimization.Caching.ResponseCacheService>();
+builder.Services.AddSingleton<COA.Mcp.Framework.TokenOptimization.Storage.IResourceStorageService, COA.Mcp.Framework.TokenOptimization.Storage.ResourceStorageService>();
+
+// Register Response Builders
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.SymbolSearchResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.DiagnosticsResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.FindAllReferencesResponseBuilder>();
+
 // Register infrastructure services
 builder.Services.AddSingleton<MSBuildWorkspaceManager>();
 builder.Services.AddSingleton<RoslynWorkspaceService>();
 builder.Services.AddSingleton<DocumentService>();
 builder.Services.AddSingleton<SymbolCache>();
 builder.Services.AddSingleton<CodeFixService>();
+
+// Configure automatic resource caching (Framework v1.4.8+)
+builder.Services.Configure<COA.Mcp.Framework.Resources.ResourceCacheOptions>(options =>
+{
+    options.DefaultExpiration = TimeSpan.FromMinutes(15);  // Cache for 15 minutes
+    options.SlidingExpiration = TimeSpan.FromMinutes(5);   // Sliding window of 5 minutes
+    options.MaxSizeBytes = 500 * 1024 * 1024;              // 500 MB max cache size for large code analysis results
+});
 
 // Register resource services
 builder.Services.AddSingleton<IResourceRegistry, ResourceRegistry>();

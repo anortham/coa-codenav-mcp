@@ -7,6 +7,7 @@ using NextAction = COA.Mcp.Framework.Models.AIAction;
 using COA.CodeNav.McpServer.Utilities;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -23,6 +24,7 @@ public class TraceCallStackTool : McpToolBase<TraceCallStackParams, TraceCallSta
     private readonly ILogger<TraceCallStackTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.TraceCallStack;
@@ -38,12 +40,14 @@ Not for: Static analysis (use other tools), finding implementations (use csharp_
         ILogger<TraceCallStackTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -290,11 +294,6 @@ Not for: Static analysis (use other tools), finding implementations (use csharp_
         return result;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Call stack tracing can return substantial data
-        return 5000;
-    }
 
     private async Task<CallPath?> TraceForwardAsync(
         IMethodSymbol startMethod, 

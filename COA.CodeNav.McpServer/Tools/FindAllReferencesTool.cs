@@ -1,9 +1,12 @@
 using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
+using COA.Mcp.Framework;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Text;
@@ -14,16 +17,13 @@ namespace COA.CodeNav.McpServer.Tools;
 /// <summary>
 /// Tool for finding all references to a symbol in the codebase
 /// </summary>
-public class FindAllReferencesTool : McpToolBase<FindAllReferencesParams, FindAllReferencesToolResult>
+public class FindAllReferencesTool : McpToolBase<FindAllReferencesParams, object>
 {
     private readonly ILogger<FindAllReferencesTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
-    
-    private const int DEFAULT_MAX_RESULTS = 50;
-    private const int TOKEN_SAFETY_LIMIT = 10000;
-    private const int TOKENS_PER_REFERENCE = 100; // Estimate
+    private readonly FindAllReferencesResponseBuilder _responseBuilder;
 
     public override string Name => "csharp_find_all_references";
     public override string Description => @"Find all references to a symbol at a given position in a file.
@@ -32,21 +32,24 @@ Prerequisites: Call csharp_load_solution or csharp_load_project first.
 Error handling: Returns specific error codes with recovery steps if symbol cannot be found.
 Use cases: Impact analysis, refactoring preparation, understanding symbol usage.
 Not for: Finding definitions (use csharp_goto_definition), searching by name (use csharp_symbol_search).";
+    public override ToolCategory Category => ToolCategory.Query;
 
     public FindAllReferencesTool(
         ILogger<FindAllReferencesTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        FindAllReferencesResponseBuilder responseBuilder,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _responseBuilder = responseBuilder;
         _resourceProvider = resourceProvider;
     }
 
-    protected override async Task<FindAllReferencesToolResult> ExecuteInternalAsync(
+    protected override async Task<object> ExecuteInternalAsync(
         FindAllReferencesParams parameters,
         CancellationToken cancellationToken)
     {
@@ -147,48 +150,16 @@ Not for: Finding definitions (use csharp_goto_definition), searching by name (us
 
         // Sort locations for consistent results
         var sortedLocations = locations.OrderBy(l => l.FilePath).ThenBy(l => l.Line).ToList();
-        var totalCount = sortedLocations.Count;
         
-        // Apply token management
-        var maxResults = parameters.MaxResults ?? DEFAULT_MAX_RESULTS;
-        var estimatedTokens = EstimateTokensForReferences(sortedLocations);
-        var returnedLocations = sortedLocations;
-        var wasTruncated = false;
-        
-        if (estimatedTokens > TOKEN_SAFETY_LIMIT)
-        {
-            // Calculate how many references we can safely return
-            var safeCount = TOKEN_SAFETY_LIMIT / TOKENS_PER_REFERENCE;
-            returnedLocations = sortedLocations.Take(Math.Min(safeCount, maxResults)).ToList();
-            wasTruncated = true;
-        }
-        else if (sortedLocations.Count > maxResults)
-        {
-            returnedLocations = sortedLocations.Take(maxResults).ToList();
-            wasTruncated = true;
-        }
-        
-        // Generate insights
-        var insights = GenerateInsights(symbol, sortedLocations, wasTruncated);
-        
-        // Calculate distribution
-        var distribution = new ReferenceDistribution
-        {
-            ByFile = sortedLocations.GroupBy(l => l.FilePath)
-                .ToDictionary(g => g.Key, g => g.Count()),
-            ByKind = sortedLocations.GroupBy(l => l.Kind ?? "unknown")
-                .ToDictionary(g => g.Key, g => g.Count())
-        };
-        
-        // Store full results as a resource if truncated
+        // Store full results as a resource if large
         string? resourceUri = null;
-        if (wasTruncated && _resourceProvider != null)
+        if (sortedLocations.Count > 100 && _resourceProvider != null)
         {
             var fullData = new
             {
                 symbol = symbol.ToDisplayString(),
                 symbolKind = symbol.Kind.ToString(),
-                totalReferences = totalCount,
+                totalReferences = sortedLocations.Count,
                 allLocations = sortedLocations,
                 searchedFrom = new { parameters.FilePath, parameters.Line, parameters.Column }
             };
@@ -196,68 +167,41 @@ Not for: Finding definitions (use csharp_goto_definition), searching by name (us
             resourceUri = _resourceProvider.StoreAnalysisResult(
                 "find-all-references",
                 fullData,
-                $"All {totalCount} references to {symbol.Name}"
+                $"All {sortedLocations.Count} references to {symbol.Name}"
             );
             
             _logger.LogDebug("Stored full reference data as resource: {ResourceUri}", resourceUri);
         }
         
-        // Generate next actions
-        var actions = GenerateNextActions(parameters, symbol, returnedLocations.FirstOrDefault(), wasTruncated, totalCount);
-
-        return new FindAllReferencesToolResult
+        // Prepare data for ResponseBuilder
+        var data = new COA.CodeNav.McpServer.ResponseBuilders.FindAllReferencesData
         {
-            Success = true,
-            Locations = returnedLocations,
-            Message = wasTruncated 
-                ? $"Found {totalCount} reference(s) - showing {returnedLocations.Count}"
-                : $"Found {totalCount} reference(s)",
-            Actions = actions,
-            Insights = insights,
-            ResourceUri = resourceUri,
-            Query = new QueryInfo
-            {
-                FilePath = parameters.FilePath,
-                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column },
-                TargetSymbol = symbol.ToDisplayString()
-            },
-            Summary = new SummaryInfo
-            {
-                TotalFound = totalCount,
-                Returned = returnedLocations.Count,
-                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                SymbolInfo = new SymbolSummary
-                {
-                    Name = symbol.Name,
-                    Kind = symbol.Kind.ToString(),
-                    ContainingType = symbol.ContainingType?.ToDisplayString(),
-                    Namespace = symbol.ContainingNamespace?.ToDisplayString()
-                }
-            },
-            ResultsSummary = new ResultsSummary
-            {
-                Included = returnedLocations.Count,
-                Total = totalCount,
-                HasMore = wasTruncated
-            },
-            Distribution = distribution,
-            Meta = new ToolExecutionMetadata 
-            { 
-                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                Truncated = wasTruncated,
-                Tokens = EstimateResponseTokens(returnedLocations.Count, wasTruncated)
-            }
+            Symbol = symbol,
+            Locations = sortedLocations,
+            SearchLocation = (parameters.FilePath, parameters.Line, parameters.Column),
+            ResourceUri = resourceUri
         };
+        
+        // Build response using framework's token optimization
+        var context = new COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext
+        {
+            ResponseMode = "optimized",
+            TokenLimit = parameters.MaxResults.HasValue ? parameters.MaxResults * 200 : 10000,
+            ToolName = Name
+        };
+        
+        return await _responseBuilder.BuildResponseAsync(data, context);
     }
 
-    private FindAllReferencesToolResult CreateErrorResult(
+    private object CreateErrorResult(
         string errorCode,
         string message,
         string[] recoverySteps,
         FindAllReferencesParams parameters,
         DateTime startTime)
     {
-        return new FindAllReferencesToolResult
+        // Return a simple error response - framework doesn't need the full structure
+        return new
         {
             Success = false,
             Message = message,
@@ -270,151 +214,16 @@ Not for: Finding definitions (use csharp_goto_definition), searching by name (us
                     Steps = recoverySteps
                 }
             },
-            Query = new QueryInfo
+            Query = new
             {
                 FilePath = parameters.FilePath,
-                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
+                Line = parameters.Line,
+                Column = parameters.Column
             },
-            Meta = new ToolExecutionMetadata 
-            { 
-                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                Tokens = 800 // Error response
-            }
+            ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
         };
     }
-
-    private int EstimateTokensForReferences(List<Models.ReferenceLocation> references)
-    {
-        // Base overhead for response structure
-        var baseTokens = 500;
-        
-        // Estimate tokens per reference (file path + line info + text snippet)
-        var tokensPerReference = TOKENS_PER_REFERENCE;
-        
-        return baseTokens + (references.Count * tokensPerReference);
-    }
-
-    private List<string> GenerateInsights(ISymbol symbol, List<Models.ReferenceLocation> locations, bool wasTruncated)
-    {
-        var insights = new List<string>();
-
-        if (wasTruncated)
-        {
-            insights.Add($"⚠️ Response truncated for performance. Full results available via resource URI.");
-        }
-
-        if (locations.Count == 0)
-        {
-            insights.Add("📭 No references found - this symbol might be unused");
-        }
-        else if (locations.Count == 1)
-        {
-            insights.Add("⚡ Only one reference found - consider if this symbol is necessary");
-        }
-        else if (locations.Count > 100)
-        {
-            insights.Add($"🔥 High usage ({locations.Count} references) - changes will have wide impact");
-        }
-
-        // File distribution insight
-        var fileCount = locations.Select(l => l.FilePath).Distinct().Count();
-        if (fileCount > 10)
-        {
-            insights.Add($"📁 Referenced across {fileCount} files - consider the coupling");
-        }
-
-        // Symbol type specific insights
-        if (symbol.Kind == SymbolKind.Method && symbol.DeclaredAccessibility == Accessibility.Public)
-        {
-            insights.Add("🌐 Public method - external callers may exist outside this solution");
-        }
-
-        if (symbol.IsVirtual || symbol.IsAbstract)
-        {
-            insights.Add("🔄 Virtual/abstract member - check for overrides in derived classes");
-        }
-
-        return insights;
-    }
-
-    private List<AIAction> GenerateNextActions(
-        FindAllReferencesParams originalParams,
-        ISymbol symbol,
-        Models.ReferenceLocation? firstReference,
-        bool wasTruncated,
-        int totalCount)
-    {
-        var actions = new List<AIAction>();
-
-        if (wasTruncated)
-        {
-            actions.Add(new AIAction
-            {
-                Action = "csharp_find_all_references",
-                Description = $"Get all {totalCount} references",
-                Parameters = new Dictionary<string, object>
-                {
-                    ["filePath"] = originalParams.FilePath,
-                    ["line"] = originalParams.Line,
-                    ["column"] = originalParams.Column,
-                    ["maxResults"] = Math.Min(totalCount, 500)
-                },
-                Priority = 90
-            });
-        }
-
-        if (firstReference != null)
-        {
-            actions.Add(new AIAction
-            {
-                Action = "csharp_rename_symbol",
-                Description = "Rename this symbol across the codebase",
-                Parameters = new Dictionary<string, object>
-                {
-                    ["filePath"] = originalParams.FilePath,
-                    ["line"] = originalParams.Line,
-                    ["column"] = originalParams.Column,
-                    ["newName"] = $"New{symbol.Name}"
-                },
-                Priority = 70
-            });
-        }
-
-        actions.Add(new AIAction
-        {
-            Action = "csharp_find_implementations",
-            Description = "Find implementations if this is an interface/abstract",
-            Parameters = new Dictionary<string, object>
-            {
-                ["filePath"] = originalParams.FilePath,
-                ["line"] = originalParams.Line,
-                ["column"] = originalParams.Column
-            },
-            Priority = 60
-        });
-
-        return actions;
-    }
-
-    private int EstimateResponseTokens(int referenceCount, bool truncated)
-    {
-        // Base tokens for response structure
-        var baseTokens = 600;
-        
-        // Each reference adds approximately 200 tokens
-        var referenceTokens = referenceCount * 200;
-        
-        // Add extra if truncated (for messages)
-        if (truncated) baseTokens += 100;
-        
-        return baseTokens + referenceTokens;
-    }
-
-    protected override int EstimateTokenUsage()
-    {
-        // This can vary widely based on number of references
-        return 5000;
-    }
+    
 }
 
 public class FindAllReferencesParams

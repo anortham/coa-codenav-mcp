@@ -448,11 +448,6 @@ Not for: Manual namespace management, removing unused usings (different feature)
         };
     }
     
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical add missing usings response
-        return 2000;
-    }
 }
 
 public class AddMissingUsingsParams

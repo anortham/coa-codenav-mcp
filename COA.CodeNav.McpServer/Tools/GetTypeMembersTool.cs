@@ -4,6 +4,7 @@ using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -21,6 +22,7 @@ public class GetTypeMembersTool : McpToolBase<GetTypeMembersParams, GetTypeMembe
     private readonly ILogger<GetTypeMembersTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.GetTypeMembers;
@@ -35,12 +37,14 @@ Not for: Finding references to members (use csharp_find_all_references), navigat
         ILogger<GetTypeMembersTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -247,12 +251,49 @@ Not for: Finding references to members (use csharp_find_all_references), navigat
         // Sort members
         allMembers = SortMembers(allMembers, parameters.SortBy ?? "Kind");
         
-        // Apply max results limit
-        var returnedMembers = allMembers.Take(parameters.MaxResults).ToList();
+        // Apply framework token optimization before max results limit
+        var requestedMaxResults = parameters.MaxResults;
+        List<TypeMemberInfo> returnedMembers;
+        var tokenLimitApplied = false;
+        
+        // Use framework's token estimation
+        var estimatedTokens = _tokenEstimator.EstimateObject(allMembers);
+        if (estimatedTokens > 10000)
+        {
+            // Use framework's progressive reduction
+            returnedMembers = _tokenEstimator.ApplyProgressiveReduction(
+                allMembers,
+                member => _tokenEstimator.EstimateObject(member),
+                10000,
+                new[] { 100, 75, 50, 25, 10 } // Progressive reduction steps
+            );
+            tokenLimitApplied = true;
+            
+            _logger.LogWarning("Token optimization applied: reducing members from {Total} to {Safe}", 
+                allMembers.Count, returnedMembers.Count);
+        }
+        else
+        {
+            returnedMembers = allMembers;
+        }
+        
+        // Then apply max results limit
+        var effectiveMaxResults = Math.Min(requestedMaxResults, returnedMembers.Count);
+        if (returnedMembers.Count > effectiveMaxResults)
+        {
+            returnedMembers = returnedMembers.Take(effectiveMaxResults).ToList();
+        }
+        
         var wasTruncated = returnedMembers.Count < allMembers.Count;
 
         // Generate insights
         var insights = GenerateInsights(typeSymbol, allMembers, wasTruncated, parameters.IncludeDocumentation);
+        
+        // Add insight about token optimization if applied
+        if (tokenLimitApplied)
+        {
+            insights.Insert(0, $"⚠️ Token optimization applied. Showing {returnedMembers.Count} of {allMembers.Count} members.");
+        }
         
         // Generate next actions
         var actions = GenerateNextActions(typeSymbol, returnedMembers, wasTruncated, parameters);
@@ -833,12 +874,6 @@ Not for: Finding references to members (use csharp_find_all_references), navigat
         };
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Conservative estimate for type members response
-        // Base response + per-member cost (varies with documentation)
-        return 5000;
-    }
 }
 
 /// <summary>

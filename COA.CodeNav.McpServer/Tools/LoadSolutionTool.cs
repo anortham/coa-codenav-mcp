@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Services;
+using COA.Mcp.Framework;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using Microsoft.Extensions.Logging;
@@ -18,6 +19,7 @@ public class LoadSolutionTool : McpToolBase<LoadSolutionParams, LoadSolutionResu
 
     public override string Name => "csharp_load_solution";
     public override string Description => "Load a C# solution file into the Roslyn workspace";
+    public override ToolCategory Category => ToolCategory.Resources;
 
     public LoadSolutionTool(
         ILogger<LoadSolutionTool> logger,
@@ -52,7 +54,7 @@ public class LoadSolutionTool : McpToolBase<LoadSolutionParams, LoadSolutionResu
                     {
                         Steps = new[]
                         {
-                            "Verify the solution path is correct and absolute",
+                            "Verify the solution file path is correct and absolute",
                             "Check that the file has a .sln extension",
                             "Ensure you have read permissions for the file"
                         }
@@ -188,11 +190,6 @@ public class LoadSolutionTool : McpToolBase<LoadSolutionParams, LoadSolutionResu
         }
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        // Loading solution typically returns minimal data
-        return 500;
-    }
 }
 
 public class LoadSolutionParams

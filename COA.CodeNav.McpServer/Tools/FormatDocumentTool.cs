@@ -444,11 +444,6 @@ Not for: Refactoring logic (use other refactoring tools), fixing compilation err
         };
     }
     
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical format document response
-        return 2500;
-    }
 }
 
 public class FormatDocumentParams

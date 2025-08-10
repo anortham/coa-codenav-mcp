@@ -5,6 +5,7 @@ using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
 using COA.Mcp.Framework.Interfaces;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -22,6 +23,7 @@ public class FindUnusedCodeTool : McpToolBase<FindUnusedCodeParams, FindUnusedCo
     private readonly ILogger<FindUnusedCodeTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_find_unused_code";
@@ -36,12 +38,14 @@ AI benefit: Helps identify code that can be safely removed to reduce complexity.
         ILogger<FindUnusedCodeTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -142,10 +146,40 @@ AI benefit: Helps identify code that can be safely removed to reduce complexity.
                 unusedElements = unusedElements.Where(e => e.Accessibility != "Private").ToList();
             }
 
+            // Apply token optimization if needed
+            var totalElements = unusedElements.Count;
+            List<UnusedCodeElement> returnedElements;
+            bool wasTruncated = false;
+
+            var estimatedTokens = _tokenEstimator.EstimateObject(unusedElements);
+            if (estimatedTokens > 10000)
+            {
+                // Use framework's progressive reduction
+                returnedElements = _tokenEstimator.ApplyProgressiveReduction(
+                    unusedElements,
+                    element => _tokenEstimator.EstimateObject(element),
+                    10000,
+                    new[] { 100, 75, 50, 25, 10 }
+                );
+                wasTruncated = true;
+                
+                _logger.LogWarning("Token optimization applied: reducing unused elements from {Total} to {Safe}", 
+                    totalElements, returnedElements.Count);
+            }
+            else
+            {
+                returnedElements = unusedElements;
+            }
+
             // Generate insights and actions
             var insights = GenerateInsights(unusedElements);
             var actions = GenerateNextActions(unusedElements, parameters);
             var analysis = GenerateAnalysis(unusedElements);
+
+            if (wasTruncated)
+            {
+                insights.Insert(0, $"⚠️ Token limit applied. Showing {returnedElements.Count} of {totalElements} unused elements.");
+            }
 
             return new FindUnusedCodeResult
             {
@@ -158,10 +192,10 @@ AI benefit: Helps identify code that can be safely removed to reduce complexity.
                 Summary = new SummaryInfo
                 {
                     TotalFound = unusedElements.Count,
-                    Returned = unusedElements.Count,
+                    Returned = returnedElements.Count,
                     ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
                 },
-                UnusedElements = unusedElements,
+                UnusedElements = returnedElements,
                 Analysis = analysis,
                 Insights = insights,
                 Actions = actions,
@@ -444,12 +478,6 @@ AI benefit: Helps identify code that can be safely removed to reduce complexity.
                 ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
             }
         };
-    }
-
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical unused code analysis response
-        return 3000;
     }
 }
 

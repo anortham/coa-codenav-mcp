@@ -581,10 +581,6 @@ AI benefit: Reveals architectural issues and coupling patterns that impact maint
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        return 4500;
-    }
 }
 
 /// <summary>

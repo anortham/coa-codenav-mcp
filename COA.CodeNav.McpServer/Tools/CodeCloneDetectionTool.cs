@@ -4,6 +4,7 @@ using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
 using COA.Mcp.Framework.Attributes;
+using COA.Mcp.Framework.TokenOptimization;
 using COA.Mcp.Framework.Interfaces;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -23,6 +24,7 @@ public class CodeCloneDetectionTool : McpToolBase<CodeCloneDetectionParams, Code
     private readonly ILogger<CodeCloneDetectionTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_code_clone_detection";
@@ -37,12 +39,14 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
         ILogger<CodeCloneDetectionTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
 
@@ -108,9 +112,29 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
             
             // Store all groups before limiting
             var allGroups = cloneGroups.ToList();
-            var wasTruncated = false;
             
-            // Limit results
+            // Apply framework token optimization
+            var tokenLimitApplied = false;
+            var estimatedTokens = _tokenEstimator.EstimateObject(cloneGroups);
+            if (estimatedTokens > 10000) // Clone detection can return massive results
+            {
+                // Use framework's progressive reduction
+                var optimizedGroups = _tokenEstimator.ApplyProgressiveReduction(
+                    cloneGroups.ToList(),
+                    group => _tokenEstimator.EstimateObject(group),
+                    10000,
+                    new[] { 20, 15, 10, 5, 3 } // Progressive reduction steps for clone groups
+                );
+                cloneGroups = optimizedGroups;
+                tokenLimitApplied = true;
+                
+                _logger.LogWarning("Token optimization applied to clone groups: reducing from {Total} to {Safe}", 
+                    allGroups.Count, cloneGroups.Count);
+            }
+            
+            var wasTruncated = tokenLimitApplied;
+            
+            // Apply additional MaxGroups limit if specified
             if (parameters.MaxGroups.HasValue && cloneGroups.Count > parameters.MaxGroups.Value)
             {
                 cloneGroups = cloneGroups.Take(parameters.MaxGroups.Value).ToList();
@@ -147,7 +171,18 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
             // Add truncation warning if needed
             if (wasTruncated)
             {
-                insights.Insert(0, $"⚠️ Showing {cloneGroups.Count} of {allGroups.Count} clone groups. Full results available via resource URI.");
+                if (tokenLimitApplied && parameters.MaxGroups.HasValue && cloneGroups.Count < parameters.MaxGroups.Value)
+                {
+                    insights.Insert(0, $"⚠️ Token optimization applied. Showing {cloneGroups.Count} of {allGroups.Count} clone groups to fit context window.");
+                }
+                else if (tokenLimitApplied)
+                {
+                    insights.Insert(0, $"⚠️ Token optimization applied. Showing {cloneGroups.Count} of {allGroups.Count} clone groups.");
+                }
+                else
+                {
+                    insights.Insert(0, $"⚠️ Showing {cloneGroups.Count} of {allGroups.Count} clone groups. Full results available via resource URI.");
+                }
             }
             
             var actions = GenerateNextActions(cloneGroups, parameters, wasTruncated, allGroups.Count);
@@ -526,10 +561,6 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
         return actions;
     }
 
-    protected override int EstimateTokenUsage()
-    {
-        return 4000;
-    }
 }
 
 /// <summary>

@@ -589,11 +589,6 @@ Not for: Complex custom logic generation, refactoring existing code (use other r
         };
     }
     
-    protected override int EstimateTokenUsage()
-    {
-        // Estimate for typical code generation response
-        return 4000;
-    }
 }
 
 /// <summary>
