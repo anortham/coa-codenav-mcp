@@ -1,5 +1,6 @@
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
@@ -23,6 +24,7 @@ public class CodeMetricsTool : McpToolBase<CodeMetricsParams, CodeMetricsResult>
     private readonly ILogger<CodeMetricsTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly CodeMetricsResponseBuilder _responseBuilder;
     private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
@@ -38,6 +40,7 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.";
         ILogger<CodeMetricsTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        CodeMetricsResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
@@ -45,6 +48,7 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.";
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _responseBuilder = responseBuilder;
         _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
@@ -187,7 +191,7 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.";
         var nextActions = GenerateNextActions(metrics, parameters);
         var analysis = GenerateAnalysis(metrics);
 
-        return new CodeMetricsResult
+        var completeResult = new CodeMetricsResult
         {
             Success = true,
             Message = $"Code metrics calculated for {originalCount} item(s){(wasOptimized ? " (showing " + metrics.Count + " due to token optimization)" : "")}",
@@ -213,6 +217,16 @@ AI benefit: Provides quantitative metrics for prioritizing code improvements.";
                 ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
             }
         };
+
+        // Use ResponseBuilder for token optimization and AI-friendly formatting
+        var context = new COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext
+        {
+            ResponseMode = "optimized",
+            TokenLimit = 10000,
+            ToolName = Name
+        };
+
+        return await _responseBuilder.BuildResponseAsync(completeResult, context);
     }
 
     private CodeMetricInfo CalculateMethodMetrics(MethodDeclarationSyntax method, SemanticModel? semanticModel)

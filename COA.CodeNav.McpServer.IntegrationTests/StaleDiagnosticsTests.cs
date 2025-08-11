@@ -116,7 +116,8 @@ namespace TestProject
         // Create token estimator and response builder from framework
         var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
         var mockResponseBuilderLogger = new Mock<ILogger<DiagnosticsResponseBuilder>>();
-        var responseBuilder = new DiagnosticsResponseBuilder(mockResponseBuilderLogger.Object, tokenEstimator);
+        // Use a test ResponseBuilder that passes through the result without modification
+        var responseBuilder = new TestDiagnosticsResponseBuilder(mockResponseBuilderLogger.Object, tokenEstimator);
         
         _diagnosticsTool = new GetDiagnosticsTool(
             NullLogger<GetDiagnosticsTool>.Instance,
@@ -312,5 +313,19 @@ namespace TestProject
             // Log but don't fail test cleanup
             Console.WriteLine($"Cleanup warning: {ex.Message}");
         }
+    }
+}
+// Test-specific ResponseBuilder that just passes through the result
+public class TestDiagnosticsResponseBuilder : DiagnosticsResponseBuilder
+{
+    public TestDiagnosticsResponseBuilder(ILogger<DiagnosticsResponseBuilder> logger, COA.Mcp.Framework.TokenOptimization.ITokenEstimator tokenEstimator)
+        : base(logger, tokenEstimator)
+    {
+    }
+
+    public override Task<GetDiagnosticsToolResult> BuildResponseAsync(GetDiagnosticsToolResult data, COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext context)
+    {
+        // In tests, just pass through the result without any processing
+        return Task.FromResult(data);
     }
 }

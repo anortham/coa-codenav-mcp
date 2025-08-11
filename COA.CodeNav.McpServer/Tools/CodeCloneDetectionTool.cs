@@ -1,5 +1,6 @@
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
@@ -24,6 +25,7 @@ public class CodeCloneDetectionTool : McpToolBase<CodeCloneDetectionParams, Code
     private readonly ILogger<CodeCloneDetectionTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly CodeCloneResponseBuilder _responseBuilder;
     private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
@@ -39,6 +41,7 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
         ILogger<CodeCloneDetectionTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        CodeCloneResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
@@ -46,6 +49,7 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _responseBuilder = responseBuilder;
         _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
@@ -187,7 +191,7 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
             
             var actions = GenerateNextActions(cloneGroups, parameters, wasTruncated, allGroups.Count);
 
-            return new CodeCloneDetectionResult
+            var completeResult = new CodeCloneDetectionResult
             {
                 Success = true,
                 Message = wasTruncated 
@@ -216,6 +220,16 @@ AI benefit: Reveals hidden duplication patterns that are hard to spot manually."
                     Truncated = wasTruncated
                 }
             };
+
+            // Use ResponseBuilder for token optimization and AI-friendly formatting
+            var context = new COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext
+            {
+                ResponseMode = "optimized",
+                TokenLimit = 10000,
+                ToolName = Name
+            };
+
+            return await _responseBuilder.BuildResponseAsync(completeResult, context);
         }
         catch (OperationCanceledException)
         {

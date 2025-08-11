@@ -56,9 +56,6 @@ var builder = new McpServerBuilder()
         // Configure logging from appsettings.json
         logging.AddConfiguration(configuration.GetSection("Logging"));
     });
-    // TODO: Enable token optimization when Framework exposes the configuration API
-    // The framework doesn't expose ConfigureTokenOptimization yet in v1.4.2
-    // We'll implement manual token optimization service instead
 
 // Register configuration
 builder.Services.Configure<COA.CodeNav.McpServer.Configuration.WorkspaceManagerConfig>(

@@ -1,6 +1,7 @@
 using COA.CodeNav.McpServer.Configuration;
 using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Tools;
 using COA.Mcp.Framework.TokenOptimization;
@@ -24,6 +25,8 @@ public class CallHierarchyToolUnitTests : IDisposable
     private readonly Mock<ILogger<RoslynWorkspaceService>> _mockWorkspaceLogger;
     private readonly Mock<ILogger<MSBuildWorkspaceManager>> _mockManagerLogger;
     private readonly Mock<ILogger<DocumentService>> _mockDocumentLogger;
+    private readonly Mock<ILogger<CallHierarchyResponseBuilder>> _mockResponseBuilderLogger;
+    private readonly CallHierarchyResponseBuilder _responseBuilder;
     private readonly Mock<ITokenEstimator> _mockTokenEstimator;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
@@ -36,11 +39,16 @@ public class CallHierarchyToolUnitTests : IDisposable
         _mockWorkspaceLogger = new Mock<ILogger<RoslynWorkspaceService>>();
         _mockManagerLogger = new Mock<ILogger<MSBuildWorkspaceManager>>();
         _mockDocumentLogger = new Mock<ILogger<DocumentService>>();
+        _mockResponseBuilderLogger = new Mock<ILogger<CallHierarchyResponseBuilder>>();
         _mockTokenEstimator = new Mock<ITokenEstimator>();
         
         // Setup token estimator to return reasonable defaults
         _mockTokenEstimator.Setup(x => x.EstimateObject(It.IsAny<object>(), It.IsAny<JsonSerializerOptions>()))
             .Returns(100);
+        
+        // Create a real ResponseBuilder instance with mocked dependencies
+        // The ResponseBuilder will just pass through the result in tests
+        _responseBuilder = new TestCallHierarchyResponseBuilder(_mockResponseBuilderLogger.Object, _mockTokenEstimator.Object);
         
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"CallHierarchyTests_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
@@ -49,7 +57,7 @@ public class CallHierarchyToolUnitTests : IDisposable
         var workspaceManager = new MSBuildWorkspaceManager(_mockManagerLogger.Object, config);
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
         _documentService = new DocumentService(_mockDocumentLogger.Object, _workspaceService);
-        _tool = new CallHierarchyTool(_mockLogger.Object, _workspaceService, _documentService, _mockTokenEstimator.Object);
+        _tool = new CallHierarchyTool(_mockLogger.Object, _workspaceService, _documentService, _responseBuilder, _mockTokenEstimator.Object);
     }
 
     [Fact]
@@ -1017,4 +1025,18 @@ public class MethodLocation
     public string FilePath { get; set; } = "";
     public int Line { get; set; }
     public int Column { get; set; }
+}
+// Test-specific ResponseBuilder that just passes through the result
+public class TestCallHierarchyResponseBuilder : CallHierarchyResponseBuilder
+{
+    public TestCallHierarchyResponseBuilder(ILogger<CallHierarchyResponseBuilder> logger, ITokenEstimator tokenEstimator)
+        : base(logger, tokenEstimator)
+    {
+    }
+
+    public override Task<CallHierarchyResult> BuildResponseAsync(CallHierarchyResult data, COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext context)
+    {
+        // In tests, just pass through the result without any processing
+        return Task.FromResult(data);
+    }
 }

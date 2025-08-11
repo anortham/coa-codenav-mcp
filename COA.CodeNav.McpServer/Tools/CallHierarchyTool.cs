@@ -1,5 +1,6 @@
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
@@ -24,6 +25,7 @@ public class CallHierarchyTool : McpToolBase<CallHierarchyParams, CallHierarchyR
     private readonly ILogger<CallHierarchyTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
+    private readonly CallHierarchyResponseBuilder _responseBuilder;
     private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
@@ -39,6 +41,7 @@ AI benefit: Provides complete context that agents can't easily piece together fr
         ILogger<CallHierarchyTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
+        CallHierarchyResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
@@ -46,6 +49,7 @@ AI benefit: Provides complete context that agents can't easily piece together fr
         _logger = logger;
         _workspaceService = workspaceService;
         _documentService = documentService;
+        _responseBuilder = responseBuilder;
         _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
@@ -218,7 +222,7 @@ AI benefit: Provides complete context that agents can't easily piece together fr
 
         _logger.LogInformation("Call hierarchy completed for '{Method}'", methodSymbol.ToDisplayString());
 
-        return new CallHierarchyResult
+        var completeResult = new CallHierarchyResult
         {
             Success = true,
             Message = $"Call hierarchy for '{methodSymbol.Name}'",
@@ -250,6 +254,16 @@ AI benefit: Provides complete context that agents can't easily piece together fr
                 ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
             }
         };
+
+        // Use ResponseBuilder for token optimization and AI-friendly formatting
+        var context = new COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext
+        {
+            ResponseMode = "optimized",
+            TokenLimit = 10000,
+            ToolName = Name
+        };
+
+        return await _responseBuilder.BuildResponseAsync(completeResult, context);
     }
 
     private async Task<CallHierarchyNode> BuildCallHierarchyAsync(

@@ -259,8 +259,15 @@ Not for: Code metrics (use future csharp_code_metrics), finding specific symbols
             ResourceUri = resourceUri
         };
 
-        // Return the complete result directly - the framework handles response optimization at the transport layer
-        return completeResult;
+        // Use ResponseBuilder for token optimization and AI-friendly formatting
+        var context = new COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext
+        {
+            ResponseMode = "optimized",
+            TokenLimit = 10000, // Fixed token limit for consistent optimization
+            ToolName = Name
+        };
+
+        return await _responseBuilder.BuildResponseAsync(completeResult, context);
     }
 
     private GetDiagnosticsToolResult CreateWorkspaceNotLoadedResult(GetDiagnosticsParams parameters, DateTime startTime)

@@ -1,5 +1,6 @@
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
 using COA.Mcp.Framework.Base;
 using COA.Mcp.Framework.Models;
@@ -21,6 +22,7 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
 {
     private readonly ILogger<DocumentSymbolsTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
+    private readonly DocumentSymbolsResponseBuilder _responseBuilder;
     private readonly ITokenEstimator _tokenEstimator;
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
@@ -35,12 +37,14 @@ Not for: Solution-wide search (use csharp_symbol_search), cross-references (use 
     public DocumentSymbolsTool(
         ILogger<DocumentSymbolsTool> logger,
         RoslynWorkspaceService workspaceService,
+        DocumentSymbolsResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
         : base(logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
+        _responseBuilder = responseBuilder;
         _tokenEstimator = tokenEstimator;
         _resourceProvider = resourceProvider;
     }
@@ -196,7 +200,7 @@ Not for: Solution-wide search (use csharp_symbol_search), cross-references (use 
         _logger.LogInformation("DocumentSymbols found {Count} symbols for {FilePath}", 
             totalSymbolCount, Path.GetFileName(parameters.FilePath));
 
-        return new DocumentSymbolsToolResult
+        var completeResult = new DocumentSymbolsToolResult
         {
             Success = true,
             Message = wasLimited 
@@ -232,6 +236,16 @@ Not for: Solution-wide search (use csharp_symbol_search), cross-references (use 
                 ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
             }
         };
+
+        // Use ResponseBuilder for token optimization and AI-friendly formatting
+        var context = new COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext
+        {
+            ResponseMode = "optimized",
+            TokenLimit = 10000,
+            ToolName = Name
+        };
+
+        return await _responseBuilder.BuildResponseAsync(completeResult, context);
     }
 
     private void ExtractSymbols(SyntaxNode node, List<DocumentSymbol> symbols, SemanticModel? semanticModel, bool includePrivate)
