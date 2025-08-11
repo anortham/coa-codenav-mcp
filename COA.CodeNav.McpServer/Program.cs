@@ -81,6 +81,11 @@ builder.Services.AddSingleton<COA.Mcp.Framework.TokenOptimization.Storage.IResou
 builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.SymbolSearchResponseBuilder>();
 builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.DiagnosticsResponseBuilder>();
 builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.FindAllReferencesResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.CodeCloneResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.CallHierarchyResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.DocumentSymbolsResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.SolutionWideFindReplaceResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.CodeMetricsResponseBuilder>();
 
 // Register infrastructure services
 builder.Services.AddSingleton<MSBuildWorkspaceManager>();

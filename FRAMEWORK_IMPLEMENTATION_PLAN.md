@@ -1,7 +1,7 @@
-# COA CodeNav MCP - Framework v1.4.9 Implementation Plan
+# COA CodeNav MCP - Framework v1.5.2 Implementation Plan
 
 ## Overview
-This document outlines the concrete steps to fully leverage COA.Mcp.Framework v1.4.9 features in the CodeNav MCP Server.
+This document outlines the concrete steps to fully leverage COA.Mcp.Framework v1.5.2 features in the CodeNav MCP Server, including the new generic type system.
 
 ## Tool Categorization Strategy
 
@@ -49,9 +49,10 @@ This document outlines the concrete steps to fully leverage COA.Mcp.Framework v1
 ## Implementation Phases
 
 ### Phase 1: Framework Infrastructure (1 hour) ✅ COMPLETED
-- [x] Update to Framework v1.4.9
+- [x] Update to Framework v1.5.2
 - [x] Configure ResourceCacheOptions
 - [x] Fix build errors
+- [x] Implement new generic types (BaseResponseBuilder<TInput, TResult>)
 
 ### Phase 2: Tool Categorization (30 minutes) ✅ COMPLETED
 1. [x] Add `using COA.Mcp.Framework;` to tools  
@@ -96,13 +97,13 @@ public class FindAllReferencesTool : McpToolBase<FindAllReferencesParams, object
 4. **RenameSymbolTool** (manual result limiting)
 5. **CallHierarchyTool** (complex nested results)
 
-#### Template for New ResponseBuilder:
+#### Template for New ResponseBuilder (v1.5.2 Generic Pattern):
 ```csharp
-public class CodeCloneResponseBuilder : BaseResponseBuilder<CodeCloneData>
+public class CodeCloneResponseBuilder : BaseResponseBuilder<CodeCloneData, CodeCloneToolResult>
 {
     private readonly ITokenEstimator _tokenEstimator;
     
-    public override async Task<object> BuildResponseAsync(
+    public override async Task<CodeCloneToolResult> BuildResponseAsync(
         CodeCloneData data,
         ResponseContext context)
     {
@@ -113,7 +114,9 @@ public class CodeCloneResponseBuilder : BaseResponseBuilder<CodeCloneData>
             context.TokenLimit ?? 10000,
             "standard").Items;
             
-        return new AIOptimizedResponse { ... };
+        // Modify and return the strongly-typed result
+        data.CloneGroups = reducedClones;
+        return data;
     }
 }
 ```
@@ -173,13 +176,14 @@ var response = await _responseBuilder.BuildResponseAsync(
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| Framework Version | 1.4.9 | 1.4.9 | ✅ |
-| ResourceCache Configured | No | Yes | ✅ |
+| Framework Version | 1.5.2 | 1.5.2 | ✅ |
+| ResourceCache Configured | Yes | Yes | ✅ |
 | Tools Categorized | 26/26 | 26/26 | ✅ |
-| ResponseBuilders Connected | 3/3 | 3/3 | ✅ |
+| ResponseBuilders Using Generics | 3/3 | 3/3 | ✅ |
 | Token Optimization Implemented | 26/26 | 26/26 | ✅ |
 | Manual Token Code Removed | 26/26 | 26/26 | ✅ |
-| Tests Updated | 0% | 100% | ⏳ |
+| Critical Bugs Fixed | 1 (ReduceSymbols) | 0 | ✅ |
+| Tests Updated | TBD | 100% | ⏳ |
 
 ## Risk Mitigation
 
@@ -261,6 +265,7 @@ var response = await _responseBuilder.BuildResponseAsync(
 - Consider using framework's testing helpers for better coverage
 
 ---
-*Created: 2025-08-10*
-*Framework: COA.Mcp.Framework v1.4.9*
+*Updated: 2025-01-11*
+*Framework: COA.Mcp.Framework v1.5.2*
 *Author: COA Development Team*
+*Notable Changes: Implemented generic types, fixed ReduceSymbols bug*

@@ -287,7 +287,7 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
             ToolName = Name
         };
 
-        return (SymbolSearchToolResult)await _responseBuilder.BuildResponseAsync(completeResult, context);
+        return await _responseBuilder.BuildResponseAsync(completeResult, context);
     }
 
     private async Task SearchSymbolsInNamespace(

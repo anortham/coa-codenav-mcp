@@ -87,7 +87,8 @@
       "mcp__projectknowledge__find_knowledge",
       "mcp__projectknowledge__save_checkpoint",
       "mcp__projectknowledge__show_activity",
-      "mcp__projectknowledge__load_checkpoint"
+      "mcp__projectknowledge__load_checkpoint",
+      "mcp__projectknowledge__list_checkpoints"
     ],
     "deny": []
   }

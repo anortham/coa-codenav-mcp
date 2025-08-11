@@ -9,9 +9,9 @@ using Microsoft.Extensions.Logging;
 namespace COA.CodeNav.McpServer.ResponseBuilders;
 
 /// <summary>
-/// Response builder for FindAllReferences using framework's token optimization
+/// Response builder for FindAllReferences using framework's token optimization with strong typing
 /// </summary>
-public class FindAllReferencesResponseBuilder : BaseResponseBuilder<FindAllReferencesData>
+public class FindAllReferencesResponseBuilder : BaseResponseBuilder<FindAllReferencesData, FindAllReferencesToolResult>
 {
     private readonly ITokenEstimator _tokenEstimator;
     
@@ -22,7 +22,7 @@ public class FindAllReferencesResponseBuilder : BaseResponseBuilder<FindAllRefer
         _tokenEstimator = tokenEstimator;
     }
     
-    public override async Task<object> BuildResponseAsync(
+    public override async Task<FindAllReferencesToolResult> BuildResponseAsync(
         FindAllReferencesData data,
         ResponseContext context)
     {
@@ -49,43 +49,53 @@ public class FindAllReferencesResponseBuilder : BaseResponseBuilder<FindAllRefer
         var actions = GenerateActions(data, (int)(tokenBudget * 0.15));
         
         // Build the response
-        var response = new AIOptimizedResponse
+        var response = new FindAllReferencesToolResult
         {
-            Format = "ai-optimized",
-            Data = new AIResponseData
+            Success = true,
+            Query = new QueryInfo
             {
-                Summary = $"Found {data.Locations.Count} references to {data.Symbol.Name}",
-                Results = new
+                FilePath = data.SearchLocation.FilePath,
+                Position = new PositionInfo
                 {
-                    Symbol = new
-                    {
-                        Name = data.Symbol.Name,
-                        Kind = data.Symbol.Kind.ToString(),
-                        ContainingType = data.Symbol.ContainingType?.ToDisplayString(),
-                        Namespace = data.Symbol.ContainingNamespace?.ToDisplayString()
-                    },
-                    Locations = reducedLocations,
-                    Distribution = new
-                    {
-                        ByFile = data.Locations.GroupBy(l => l.FilePath)
-                            .ToDictionary(g => g.Key, g => g.Count()),
-                        ByKind = data.Locations.GroupBy(l => l.Kind ?? "unknown")
-                            .ToDictionary(g => g.Key, g => g.Count())
-                    }
+                    Line = data.SearchLocation.Line,
+                    Column = data.SearchLocation.Column
                 },
-                Count = reducedLocations.Count
+                TargetSymbol = data.Symbol.Name
+            },
+            Summary = new SummaryInfo
+            {
+                TotalFound = data.Locations.Count,
+                Returned = reducedLocations.Count,
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
+                SymbolInfo = new SymbolSummary
+                {
+                    Name = data.Symbol.Name,
+                    Kind = data.Symbol.Kind.ToString(),
+                    ContainingType = data.Symbol.ContainingType?.ToDisplayString(),
+                    Namespace = data.Symbol.ContainingNamespace?.ToDisplayString()
+                }
+            },
+            Locations = reducedLocations,
+            ResultsSummary = new ResultsSummary
+            {
+                Included = reducedLocations.Count,
+                Total = data.Locations.Count,
+                HasMore = wasTruncated
             },
             Insights = ReduceInsights(insights, (int)(tokenBudget * 0.1)),
             Actions = ReduceActions(actions, (int)(tokenBudget * 0.05)),
-            Meta = CreateMetadata(startTime, wasTruncated, data.ResourceUri)
+            Meta = new ToolExecutionMetadata
+            {
+                Mode = context.ResponseMode ?? "optimized",
+                Truncated = wasTruncated,
+                Tokens = 0, // Will be updated below
+                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            },
+            ResourceUri = data.ResourceUri
         };
         
         // Update token estimate
-        response.Meta.TokenInfo = new TokenInfo
-        {
-            Estimated = _tokenEstimator.EstimateObject(response),
-            Limit = context.TokenLimit ?? 10000
-        };
+        response.Meta.Tokens = _tokenEstimator.EstimateObject(response);
         
         return await Task.FromResult(response);
     }

@@ -1,11 +1,11 @@
 # COA CodeNav MCP - Current Status Report
-## Date: 2025-08-10
+## Date: 2025-01-11
 
 ## ✅ Completed Tasks
 
-### 1. Framework Version Update (v1.4.2 → v1.4.9)
+### 1. Framework Version Update (v1.4.2 → v1.5.2)
 - **Status**: ✅ COMPLETE
-- Updated both main project and integration tests to COA.Mcp.Framework v1.4.9
+- Updated both main project and integration tests to COA.Mcp.Framework v1.5.2
 - Fixed build error in FindAllReferencesToolUnitTests
 - Build succeeds with only 2 warnings (async ResponseBuilders)
 
@@ -24,11 +24,12 @@
 - GetDiagnosticsTool → `ToolCategory.Diagnostics`
 - GoToDefinitionTool → `ToolCategory.Navigation`
 
-### 4. ResponseBuilder Integration
-- **Status**: ✅ 3/3 ResponseBuilders Connected
-- **✅ FindAllReferencesTool**: Already using `_responseBuilder.BuildResponseAsync()`
-- **✅ SymbolSearchTool**: Converted from manual token counting to ResponseBuilder  
-- **✅ GetDiagnosticsTool**: Converted from manual token counting to ResponseBuilder
+### 4. ResponseBuilder Integration with Generic Types (v1.5.2)
+- **Status**: ✅ UPGRADED to use new generic types
+- **✅ FindAllReferencesTool**: Using `BaseResponseBuilder<FindAllReferencesData, FindAllReferencesToolResult>`
+- **✅ SymbolSearchTool**: Using `BaseResponseBuilder<SymbolSearchToolResult, SymbolSearchToolResult>`
+- **✅ GetDiagnosticsTool**: Using `BaseResponseBuilder<GetDiagnosticsToolResult, GetDiagnosticsToolResult>`
+- **✅ Fixed**: Critical bug in `ReduceSymbols` that was returning empty results when symbols exceeded token budget
 
 ### 5. Manual Token Counting Removal ✅ COMPLETED
 - **Status**: ✅ ALL 26 tools converted to framework patterns
@@ -146,12 +147,13 @@
 
 | Metric | Current | Target |
 |--------|---------|--------|
-| Framework Version | 1.4.9 ✅ | 1.4.9 |
+| Framework Version | 1.5.2 ✅ | 1.5.2 |
 | Tools Using Framework | 26/26 (100%) ✅ | 26/26 (100%) |
-| ResponseBuilders Connected | 3/3 (100%) ✅ | 3/3 (100%) |
+| ResponseBuilders Using Generics | 3/3 (100%) ✅ | 3/3 (100%) |
 | Manual Token Code | 0 lines ✅ | 0 lines |
 | Tools with Token Optimization | 26/26 (100%) ✅ | 26/26 (100%) |
 | Resource Caching | Fully configured ✅ | Fully configured |
+| Test Status | Needs verification | All passing |
 
 ## 🎯 Next Steps
 
@@ -203,7 +205,7 @@
 **Expected Completion**: 2-3 working days with focused effort
 
 ---
-*Generated: 2025-08-10*
-*Framework: COA.Mcp.Framework v1.4.9*
-*Status: Critical Gap Discovered - Token Optimization Missing (60% complete)*
-*URGENT: 21/26 tools lack any token management*
+*Updated: 2025-01-11*
+*Framework: COA.Mcp.Framework v1.5.2*
+*Status: Framework upgrade complete with generic types implementation*
+*Note: Fixed critical bug in ReduceSymbols method that was causing empty results*

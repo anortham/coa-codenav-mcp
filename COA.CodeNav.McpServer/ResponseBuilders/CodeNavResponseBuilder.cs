@@ -8,9 +8,12 @@ using Microsoft.Extensions.Logging;
 namespace COA.CodeNav.McpServer.ResponseBuilders;
 
 /// <summary>
-/// Base response builder for CodeNav tools using framework's token optimization
+/// Base response builder for CodeNav tools using framework's token optimization with strong typing
 /// </summary>
-public abstract class CodeNavResponseBuilder<TData> : BaseResponseBuilder<TData>
+/// <typeparam name="TData">The type of input data to process</typeparam>
+/// <typeparam name="TResult">The type of result to return</typeparam>
+public abstract class CodeNavResponseBuilder<TData, TResult> : BaseResponseBuilder<TData, TResult>
+    where TResult : new()
 {
     protected readonly ITokenEstimator _tokenEstimator;
     
@@ -67,64 +70,4 @@ public abstract class CodeNavResponseBuilder<TData> : BaseResponseBuilder<TData>
         return result.Items;
     }
     
-    /// <summary>
-    /// Build AI-optimized response with automatic token management
-    /// </summary>
-    protected AIOptimizedResponse BuildAIOptimizedResponse(
-        string summary,
-        object data,
-        List<string> insights,
-        List<AIAction> actions,
-        ResponseContext context,
-        DateTime startTime,
-        bool wasTruncated = false)
-    {
-        var tokenBudget = CalculateSafeTokenBudget(context);
-        
-        // Allocate token budget across response components
-        var dataBudget = (int)(tokenBudget * 0.7);
-        var insightsBudget = (int)(tokenBudget * 0.15);
-        var actionsBudget = (int)(tokenBudget * 0.15);
-        
-        // Reduce insights and actions to fit budget
-        var reducedInsights = ReduceInsights(insights, insightsBudget);
-        var reducedActions = ReduceActions(actions, actionsBudget);
-        
-        var response = new AIOptimizedResponse
-        {
-            Format = "ai-optimized",
-            Data = new AIResponseData
-            {
-                Summary = summary,
-                Results = data,
-                Count = GetResultCount(data)
-            },
-            Insights = reducedInsights,
-            Actions = reducedActions,
-            Meta = new AIResponseMeta
-            {
-                ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms",
-                Truncated = wasTruncated,
-                TokenInfo = new TokenInfo
-                {
-                    Estimated = 0, // Will be calculated below
-                    Limit = context.TokenLimit ?? DEFAULT_TOKEN_LIMIT
-                }
-            }
-        };
-        
-        // Calculate actual token usage
-        response.Meta.TokenInfo.Estimated = _tokenEstimator.EstimateObject(response);
-        
-        return response;
-    }
-    
-    private int GetResultCount(object data)
-    {
-        if (data is System.Collections.ICollection collection)
-            return collection.Count;
-        if (data is Array array)
-            return array.Length;
-        return 1;
-    }
 }

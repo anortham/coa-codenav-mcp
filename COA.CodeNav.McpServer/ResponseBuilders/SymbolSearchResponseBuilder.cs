@@ -8,9 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace COA.CodeNav.McpServer.ResponseBuilders;
 
 /// <summary>
-/// Response builder for SymbolSearchTool that implements token-aware response building
+/// Response builder for SymbolSearchTool that implements token-aware response building with strong typing
 /// </summary>
-public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolResult>
+public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolResult, SymbolSearchToolResult>
 {
     private readonly ITokenEstimator _tokenEstimator;
     
@@ -21,7 +21,7 @@ public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolR
         _tokenEstimator = tokenEstimator;
     }
     
-    public override Task<object> BuildResponseAsync(
+    public override Task<SymbolSearchToolResult> BuildResponseAsync(
         SymbolSearchToolResult data,
         ResponseContext context)
     {
@@ -50,35 +50,33 @@ public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolR
         // Generate actions for next steps
         var actions = GenerateActions(data, (int)(tokenBudget * 0.15));
         
-        // Build AI-optimized response
-        var response = new AIOptimizedResponse
+        // Update the input data with optimized/reduced content
+        data.Symbols = reducedSymbols;
+        
+        // Update insights and actions with token-aware reductions
+        data.Insights = ReduceInsights(insights, (int)(tokenBudget * 0.1));
+        data.Actions = ReduceActions(actions, (int)(tokenBudget * 0.15));
+        
+        // Update metadata to reflect the optimization
+        if (data.ResultsSummary != null)
         {
-            Format = "ai-optimized",
-            Data = new AIResponseData
-            {
-                Summary = BuildSummary(data, reducedSymbols?.Count ?? 0),
-                Results = reducedSymbols,
-                Count = reducedSymbols?.Count ?? 0,
-                ExtensionData = new Dictionary<string, object>
-                {
-                    ["totalFound"] = data.Summary?.TotalFound ?? 0,
-                    ["hasMore"] = data.ResultsSummary?.HasMore ?? false
-                }
-            },
-            Insights = ReduceInsights(insights, (int)(tokenBudget * 0.1)),
-            Actions = ReduceActions(actions, (int)(tokenBudget * 0.15)),
-            Meta = CreateMetadata(startTime, wasReduced)
+            data.ResultsSummary.Included = reducedSymbols?.Count ?? 0;
+            data.ResultsSummary.HasMore = wasReduced || data.ResultsSummary.HasMore;
+        }
+        
+        // Update execution metadata
+        data.Meta = new ToolExecutionMetadata
+        {
+            Mode = context.ResponseMode ?? "optimized",
+            Truncated = wasReduced,
+            Tokens = _tokenEstimator.EstimateObject(data),
+            ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
         };
         
-        // Update token metadata
-        response.Meta.TokenInfo = new TokenInfo
-        {
-            Estimated = _tokenEstimator.EstimateObject(response),
-            Limit = context.TokenLimit ?? 10000,
-            ReductionStrategy = wasReduced ? "progressive" : null
-        };
+        data.Success = true;
+        data.Message = BuildSummary(data, reducedSymbols?.Count ?? 0);
         
-        return Task.FromResult<object>(response);
+        return Task.FromResult(data);
     }
     
     protected override List<string> GenerateInsights(
@@ -233,10 +231,18 @@ public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolR
         foreach (var symbol in prioritizedSymbols)
         {
             var symbolTokens = _tokenEstimator.EstimateObject(symbol);
+                
             if (currentTokens + symbolTokens <= tokenBudget)
             {
                 result.Add(symbol);
                 currentTokens += symbolTokens;
+            }
+            else if (result.Count == 0 && symbolTokens > tokenBudget)
+            {
+                // If no symbols fit and this one is too large, include it anyway
+                // to avoid returning empty results
+                result.Add(symbol);
+                break;
             }
             else
             {

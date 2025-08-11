@@ -8,9 +8,9 @@ using Microsoft.Extensions.Logging;
 namespace COA.CodeNav.McpServer.ResponseBuilders;
 
 /// <summary>
-/// Response builder for GetDiagnosticsTool that implements intelligent diagnostic reduction
+/// Response builder for GetDiagnosticsTool that implements intelligent diagnostic reduction with strong typing
 /// </summary>
-public class DiagnosticsResponseBuilder : BaseResponseBuilder<GetDiagnosticsToolResult>
+public class DiagnosticsResponseBuilder : BaseResponseBuilder<GetDiagnosticsToolResult, GetDiagnosticsToolResult>
 {
     private readonly ITokenEstimator _tokenEstimator;
     
@@ -21,7 +21,7 @@ public class DiagnosticsResponseBuilder : BaseResponseBuilder<GetDiagnosticsTool
         _tokenEstimator = tokenEstimator;
     }
     
-    public override Task<object> BuildResponseAsync(
+    public override Task<GetDiagnosticsToolResult> BuildResponseAsync(
         GetDiagnosticsToolResult data,
         ResponseContext context)
     {
@@ -50,36 +50,40 @@ public class DiagnosticsResponseBuilder : BaseResponseBuilder<GetDiagnosticsTool
         // Generate actions for fixing issues
         var actions = GenerateActions(data, (int)(tokenBudget * 0.2));
         
-        // Build AI-optimized response
-        var response = new AIOptimizedResponse
+        // Update the input data with optimized/reduced content
+        data.Diagnostics = reducedDiagnostics;
+        
+        // Update insights and actions with token-aware reductions
+        data.Insights = ReduceInsights(insights, (int)(tokenBudget * 0.1));
+        data.Actions = ReduceActions(actions, (int)(tokenBudget * 0.2));
+        
+        // Update summary if needed
+        if (data.Summary != null)
         {
-            Format = "ai-optimized",
-            Data = new AIResponseData
-            {
-                Summary = BuildSummary(data, reducedDiagnostics?.Count ?? 0),
-                Results = reducedDiagnostics,
-                Count = reducedDiagnostics?.Count ?? 0,
-                ExtensionData = new Dictionary<string, object>
-                {
-                    ["byCategory"] = GroupByCategory(reducedDiagnostics),
-                    ["bySeverity"] = GroupBySeverity(reducedDiagnostics),
-                    ["fixableCount"] = reducedDiagnostics?.Count(d => d.HasCodeFix) ?? 0
-                }
-            },
-            Insights = ReduceInsights(insights, (int)(tokenBudget * 0.1)),
-            Actions = ReduceActions(actions, (int)(tokenBudget * 0.2)),
-            Meta = CreateMetadata(startTime, wasReduced)
+            data.Summary.Returned = reducedDiagnostics?.Count ?? 0;
+            data.Summary.ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms";
+        }
+        
+        // Update results summary
+        if (data.ResultsSummary != null)
+        {
+            data.ResultsSummary.Included = reducedDiagnostics?.Count ?? 0;
+            data.ResultsSummary.HasMore = wasReduced || data.ResultsSummary.HasMore;
+        }
+        
+        // Update execution metadata
+        data.Meta = new ToolExecutionMetadata
+        {
+            Mode = context.ResponseMode ?? "optimized",
+            Truncated = wasReduced,
+            Tokens = _tokenEstimator.EstimateObject(data),
+            ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
         };
         
-        // Update token metadata
-        response.Meta.TokenInfo = new TokenInfo
-        {
-            Estimated = _tokenEstimator.EstimateObject(response),
-            Limit = context.TokenLimit ?? 10000,
-            ReductionStrategy = wasReduced ? "severity-based" : null
-        };
+        data.Success = true;
+        data.Message = BuildSummary(data, reducedDiagnostics?.Count ?? 0);
         
-        return Task.FromResult<object>(response);
+        return Task.FromResult(data);
     }
     
     protected override List<string> GenerateInsights(
