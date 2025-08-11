@@ -41,7 +41,7 @@ public class CallHierarchyToolUnitTests : IDisposable
         var workspaceManager = new MSBuildWorkspaceManager(_mockManagerLogger.Object, config);
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
         _documentService = new DocumentService(_mockDocumentLogger.Object, _workspaceService);
-        _tool = new CallHierarchyTool(_mockLogger.Object, _workspaceService, _documentService, null);
+        _tool = new CallHierarchyTool(_mockLogger.Object, _workspaceService, _documentService, null!);
     }
 
     [Fact]

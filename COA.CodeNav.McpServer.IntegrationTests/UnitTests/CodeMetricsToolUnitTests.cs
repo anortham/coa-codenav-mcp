@@ -41,7 +41,7 @@ public class CodeMetricsToolUnitTests : IDisposable
         var workspaceManager = new MSBuildWorkspaceManager(_mockManagerLogger.Object, config);
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
         _documentService = new DocumentService(_mockDocumentLogger.Object, _workspaceService);
-        _tool = new CodeMetricsTool(_mockLogger.Object, _workspaceService, _documentService, null);
+        _tool = new CodeMetricsTool(_mockLogger.Object, _workspaceService, _documentService, null!);
     }
 
     [Fact]

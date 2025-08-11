@@ -78,7 +78,7 @@ public class TestClass
             workspaceService,
             documentService,
             codeFixService,
-            null);
+            null!);
 
         // We need to inject the test workspace into the services
         // This is a bit hacky but works for testing

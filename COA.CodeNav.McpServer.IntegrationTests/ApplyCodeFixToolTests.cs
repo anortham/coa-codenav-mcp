@@ -39,7 +39,7 @@ public class ApplyCodeFixToolTests
             workspaceService,
             documentService,
             codeFixService,
-            null);
+            null!);
 
         var parameters = new ApplyCodeFixParams
         {
