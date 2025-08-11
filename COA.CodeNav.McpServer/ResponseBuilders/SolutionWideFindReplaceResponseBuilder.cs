@@ -127,15 +127,13 @@ public class SolutionWideFindReplaceResponseBuilder : BaseResponseBuilder<Soluti
                 }
             }
             
-            // Pattern analysis
-            if (data.Query?.UseRegex == true)
+            // Pattern analysis - check if it looks like regex
+            if (data.Query?.TargetSymbol?.Contains(".*") == true || 
+                data.Query?.TargetSymbol?.Contains("\\w") == true ||
+                data.Query?.TargetSymbol?.Contains("^") == true ||
+                data.Query?.TargetSymbol?.Contains("$") == true)
             {
-                insights.Add("Using regex pattern - ensure pattern correctly matches intended targets");
-            }
-            
-            if (data.Query?.WholeWord == true)
-            {
-                insights.Add("Whole word matching enabled - only complete word boundaries will match");
+                insights.Add("Pattern appears to use regex - ensure pattern correctly matches intended targets");
             }
             
             // Risk assessment
@@ -202,7 +200,7 @@ public class SolutionWideFindReplaceResponseBuilder : BaseResponseBuilder<Soluti
             });
             
             // If in preview mode, suggest applying
-            if (data.Query?.Preview == true)
+            if (data.IsPreview == true)
             {
                 actions.Add(new AIAction
                 {
@@ -213,8 +211,8 @@ public class SolutionWideFindReplaceResponseBuilder : BaseResponseBuilder<Soluti
                     Parameters = new Dictionary<string, object>
                     {
                         ["preview"] = false,
-                        ["findPattern"] = data.Query.FindPattern ?? "",
-                        ["replacePattern"] = data.Query.ReplacePattern ?? ""
+                        ["findPattern"] = data.Query?.TargetSymbol ?? ""
+                        // Note: ReplacePattern not available in the result
                     }
                 });
             }
@@ -229,18 +227,17 @@ public class SolutionWideFindReplaceResponseBuilder : BaseResponseBuilder<Soluti
             });
             
             // Rollback actions
-            if (data.Query?.Preview == false)
+            if (data.IsPreview == false)
             {
                 actions.Add(new AIAction
                 {
                     Action = "csharp_solution_wide_find_replace",
-                    Description = "Undo changes (reverse find/replace)",
-                    Category = "rollback",
+                    Description = "Review changes before finalizing",
+                    Category = "review",
                     Priority = 8,
                     Parameters = new Dictionary<string, object>
                     {
-                        ["findPattern"] = data.Query.ReplacePattern ?? "",
-                        ["replacePattern"] = data.Query.FindPattern ?? "",
+                        // Note: Cannot suggest rollback without original replace pattern
                         ["preview"] = true
                     }
                 });
@@ -330,6 +327,7 @@ public class SolutionWideFindReplaceResponseBuilder : BaseResponseBuilder<Soluti
                 var minimalFile = new FindReplaceMatch
                 {
                     FilePath = file.FilePath,
+                    ProjectName = file.ProjectName,
                     MatchCount = file.MatchCount,
                     Matches = file.Matches?.Take(1).ToList() // Just first match
                 };
@@ -350,6 +348,7 @@ public class SolutionWideFindReplaceResponseBuilder : BaseResponseBuilder<Soluti
         var reduced = new FindReplaceMatch
         {
             FilePath = file.FilePath,
+            ProjectName = file.ProjectName,
             MatchCount = file.MatchCount,
             Matches = null
         };
@@ -422,7 +421,7 @@ public class SolutionWideFindReplaceResponseBuilder : BaseResponseBuilder<Soluti
             return $"No matches found for pattern '{data.Query?.TargetSymbol}'";
         }
         
-        var actionText = data.Query?.Preview == true ? "Found" : "Replaced";
+        var actionText = data.IsPreview == true ? "Found" : "Replaced";
         
         if (displayedFiles < totalFiles)
         {

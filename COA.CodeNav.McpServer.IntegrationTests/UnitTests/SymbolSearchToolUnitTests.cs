@@ -944,6 +944,7 @@ public class DerivedClass : PublicClass
         await File.WriteAllTextAsync(testFile, privateCode);
 
         await _workspaceService.LoadSolutionAsync(solutionPath);
+        await Task.Delay(1000); // Give time for workspace to compile
     }
 
     public void Dispose()

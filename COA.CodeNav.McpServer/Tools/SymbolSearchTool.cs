@@ -146,10 +146,16 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
             .ThenBy(s => s.FullName)
             .ToList();
 
-        // Build complete result with all symbols - let ResponseBuilder handle optimization
+        // Apply MaxResults limit BEFORE passing to ResponseBuilder
         var requestedMaxResults = parameters.MaxResults ?? DEFAULT_MAX_RESULTS;
         var returnedSymbols = allSymbols.Take(requestedMaxResults).ToList();
         var wasTruncated = allSymbols.Count > requestedMaxResults;
+        
+        // Log if truncation will be needed
+        if (allSymbols.Count >= 200)
+        {
+            _logger.LogInformation("Truncating symbol results - found {Count} symbols", allSymbols.Count);
+        }
 
         if (!allSymbols.Any())
         {
@@ -283,7 +289,7 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
         var context = new COA.Mcp.Framework.TokenOptimization.ResponseBuilders.ResponseContext
         {
             ResponseMode = "optimized",
-            TokenLimit = parameters.MaxResults.HasValue ? parameters.MaxResults * 150 : 10000,
+            TokenLimit = 10000, // Fixed token limit for consistent optimization
             ToolName = Name
         };
 
@@ -332,7 +338,8 @@ Not for: Finding references to a symbol (use csharp_find_all_references), naviga
         // Process type members
         if (container is INamedTypeSymbol typeSymbol)
         {
-            foreach (var member in typeSymbol.GetMembers())
+            var immutableArray = typeSymbol.GetMembers();
+            foreach (var member in immutableArray)
             {
                 if (cancellationToken.IsCancellationRequested) return;
 

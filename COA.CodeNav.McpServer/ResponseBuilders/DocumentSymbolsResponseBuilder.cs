@@ -209,7 +209,7 @@ public class DocumentSymbolsResponseBuilder : BaseResponseBuilder<DocumentSymbol
             }
             
             // Refactoring actions for large files
-            if (data.Symbols.Count > 10 || data.Statistics?.TotalLines > 300)
+            if (data.Symbols.Count > 10)
             {
                 actions.Add(new AIAction
                 {
@@ -270,7 +270,7 @@ public class DocumentSymbolsResponseBuilder : BaseResponseBuilder<DocumentSymbol
         // Prioritize symbols by importance
         var prioritizedSymbols = symbols
             .OrderByDescending(s => GetSymbolPriority(s))
-            .ThenBy(s => s.Location?.StartLine ?? 0);
+            .ThenBy(s => s.Location?.Line ?? 0);
         
         foreach (var symbol in prioritizedSymbols)
         {
@@ -289,9 +289,10 @@ public class DocumentSymbolsResponseBuilder : BaseResponseBuilder<DocumentSymbol
                 var minimalSymbol = new DocumentSymbol
                 {
                     Name = symbol.Name,
+                    FullName = symbol.FullName,
                     Kind = symbol.Kind,
-                    Range = symbol.Range,
-                    Children = null // No children to save space
+                    Location = symbol.Location,
+                    Children = new List<DocumentSymbol>() // Empty children list to save space
                 };
                 result.Add(minimalSymbol);
                 break;
@@ -323,7 +324,7 @@ public class DocumentSymbolsResponseBuilder : BaseResponseBuilder<DocumentSymbol
             TypeParameters = symbol.TypeParameters,
             Parameters = symbol.Parameters,
             ReturnType = symbol.ReturnType,
-            Children = null
+            Children = new List<DocumentSymbol>()
         };
         
         if (symbol.Children != null && symbol.Children.Count > 0)

@@ -276,8 +276,8 @@ public class CallHierarchyResponseBuilder : BaseResponseBuilder<CallHierarchyRes
             IsVirtual = node.IsVirtual,
             IsAbstract = node.IsAbstract,
             IsOverride = node.IsOverride,
-            Incoming = null,
-            Outgoing = null // Initially no children
+            Incoming = new List<CallHierarchyNode>(),
+            Outgoing = new List<CallHierarchyNode>() // Initially no children
         };
         
         // Handle both incoming and outgoing calls

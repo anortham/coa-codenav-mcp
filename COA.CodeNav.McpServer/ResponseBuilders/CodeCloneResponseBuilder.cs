@@ -266,10 +266,9 @@ public class CodeCloneResponseBuilder : BaseResponseBuilder<CodeCloneDetectionRe
                 // but truncate the clones within it
                 var truncatedGroup = new CloneGroup
                 {
-                    GroupId = group.GroupId,
+                    Id = group.Id,
                     SimilarityScore = group.SimilarityScore,
-                    Clones = group.Clones?.Take(2).ToList(), // Show just first 2 clones
-                    Summary = group.Summary
+                    Clones = group.Clones?.Take(2).ToList() // Show just first 2 clones
                 };
                 result.Add(truncatedGroup);
                 break;
@@ -297,7 +296,7 @@ public class CodeCloneResponseBuilder : BaseResponseBuilder<CodeCloneDetectionRe
         if (group.Clones?.FirstOrDefault() != null)
         {
             var firstClone = group.Clones.First();
-            var lines = (firstClone.EndLine - firstClone.StartLine + 1);
+            var lines = (firstClone.Location.EndLine - firstClone.Location.Line + 1);
             priority += lines * 2;
         }
         

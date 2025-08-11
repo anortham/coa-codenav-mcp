@@ -3,11 +3,13 @@ using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Tools;
+using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 // using DotMemory.Unit; // Temporarily disabled
 
 namespace COA.CodeNav.McpServer.IntegrationTests.UnitTests;
@@ -22,6 +24,7 @@ public class CodeMetricsToolUnitTests : IDisposable
     private readonly Mock<ILogger<RoslynWorkspaceService>> _mockWorkspaceLogger;
     private readonly Mock<ILogger<MSBuildWorkspaceManager>> _mockManagerLogger;
     private readonly Mock<ILogger<DocumentService>> _mockDocumentLogger;
+    private readonly Mock<ITokenEstimator> _mockTokenEstimator;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly DocumentService _documentService;
     private readonly CodeMetricsTool _tool;
@@ -33,6 +36,17 @@ public class CodeMetricsToolUnitTests : IDisposable
         _mockWorkspaceLogger = new Mock<ILogger<RoslynWorkspaceService>>();
         _mockManagerLogger = new Mock<ILogger<MSBuildWorkspaceManager>>();
         _mockDocumentLogger = new Mock<ILogger<DocumentService>>();
+        _mockTokenEstimator = new Mock<ITokenEstimator>();
+        
+        // Setup token estimator to return reasonable defaults
+        _mockTokenEstimator.Setup(x => x.EstimateObject(It.IsAny<object>(), It.IsAny<JsonSerializerOptions>()))
+            .Returns(100);
+        _mockTokenEstimator.Setup(x => x.ApplyProgressiveReduction(
+            It.IsAny<IEnumerable<CodeMetricInfo>>(),
+            It.IsAny<Func<CodeMetricInfo, int>>(),
+            It.IsAny<int>(),
+            It.IsAny<int[]>()))
+            .Returns<IEnumerable<CodeMetricInfo>, Func<CodeMetricInfo, int>, int, int[]>((items, func, limit, thresholds) => items.ToList());
         
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"CodeMetricsTests_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
@@ -41,7 +55,7 @@ public class CodeMetricsToolUnitTests : IDisposable
         var workspaceManager = new MSBuildWorkspaceManager(_mockManagerLogger.Object, config);
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
         _documentService = new DocumentService(_mockDocumentLogger.Object, _workspaceService);
-        _tool = new CodeMetricsTool(_mockLogger.Object, _workspaceService, _documentService, null!);
+        _tool = new CodeMetricsTool(_mockLogger.Object, _workspaceService, _documentService, _mockTokenEstimator.Object);
     }
 
     [Fact]

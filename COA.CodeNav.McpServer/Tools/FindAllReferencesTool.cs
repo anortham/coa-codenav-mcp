@@ -17,7 +17,7 @@ namespace COA.CodeNav.McpServer.Tools;
 /// <summary>
 /// Tool for finding all references to a symbol in the codebase
 /// </summary>
-public class FindAllReferencesTool : McpToolBase<FindAllReferencesParams, object>
+public class FindAllReferencesTool : McpToolBase<FindAllReferencesParams, FindAllReferencesToolResult>
 {
     private readonly ILogger<FindAllReferencesTool> _logger;
     private readonly RoslynWorkspaceService _workspaceService;
@@ -49,7 +49,7 @@ Not for: Finding definitions (use csharp_goto_definition), searching by name (us
         _resourceProvider = resourceProvider;
     }
 
-    protected override async Task<object> ExecuteInternalAsync(
+    protected override async Task<FindAllReferencesToolResult> ExecuteInternalAsync(
         FindAllReferencesParams parameters,
         CancellationToken cancellationToken)
     {
@@ -193,15 +193,14 @@ Not for: Finding definitions (use csharp_goto_definition), searching by name (us
         return await _responseBuilder.BuildResponseAsync(data, context);
     }
 
-    private object CreateErrorResult(
+    private FindAllReferencesToolResult CreateErrorResult(
         string errorCode,
         string message,
         string[] recoverySteps,
         FindAllReferencesParams parameters,
         DateTime startTime)
     {
-        // Return a simple error response - framework doesn't need the full structure
-        return new
+        return new FindAllReferencesToolResult
         {
             Success = false,
             Message = message,
@@ -214,13 +213,12 @@ Not for: Finding definitions (use csharp_goto_definition), searching by name (us
                     Steps = recoverySteps
                 }
             },
-            Query = new
+            Query = new QueryInfo
             {
                 FilePath = parameters.FilePath,
-                Line = parameters.Line,
-                Column = parameters.Column
+                Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
             },
-            ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms"
+            Meta = new ToolExecutionMetadata { ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" }
         };
     }
     

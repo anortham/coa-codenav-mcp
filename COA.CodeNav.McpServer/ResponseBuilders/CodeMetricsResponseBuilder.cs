@@ -301,7 +301,9 @@ public class CodeMetricsResponseBuilder : BaseResponseBuilder<CodeMetricsResult,
                 var simplified = new CodeMetricInfo
                 {
                     Name = metric.Name,
-                    Type = metric.Type,
+                    FullName = metric.FullName,
+                    Kind = metric.Kind,
+                    Location = metric.Location,
                     CyclomaticComplexity = metric.CyclomaticComplexity,
                     MaintainabilityIndex = metric.MaintainabilityIndex,
                     LinesOfCode = metric.LinesOfCode
@@ -368,17 +370,17 @@ public class CodeMetricsResponseBuilder : BaseResponseBuilder<CodeMetricsResult,
         }
         
         // Coupling
-        if (metric.ClassCoupling > 20)
+        if (metric.CouplingBetweenObjects > 20)
         {
             priority += 40;
         }
-        else if (metric.ClassCoupling > 10)
+        else if (metric.CouplingBetweenObjects > 10)
         {
             priority += 20;
         }
         
         // Type-based priority
-        if (metric.Type == "Method")
+        if (metric.Kind == "Method")
         {
             priority += 10; // Methods are usually more actionable
         }

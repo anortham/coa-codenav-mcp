@@ -166,7 +166,7 @@ namespace TestNamespace
         }
         
         await _workspaceService.LoadSolutionAsync(solutionPath);
-        await Task.Delay(500); // Give time for workspace to load
+        await Task.Delay(2000); // Give more time for workspace to fully compile with 200 files
         
         return projectPath;
     }
@@ -200,7 +200,7 @@ namespace TestNamespace
 }");
         
         await _workspaceService.LoadSolutionAsync(solutionPath);
-        await Task.Delay(500); // Give time for workspace to load
+        await Task.Delay(2000); // Give more time for workspace to fully compile with 200 files
         
         return projectPath;
     }
