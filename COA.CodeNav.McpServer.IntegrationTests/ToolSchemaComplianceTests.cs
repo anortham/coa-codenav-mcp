@@ -2,12 +2,15 @@ using COA.CodeNav.McpServer.Configuration;
 using COA.CodeNav.McpServer.Constants;
 using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Tools;
 using COA.Mcp.Framework.Models;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace COA.CodeNav.McpServer.IntegrationTests;
 
@@ -25,9 +28,11 @@ public class ToolSchemaComplianceTests
             NullLogger<MSBuildWorkspaceManager>.Instance, 
             config);
         
+        var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
         var tool = new GetWorkspaceStatisticsTool(
             NullLogger<GetWorkspaceStatisticsTool>.Instance,
-            workspaceManager);
+            workspaceManager,
+            tokenEstimator);
 
         // Act
         var result = await tool.ExecuteAsync(new GetWorkspaceStatisticsParams(), CancellationToken.None);
@@ -74,10 +79,12 @@ public class ToolSchemaComplianceTests
             NullLogger<DocumentService>.Instance,
             workspaceService);
             
+        var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
         var tool = new GoToDefinitionTool(
             NullLogger<GoToDefinitionTool>.Instance,
             workspaceService,
             documentService,
+            tokenEstimator,
             null);
 
         var parameters = new GoToDefinitionParams
@@ -163,10 +170,15 @@ public class ToolSchemaComplianceTests
             NullLogger<DocumentService>.Instance,
             workspaceService);
             
+        var mockResponseBuilderLogger = new Moq.Mock<ILogger<FindAllReferencesResponseBuilder>>();
+        var tokenEstimator2 = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
+        var responseBuilder = new FindAllReferencesResponseBuilder(mockResponseBuilderLogger.Object, tokenEstimator2);
+        
         var tool = new FindAllReferencesTool(
             NullLogger<FindAllReferencesTool>.Instance,
             workspaceService,
             documentService,
+            responseBuilder,
             null);
 
         var parameters = new FindAllReferencesParams

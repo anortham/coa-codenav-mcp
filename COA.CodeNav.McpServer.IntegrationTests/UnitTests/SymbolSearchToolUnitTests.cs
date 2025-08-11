@@ -1,6 +1,7 @@
 using COA.CodeNav.McpServer.Configuration;
 using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Tools;
 using Microsoft.CodeAnalysis;
@@ -21,6 +22,7 @@ public class SymbolSearchToolUnitTests : IDisposable
     private readonly Mock<ILogger<SymbolSearchTool>> _mockLogger;
     private readonly Mock<ILogger<RoslynWorkspaceService>> _mockWorkspaceLogger;
     private readonly Mock<ILogger<MSBuildWorkspaceManager>> _mockManagerLogger;
+    private readonly Mock<ILogger<SymbolSearchResponseBuilder>> _mockResponseBuilderLogger;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly SymbolSearchTool _tool;
     private readonly string _tempDirectory;
@@ -30,6 +32,7 @@ public class SymbolSearchToolUnitTests : IDisposable
         _mockLogger = new Mock<ILogger<SymbolSearchTool>>();
         _mockWorkspaceLogger = new Mock<ILogger<RoslynWorkspaceService>>();
         _mockManagerLogger = new Mock<ILogger<MSBuildWorkspaceManager>>();
+        _mockResponseBuilderLogger = new Mock<ILogger<SymbolSearchResponseBuilder>>();
         
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"SymbolSearchTests_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
@@ -38,10 +41,11 @@ public class SymbolSearchToolUnitTests : IDisposable
         var workspaceManager = new MSBuildWorkspaceManager(_mockManagerLogger.Object, config);
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
         
-        // Create token estimator from framework
+        // Create token estimator and response builder from framework
         var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
+        var responseBuilder = new SymbolSearchResponseBuilder(_mockResponseBuilderLogger.Object, tokenEstimator);
         
-        _tool = new SymbolSearchTool(_mockLogger.Object, _workspaceService, tokenEstimator, null);
+        _tool = new SymbolSearchTool(_mockLogger.Object, _workspaceService, responseBuilder, tokenEstimator, null);
     }
 
     [Fact]

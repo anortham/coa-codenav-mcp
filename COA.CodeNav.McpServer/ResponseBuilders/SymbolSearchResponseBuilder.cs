@@ -21,7 +21,7 @@ public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolR
         _tokenEstimator = tokenEstimator;
     }
     
-    public override async Task<object> BuildResponseAsync(
+    public override Task<object> BuildResponseAsync(
         SymbolSearchToolResult data,
         ResponseContext context)
     {
@@ -78,7 +78,7 @@ public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolR
             ReductionStrategy = wasReduced ? "progressive" : null
         };
         
-        return response;
+        return Task.FromResult<object>(response);
     }
     
     protected override List<string> GenerateInsights(

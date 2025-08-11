@@ -21,7 +21,7 @@ public class DiagnosticsResponseBuilder : BaseResponseBuilder<GetDiagnosticsTool
         _tokenEstimator = tokenEstimator;
     }
     
-    public override async Task<object> BuildResponseAsync(
+    public override Task<object> BuildResponseAsync(
         GetDiagnosticsToolResult data,
         ResponseContext context)
     {
@@ -79,7 +79,7 @@ public class DiagnosticsResponseBuilder : BaseResponseBuilder<GetDiagnosticsTool
             ReductionStrategy = wasReduced ? "severity-based" : null
         };
         
-        return response;
+        return Task.FromResult<object>(response);
     }
     
     protected override List<string> GenerateInsights(

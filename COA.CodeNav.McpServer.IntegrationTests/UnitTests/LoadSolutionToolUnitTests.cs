@@ -34,7 +34,8 @@ public class LoadSolutionToolUnitTests : IDisposable
         var config = Options.Create(new WorkspaceManagerConfig());
         var workspaceManager = new MSBuildWorkspaceManager(_mockManagerLogger.Object, config);
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
-        _tool = new LoadSolutionTool(_mockLogger.Object, workspaceManager, _workspaceService);
+        var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
+        _tool = new LoadSolutionTool(_mockLogger.Object, workspaceManager, _workspaceService, tokenEstimator);
     }
 
     [Fact]

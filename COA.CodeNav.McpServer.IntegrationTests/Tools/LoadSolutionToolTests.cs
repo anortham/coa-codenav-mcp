@@ -15,7 +15,7 @@ namespace COA.CodeNav.McpServer.IntegrationTests.Tools
         public void LoadSolutionTool_ShouldHaveCorrectName()
         {
             // This is a simple schema test that doesn't require actual Roslyn setup
-            var tool = new LoadSolutionTool(null!, null!, null!);
+            var tool = new LoadSolutionTool(null!, null!, null!, null!);
             
             tool.Name.Should().Be("csharp_load_solution");
             tool.Description.Should().NotBeNullOrEmpty();

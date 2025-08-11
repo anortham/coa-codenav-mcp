@@ -1,14 +1,17 @@
 using COA.CodeNav.McpServer.Configuration;
 using COA.CodeNav.McpServer.Infrastructure;
 using COA.CodeNav.McpServer.Models;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Tools;
 using FluentAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace COA.CodeNav.McpServer.IntegrationTests;
 
@@ -110,18 +113,22 @@ namespace TestProject
             NullLogger<RoslynWorkspaceService>.Instance,
             workspaceManager);
 
-        // Create token estimator from framework
+        // Create token estimator and response builder from framework
         var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
+        var mockResponseBuilderLogger = new Mock<ILogger<DiagnosticsResponseBuilder>>();
+        var responseBuilder = new DiagnosticsResponseBuilder(mockResponseBuilderLogger.Object, tokenEstimator);
         
         _diagnosticsTool = new GetDiagnosticsTool(
             NullLogger<GetDiagnosticsTool>.Instance,
             _workspaceService,
+            responseBuilder,
             tokenEstimator,
             null);
 
         _refreshTool = new RefreshWorkspaceTool(
             NullLogger<RefreshWorkspaceTool>.Instance,
-            _workspaceService);
+            _workspaceService,
+            tokenEstimator);
 
         // Load the solution
         await _workspaceService.LoadSolutionAsync(_tempSolutionPath);

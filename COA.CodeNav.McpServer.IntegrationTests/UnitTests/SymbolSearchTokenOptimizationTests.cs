@@ -1,4 +1,5 @@
 using COA.CodeNav.McpServer.Infrastructure;
+using COA.CodeNav.McpServer.ResponseBuilders;
 using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Tools;
 using COA.CodeNav.McpServer.Models;
@@ -19,6 +20,7 @@ public class SymbolSearchTokenOptimizationTests : IDisposable
     private readonly Mock<ILogger<SymbolSearchTool>> _mockLogger;
     private readonly Mock<ILogger<RoslynWorkspaceService>> _mockWorkspaceLogger;
     private readonly Mock<ILogger<MSBuildWorkspaceManager>> _mockManagerLogger;
+    private readonly Mock<ILogger<SymbolSearchResponseBuilder>> _mockResponseBuilderLogger;
     private readonly SymbolSearchTool _tool;
     private readonly RoslynWorkspaceService _workspaceService;
     private readonly COA.Mcp.Framework.TokenOptimization.ITokenEstimator _tokenEstimator;
@@ -29,6 +31,7 @@ public class SymbolSearchTokenOptimizationTests : IDisposable
         _mockLogger = new Mock<ILogger<SymbolSearchTool>>();
         _mockWorkspaceLogger = new Mock<ILogger<RoslynWorkspaceService>>();
         _mockManagerLogger = new Mock<ILogger<MSBuildWorkspaceManager>>();
+        _mockResponseBuilderLogger = new Mock<ILogger<SymbolSearchResponseBuilder>>();
         
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"TokenOptTests_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
@@ -38,7 +41,8 @@ public class SymbolSearchTokenOptimizationTests : IDisposable
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
         _tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
         
-        _tool = new SymbolSearchTool(_mockLogger.Object, _workspaceService, _tokenEstimator, null);
+        var responseBuilder = new SymbolSearchResponseBuilder(_mockResponseBuilderLogger.Object, _tokenEstimator);
+        _tool = new SymbolSearchTool(_mockLogger.Object, _workspaceService, responseBuilder, _tokenEstimator, null);
     }
     
     [Fact]
