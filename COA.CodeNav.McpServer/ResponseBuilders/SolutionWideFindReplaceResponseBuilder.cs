@@ -329,7 +329,7 @@ public class SolutionWideFindReplaceResponseBuilder : BaseResponseBuilder<Soluti
                     FilePath = file.FilePath,
                     ProjectName = file.ProjectName,
                     MatchCount = file.MatchCount,
-                    Matches = file.Matches?.Take(1).ToList() // Just first match
+                    Matches = file.Matches?.Take(1).ToList() ?? new List<TextMatch>() // Just first match
                 };
                 result.Add(minimalFile);
                 break;
@@ -350,7 +350,7 @@ public class SolutionWideFindReplaceResponseBuilder : BaseResponseBuilder<Soluti
             FilePath = file.FilePath,
             ProjectName = file.ProjectName,
             MatchCount = file.MatchCount,
-            Matches = null
+            Matches = new List<TextMatch>()
         };
         
         if (file.Matches != null && file.Matches.Count > 0)

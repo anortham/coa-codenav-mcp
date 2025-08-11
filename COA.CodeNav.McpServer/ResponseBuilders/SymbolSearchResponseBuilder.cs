@@ -39,7 +39,7 @@ public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolR
             if (data.Symbols.Count <= 50)
             {
                 // Keep ALL symbols for small result sets, no reduction
-                _logger.LogDebug("SymbolSearchResponseBuilder: Small result set ({Count} symbols), keeping all", 
+                _logger?.LogDebug("SymbolSearchResponseBuilder: Small result set ({Count} symbols), keeping all", 
                     data.Symbols.Count);
                 reducedSymbols = data.Symbols;
                 wasReduced = false;
@@ -50,13 +50,13 @@ public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolR
                 if (tokenBudget <= 0)
                 {
                     tokenBudget = context.TokenLimit ?? 10000;
-                    _logger.LogDebug("SymbolSearchResponseBuilder: Fixed token budget from 0 to {Budget}", tokenBudget);
+                    _logger?.LogDebug("SymbolSearchResponseBuilder: Fixed token budget from 0 to {Budget}", tokenBudget);
                 }
                 
                 var originalTokens = _tokenEstimator.EstimateObject(data.Symbols);
                 
                 // Log for debugging
-                _logger.LogDebug("SymbolSearchResponseBuilder: Original symbols: {Count}, Estimated tokens: {Tokens}, Budget: {Budget}", 
+                _logger?.LogDebug("SymbolSearchResponseBuilder: Original symbols: {Count}, Estimated tokens: {Tokens}, Budget: {Budget}", 
                     data.Symbols.Count, originalTokens, tokenBudget);
                 
                 // Apply aggressive token optimization for large result sets
@@ -72,9 +72,9 @@ public class SymbolSearchResponseBuilder : BaseResponseBuilder<SymbolSearchToolR
                 {
                     var symbolBudget = (int)(tokenBudget * 0.7);
                     reducedSymbols = ReduceSymbols(data.Symbols, symbolBudget);
-                    wasReduced = reducedSymbols.Count < data.Symbols.Count;
+                    wasReduced = reducedSymbols?.Count < data.Symbols.Count;
                     
-                    _logger.LogDebug("SymbolSearchResponseBuilder: Reduced from {Original} to {Reduced} symbols", 
+                    _logger?.LogDebug("SymbolSearchResponseBuilder: Reduced from {Original} to {Reduced} symbols", 
                         data.Symbols.Count, reducedSymbols?.Count ?? 0);
                 }
             }
