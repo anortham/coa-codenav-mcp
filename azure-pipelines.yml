@@ -184,6 +184,11 @@ stages:
             displayName: "Install Node.js"
             inputs:
               versionSpec: '18.x'
+          
+          - script: |
+              npm install -g typescript
+              tsc --version
+            displayName: "Install TypeScript globally"
 
 
           - task: NuGetAuthenticate@1
