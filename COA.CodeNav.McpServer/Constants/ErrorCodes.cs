@@ -38,4 +38,17 @@ public static class ErrorCodes
     // System errors
     public const string INTERNAL_ERROR = "INTERNAL_ERROR";
     public const string NOT_IMPLEMENTED = "NOT_IMPLEMENTED";
+    
+    // TypeScript errors
+    public const string TYPESCRIPT_NOT_INSTALLED = "TYPESCRIPT_NOT_INSTALLED";
+    public const string TSCONFIG_NOT_FOUND = "TSCONFIG_NOT_FOUND";
+    public const string TS_COMPILATION_ERROR = "TS_COMPILATION_ERROR";
+    public const string TS_SERVER_NOT_RUNNING = "TS_SERVER_NOT_RUNNING";
+    public const string TS_PROJECT_NOT_LOADED = "TS_PROJECT_NOT_LOADED";
+    public const string TS_SERVER_START_FAILED = "TS_SERVER_START_FAILED";
+    public const string TS_INVALID_FILE = "TS_INVALID_FILE";
+    
+    // Refactoring errors
+    public const string RENAME_NOT_ALLOWED = "RENAME_NOT_ALLOWED";
+    public const string INVALID_PARAMETER = "INVALID_PARAMETER";
 }

@@ -41,4 +41,27 @@ public static class ToolNames
     public const string LoadProject = "csharp_load_project";
     public const string GetWorkspaceStatistics = "csharp_get_workspace_statistics";
     public const string RefreshWorkspace = "csharp_refresh_workspace";
+    
+    // TypeScript Navigation Tools
+    public const string TsGoToDefinition = "ts_goto_definition";
+    public const string TsFindAllReferences = "ts_find_all_references";
+    public const string TsFindImplementations = "ts_find_implementations";
+    
+    // TypeScript Symbol Tools
+    public const string TsSymbolSearch = "ts_symbol_search";
+    public const string TsDocumentSymbols = "ts_document_symbols";
+    public const string TsHover = "ts_hover";
+    
+    // TypeScript Refactoring Tools
+    public const string TsRenameSymbol = "ts_rename_symbol";
+    public const string TsOrganizeImports = "ts_organize_imports";
+    public const string TsAddMissingImports = "ts_add_missing_imports";
+    
+    // TypeScript Analysis Tools
+    public const string TsGetDiagnostics = "ts_get_diagnostics";
+    public const string TsApplyQuickFix = "ts_apply_quick_fix";
+    
+    // TypeScript Workspace Tools
+    public const string TsLoadTsConfig = "ts_load_tsconfig";
+    public const string TsLoadWorkspace = "ts_load_workspace";
 }

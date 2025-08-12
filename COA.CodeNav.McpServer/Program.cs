@@ -1,7 +1,10 @@
 ﻿using COA.CodeNav.McpServer.Caching;
 using COA.CodeNav.McpServer.Infrastructure;
+using COA.CodeNav.McpServer.Infrastructure.TypeScript;
 using COA.CodeNav.McpServer.Services;
+using COA.CodeNav.McpServer.Services.TypeScript;
 using COA.CodeNav.McpServer.Tools;
+using COA.CodeNav.McpServer.Tools.TypeScript;
 using COA.Mcp.Framework.Interfaces;
 using COA.Mcp.Framework.Resources;
 using COA.Mcp.Framework.Server;
@@ -91,6 +94,14 @@ builder.Services.AddSingleton<DocumentService>();
 builder.Services.AddSingleton<SymbolCache>();
 builder.Services.AddSingleton<CodeFixService>();
 
+// Register TypeScript services
+builder.Services.AddSingleton<COA.CodeNav.McpServer.Infrastructure.TypeScript.TypeScriptCompilerManager>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.Services.TypeScript.TypeScriptWorkspaceService>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.Services.TypeScript.TypeScriptLanguageService>();
+
+// Register TypeScript Response Builders
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.TypeScript.TsDiagnosticsResponseBuilder>();
+
 // Configure automatic resource caching (Framework v1.4.8+)
 builder.Services.Configure<COA.Mcp.Framework.Resources.ResourceCacheOptions>(options =>
 {
@@ -149,6 +160,14 @@ builder.Services.AddScoped<SolutionWideFindReplaceTool>();
 builder.Services.AddScoped<CodeCloneDetectionTool>();
 builder.Services.AddScoped<DependencyAnalysisTool>();
 builder.Services.AddScoped<RefreshWorkspaceTool>();
+
+// TypeScript tools
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.LoadTsConfigTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsGetDiagnosticsTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsGoToDefinitionTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsFindAllReferencesTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsHoverTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsRenameSymbolTool>();
 
 // Now discover and register all tools that inherit from McpToolBase
 // This finds the tools we registered above and sets them up as MCP tools

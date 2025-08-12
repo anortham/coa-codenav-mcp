@@ -38,4 +38,11 @@
     <ProjectReference Include="..\COA.CodeNav.McpServer\COA.CodeNav.McpServer.csproj" />
   </ItemGroup>
 
+  <!-- Copy test data to output directory -->
+  <ItemGroup>
+    <None Update="TestData\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
