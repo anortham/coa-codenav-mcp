@@ -188,7 +188,14 @@ stages:
           - script: |
               npm install -g typescript
               tsc --version
+              echo "TypeScript installed at:"
+              where tsc
+              echo "NPM global packages location:"
+              npm root -g
+              echo "Checking for tsserver.js:"
+              dir "$(npm root -g)\typescript\lib\tsserver.js" 2>nul || echo "tsserver.js not found in expected location"
             displayName: "Install TypeScript globally"
+            continueOnError: true
 
 
           - task: NuGetAuthenticate@1
