@@ -31,7 +31,7 @@ public class TsServerProtocolHandlerTests : IDisposable
         }
     }
 
-    [Fact]
+    [Fact(Skip = "TSP server requires full tsserver setup in CI")]
     public async Task TsServerProtocolHandler_ShouldStartSuccessfully()
     {
         // Act
@@ -42,7 +42,7 @@ public class TsServerProtocolHandlerTests : IDisposable
         _handler!.IsRunning.Should().BeTrue();
     }
 
-    [Fact]
+    [Fact(Skip = "TSP server requires full tsserver setup in CI")]
     public async Task TsServerProtocolHandler_GetDefinition_ShouldWork()
     {
         // Arrange
