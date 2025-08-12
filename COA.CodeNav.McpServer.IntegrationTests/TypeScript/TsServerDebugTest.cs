@@ -34,7 +34,7 @@ public class TsServerDebugTest : IDisposable
         _output.WriteLine($"Test project path: {_testProjectPath}");
     }
 
-    [Fact]
+    [Fact(Skip = "TSP server debug test requires full tsserver setup in CI")]
     public async Task Debug_TsServer_Navigation()
     {
         // Create a simple test file
