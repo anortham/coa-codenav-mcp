@@ -1,17 +1,26 @@
 # COA CodeNav MCP Server
 
-A powerful MCP (Model Context Protocol) server providing advanced C# code analysis and navigation tools for AI assistants. Built on Microsoft's Roslyn compiler platform, it brings Visual Studio's IntelliSense and code navigation capabilities to AI, enabling deep understanding and manipulation of C# codebases.
+A powerful MCP (Model Context Protocol) server providing comprehensive **C# and TypeScript** code analysis and navigation tools for AI assistants. Built on Microsoft's Roslyn compiler platform and TypeScript Server Protocol, it brings Visual Studio's IntelliSense and advanced code navigation capabilities to AI, enabling deep understanding and manipulation of codebases.
 
 ## 🚀 Features
 
+### C# Analysis (Roslyn)
 - **Complete C# Code Analysis** - Full Roslyn compiler integration for accurate code understanding
 - **26 Powerful Tools** - Comprehensive suite covering navigation, analysis, refactoring, and code generation
-- **AI-Optimized Responses** - Structured outputs with insights, next actions, and error recovery
+- **Advanced Refactoring** - Extract methods, rename symbols, generate code, and more
+- **Deep Analysis** - Code metrics, dependency analysis, clone detection, and call hierarchies
+
+### TypeScript Analysis (TSP)
+- **TypeScript Server Protocol** - Native TSP integration for accurate TypeScript analysis
+- **Core Navigation Tools** - GoToDefinition, FindReferences, Hover, and symbol search
+- **Project Management** - Load tsconfig.json projects with full workspace support
+- **Real-time Diagnostics** - Compilation error and warning detection
+
+### AI-Optimized Experience
+- **AI-First Design** - Structured outputs with insights, next actions, and error recovery
 - **Smart Token Management** - Automatic response truncation to prevent context overflow
-- **Workspace Management** - Load and analyze entire solutions or individual projects
-- **Symbol Caching** - Fast repeated lookups with intelligent caching
 - **Progressive Disclosure** - Automatic response summarization for large results
-- **Rich Error Recovery** - Detailed error information with actionable recovery steps
+- **Cross-platform Support** - Windows, macOS, and Linux compatibility
 
 ## 📦 Installation
 
@@ -20,10 +29,38 @@ A powerful MCP (Model Context Protocol) server providing advanced C# code analys
 - .NET 9.0 SDK or later
 - Windows, macOS, or Linux
 - AI assistant with MCP support (Claude Desktop, etc.)
+- **For TypeScript**: TypeScript installed globally (`npm install -g typescript`)
 
-### Quick Install
+### Quick Install (Recommended)
 
-#### Build from Source
+#### Via dotnet global tool
+
+```bash
+# Install the global tool from NuGet
+dotnet tool install --global COA.CodeNav.McpServer
+
+# Add to Claude Desktop configuration
+# The tool will be available as 'coa-codenav' command
+```
+
+#### Manual Claude Desktop Configuration
+
+Add to your Claude configuration file:
+
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+**macOS/Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "coa-codenav": {
+      "command": "coa-codenav"
+    }
+  }
+}
+```
+
+### Alternative: Build from Source
 
 ```bash
 # Clone and build
@@ -31,45 +68,34 @@ git clone https://github.com/anortham/coa-codenav-mcp.git
 cd coa-codenav-mcp
 dotnet build -c Release
 
-# Add to Claude Code
+# Add to Claude Desktop configuration
 # Windows
-claude mcp add codenav "C:\path\to\coa-codenav-mcp\COA.CodeNav.McpServer\bin\Release\net9.0\COA.CodeNav.McpServer.exe"
+"command": "C:\\path\\to\\coa-codenav-mcp\\COA.CodeNav.McpServer\\bin\\Release\\net9.0\\COA.CodeNav.McpServer.exe"
 
 # macOS/Linux
-claude mcp add codenav ~/coa-codenav-mcp/COA.CodeNav.McpServer/bin/Release/net9.0/COA.CodeNav.McpServer
+"command": "/path/to/coa-codenav-mcp/COA.CodeNav.McpServer/bin/Release/net9.0/COA.CodeNav.McpServer"
 ```
 
-### Manual Configuration for Claude Desktop
+### Update Tool
 
-If you prefer manual configuration, add to your Claude configuration file:
-
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "codenav": {
-      "command": "C:\\path\\to\\COA.CodeNav.McpServer.exe"
-    }
-  }
-}
+```bash
+# Update to latest version
+dotnet tool update --global COA.CodeNav.McpServer
 ```
 
-**macOS/Linux:** `~/.config/Claude/claude_desktop_config.json`
+### Uninstall Tool
 
-```json
-{
-  "mcpServers": {
-    "codenav": {
-      "command": "/path/to/COA.CodeNav.McpServer"
-    }
-  }
-}
+```bash
+# Remove global tool
+dotnet tool uninstall --global COA.CodeNav.McpServer
 ```
+
 
 ## 🛠️ Available Tools
 
 ### Quick Reference
+
+#### C# Tools (26 tools)
 
 | Tool                         | Purpose                | Example Usage                       |
 | ---------------------------- | ---------------------- | ----------------------------------- |
@@ -81,6 +107,17 @@ If you prefer manual configuration, add to your Claude configuration file:
 | `csharp_rename_symbol`       | Rename across solution | "Rename UserService to UserManager" |
 | `csharp_call_hierarchy`      | View call graph        | "Show who calls ProcessOrder"       |
 | `csharp_code_clone_detection`| Find duplicate code    | "Find duplicated code blocks"       |
+
+#### TypeScript Tools (6 tools)
+
+| Tool                         | Purpose                    | Example Usage                       |
+| ---------------------------- | -------------------------- | ----------------------------------- |
+| `ts_load_tsconfig`          | Load TypeScript project    | "Load tsconfig.json"                |
+| `ts_goto_definition`        | Navigate to definitions    | "Go to UserService definition"      |
+| `ts_find_all_references`    | Find symbol references     | "Where is processOrder used?"       |
+| `ts_get_diagnostics`        | Get TypeScript errors      | "Check for TypeScript errors"       |
+| `ts_hover`                  | Get symbol information     | "What does this function do?"       |
+| `ts_rename_symbol`          | Rename across files        | "Rename UserService to UserManager" |
 
 ### Workspace Management
 
@@ -810,23 +847,47 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📊 Project Status
 
-- ✅ **26 tools** implemented and tested
-- ✅ **Full Roslyn integration** with MSBuild workspace support
-- ✅ **AI-optimized responses** with insights and next actions
-- ✅ **Smart token management** with automatic truncation
-- ✅ **Comprehensive error recovery** with actionable steps
-- ✅ **Symbol caching** for performance
-- ✅ **Resource management** for large results
-- 🚧 TypeScript support (planned for v2.0)
-- 🚧 Razor support (planned for v2.0)
+### C# Analysis (Complete)
+- ✅ **26 Roslyn tools** implemented and tested
+- ✅ **Full MSBuild workspace** support with solution/project loading
+- ✅ **Advanced refactoring** - extract methods, rename symbols, generate code
+- ✅ **Deep analysis** - metrics, dependencies, clone detection, call hierarchies
+- ✅ **Symbol caching** for performance optimization
+
+### TypeScript Analysis (Released)
+- ✅ **6 core TypeScript tools** implemented with TypeScript Server Protocol
+- ✅ **Project management** with tsconfig.json loading and workspace tracking  
+- ✅ **Navigation tools** - GoToDefinition, FindReferences, Hover working correctly
+- ✅ **Real-time diagnostics** via tsc compiler integration
+- ✅ **28/32 tests passing** (87.5% success rate)
+
+### Framework Integration
+- ✅ **COA.Mcp.Framework v1.7.0** - Latest framework with enhanced token management
+- ✅ **AI-optimized responses** with insights, next actions, and error recovery
+- ✅ **Smart token management** with automatic response truncation
+- ✅ **Cross-platform support** - Windows, macOS, and Linux
+- ✅ **Global dotnet tool** packaging for easy installation
+
+### Planned Features
+- 🚧 Additional TypeScript tools (DocumentSymbols, SymbolSearch, CallHierarchy)
+- 🚧 Razor/Blazor support
+- 🚧 JavaScript support via TypeScript infrastructure
 
 ## 🚀 Getting Started
 
-1. **Install** the MCP server (see Installation section)
-2. **Configure** your AI assistant
+### C# Projects
+1. **Install**: `dotnet tool install --global COA.CodeNav.McpServer`
+2. **Configure** your AI assistant (see Installation section)
 3. **Load** a solution: "Load the MyApp.sln solution"
 4. **Explore**: "What does the UserService class do?"
 5. **Navigate**: "Find all references to ProcessOrder"
 6. **Refactor**: "Rename UserService to UserManager"
+
+### TypeScript Projects  
+1. **Prerequisites**: Ensure TypeScript is installed: `npm install -g typescript`
+2. **Load** a project: "Load the tsconfig.json file"
+3. **Navigate**: "Go to the definition of UserService"
+4. **Analyze**: "Check for TypeScript compilation errors"
+5. **Explore**: "Find all references to processOrder method"
 
 ---

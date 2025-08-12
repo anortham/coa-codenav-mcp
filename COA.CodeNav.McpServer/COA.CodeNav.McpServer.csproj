@@ -5,14 +5,28 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    
+    <!-- Global Tool Configuration -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>coa-codenav</ToolCommandName>
+    <PackageId>COA.CodeNav.McpServer</PackageId>
+    <PackageVersion>1.0.0</PackageVersion>
+    <Authors>Children of America, Inc.</Authors>
+    <Description>A Model Context Protocol (MCP) server providing comprehensive C# and TypeScript code navigation and analysis tools via Roslyn and TypeScript Server Protocol integration.</Description>
+    <PackageTags>mcp;roslyn;typescript;code-analysis;navigation;csharp;dotnet-tool</PackageTags>
+    <PackageProjectUrl>https://github.com/anortham/coa-codenav-mcp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/anortham/coa-codenav-mcp</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- COA MCP Framework NuGet packages -->
-    <PackageReference Include="COA.Mcp.Framework" Version="1.5.4" />
-    <PackageReference Include="COA.Mcp.Framework.TokenOptimization" Version="1.5.4" />
-    <PackageReference Include="COA.Mcp.Framework.Testing" Version="1.5.4" />
-    <PackageReference Include="COA.Mcp.Client" Version="1.5.4" />
+    <PackageReference Include="COA.Mcp.Framework" Version="1.7.2" />
+    <PackageReference Include="COA.Mcp.Framework.TokenOptimization" Version="1.7.2" />
+    <PackageReference Include="COA.Mcp.Framework.Testing" Version="1.7.2" />
+    <PackageReference Include="COA.Mcp.Client" Version="1.7.2" />
 
     <PackageReference Include="Microsoft.Build.Locator" Version="1.9.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0">
@@ -42,6 +56,7 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
