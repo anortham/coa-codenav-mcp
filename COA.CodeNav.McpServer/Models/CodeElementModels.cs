@@ -84,6 +84,15 @@ public class SymbolInfo
     
     [JsonPropertyName("isOverride")]
     public bool IsOverride { get; set; }
+
+    [JsonPropertyName("parentName")]
+    public string? ParentName { get; set; }
+
+    [JsonPropertyName("level")]
+    public int Level { get; set; }
+
+    [JsonPropertyName("modifiers")]
+    public List<string>? Modifiers { get; set; }
 }
 
 /// <summary>

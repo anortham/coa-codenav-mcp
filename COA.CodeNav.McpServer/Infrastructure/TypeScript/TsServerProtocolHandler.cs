@@ -820,6 +820,55 @@ public sealed class TsServerProtocolHandler : IDisposable
     }
 
     /// <summary>
+    /// Gets navigation items matching a search pattern (navto command)
+    /// </summary>
+    public async Task<JsonElement?> GetNavToAsync(string searchValue, string? filePath = null, int maxResultCount = 256, CancellationToken cancellationToken = default)
+    {
+        var request = new
+        {
+            seq = GetNextSequence(),
+            type = "request",
+            command = "navto",
+            arguments = new
+            {
+                searchValue = searchValue,
+                file = filePath != null ? NormalizePath(filePath) : null,
+                maxResultCount = maxResultCount
+            }
+        };
+
+        var response = await SendRequestInternalAsync(request, cancellationToken);
+        return response?.TryGetProperty("body", out var body) == true ? body : null;
+    }
+
+    /// <summary>
+    /// Gets implementation locations for a symbol at a given position
+    /// </summary>
+    public async Task<JsonElement?> GetImplementationAsync(string filePath, int line, int offset, CancellationToken cancellationToken = default)
+    {
+        var normalizedPath = NormalizePath(filePath);
+        
+        if (!await EnsureFileOpenAsync(normalizedPath, cancellationToken))
+            return null;
+
+        var request = new
+        {
+            seq = GetNextSequence(),
+            type = "request",
+            command = "implementation",
+            arguments = new
+            {
+                file = normalizedPath,
+                line = line,
+                offset = offset
+            }
+        };
+
+        var response = await SendRequestInternalAsync(request, cancellationToken);
+        return response?.TryGetProperty("body", out var body) == true ? body : null;
+    }
+
+    /// <summary>
     /// Reloads TypeScript projects
     /// </summary>
     public async Task<bool> ReloadProjectsAsync(CancellationToken cancellationToken = default)

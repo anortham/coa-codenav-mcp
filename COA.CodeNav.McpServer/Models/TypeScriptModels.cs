@@ -96,13 +96,36 @@ public class TsSymbolSearchResult : ToolResultBase
     public override string Operation => ToolNames.TsSymbolSearch;
 
     [JsonPropertyName("query")]
-    public TsSymbolQuery? Query { get; set; }
+    public QueryInfo? Query { get; set; }
 
     [JsonPropertyName("summary")]
     public SummaryInfo? Summary { get; set; }
 
     [JsonPropertyName("symbols")]
-    public List<TsSymbolInfo>? Symbols { get; set; }
+    public List<SymbolSearchItem>? Symbols { get; set; }
+
+    [JsonPropertyName("resultsSummary")]
+    public ResultsSummary? ResultsSummary { get; set; }
+}
+
+/// <summary>
+/// Result for TypeScript Find Implementations
+/// </summary>
+public class TsFindImplementationsResult : ToolResultBase
+{
+    public override string Operation => ToolNames.TsFindImplementations;
+
+    [JsonPropertyName("query")]
+    public QueryInfo? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
+
+    [JsonPropertyName("implementations")]
+    public List<ImplementationInfo>? Implementations { get; set; }
+
+    [JsonPropertyName("interfaceName")]
+    public string? InterfaceName { get; set; }
 
     [JsonPropertyName("resultsSummary")]
     public ResultsSummary? ResultsSummary { get; set; }
@@ -139,13 +162,13 @@ public class TsDocumentSymbolsResult : ToolResultBase
     public override string Operation => ToolNames.TsDocumentSymbols;
 
     [JsonPropertyName("query")]
-    public DocumentSymbolsQuery? Query { get; set; }
+    public QueryInfo? Query { get; set; }
 
     [JsonPropertyName("summary")]
-    public DocumentSymbolsSummary? Summary { get; set; }
+    public SummaryInfo? Summary { get; set; }
 
     [JsonPropertyName("symbols")]
-    public List<TsDocumentSymbol>? Symbols { get; set; }
+    public List<SymbolInfo>? Symbols { get; set; }
 
     [JsonPropertyName("resultsSummary")]
     public ResultsSummary? ResultsSummary { get; set; }
@@ -408,6 +431,24 @@ public class Position
 
     [JsonPropertyName("character")]
     public int Character { get; set; }
+}
+
+/// <summary>
+/// Symbol search result item
+/// </summary>
+public class SymbolSearchItem : SymbolInfo
+{
+    [JsonPropertyName("filePath")]
+    public string FilePath { get; set; } = "";
+
+    [JsonPropertyName("containerKind")]
+    public string? ContainerKind { get; set; }
+
+    [JsonPropertyName("matchKind")]
+    public string? MatchKind { get; set; }
+
+    [JsonPropertyName("modifiers")]
+    public new List<string>? Modifiers { get; set; }
 }
 
 #endregion

@@ -1,28 +1,39 @@
-# Azure Pipelines CI/CD for COA CodeNav MCP Server
-# Builds, tests, and publishes dotnet tool to Azure Artifacts
+# Azure Pipelines for COA CodeNav MCP Server
+# Supports both CI builds (automatic) and Release builds (manual)
+# CI: Builds and publishes to Azure DevOps feed only
+# Release: Manual trigger with option to publish to NuGet.org
 
-name: 'COA CodeNav MCP Server - $(Build.SourceBranchName) - $(Date:yyyyMMdd)$(Rev:.r)'
+name: 'COA CodeNav MCP - v$(majorVersion).$(minorVersion).$(patchVersion)'
 
+# Automatic triggers for CI builds
 trigger:
   branches:
     include:
       - main
       - develop
       - release/*
-  tags:
-    include:
-      - v*
   paths:
     exclude:
-      - "**/*.md"
-      - ".gitignore"
-      - "docs/**"
+      - '*.md'
+      - 'docs/*'
 
+# Run on pull requests for validation
 pr:
   branches:
     include:
       - main
       - develop
+
+# Parameters for manual runs
+parameters:
+  - name: publishToNuGet
+    displayName: 'Publish to NuGet.org?'
+    type: boolean
+    default: false
+  - name: createGitTag
+    displayName: 'Create Git tag for release?'
+    type: boolean
+    default: true
 
 pool:
   name: "Default" # Using local Windows agent pool
@@ -30,9 +41,9 @@ pool:
 variables:
   buildConfiguration: "Release"
   dotnetSdkVersion: "9.x"
-  # Base version
+  # Base version for COA CodeNav MCP Server - v1.1.0
   majorVersion: 1
-  minorVersion: 0
+  minorVersion: 1
   # Auto-incrementing patch version - increments on every build
   # The counter is keyed by major.minor version, so it resets when those change
   patchVersion: $[counter(format('{0}.{1}', variables['majorVersion'], variables['minorVersion']), 0)]
@@ -42,11 +53,11 @@ variables:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   NUGET_PACKAGES: $(Pipeline.Workspace)\.nuget\packages
-  # Release flag based on tags
-  ${{ if startsWith(variables['Build.SourceBranch'], 'refs/tags/v') }}:
-    isRelease: true
-  ${{ else }}:
-    isRelease: false
+  # Manual run parameters (only available for manual runs)
+  shouldPublishToNuGet: ${{ parameters.publishToNuGet }}
+  shouldCreateTag: ${{ parameters.createGitTag }}
+  # Determine if this is a release build
+  isRelease: ${{ eq(variables['Build.Reason'], 'Manual') }}
 
 stages:
   - stage: Build
@@ -244,12 +255,12 @@ stages:
               ArtifactName: "packages"
               publishLocation: "Container"
 
-  - stage: Publish
+  - stage: PublishInternal
     displayName: "Publish to Azure DevOps"
     dependsOn: Build
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
-      - job: PublishPackages
+      - job: PublishToAzureDevOps
         displayName: "Publish to COA Feed"
         steps:
           - task: DownloadBuildArtifacts@1
@@ -260,17 +271,72 @@ stages:
               artifactName: "packages"
               downloadPath: "$(System.ArtifactsDirectory)"
 
-          - task: NuGetAuthenticate@1
-            displayName: 'Authenticate to NuGet feed'
-            
-          - task: DotNetCoreCLI@2
-            displayName: "Push to COA Azure DevOps feed"
+          - task: NuGetCommand@2
+            displayName: "Push packages to COA Azure DevOps feed"
             inputs:
-              command: "push"
-              packagesToPush: '$(System.ArtifactsDirectory)\packages\*.nupkg'
-              nuGetFeedType: "internal"
-              publishVstsFeed: "COA"
+              command: 'push'
+              packagesToPush: '$(System.ArtifactsDirectory)/packages/*.nupkg'
+              nuGetFeedType: 'internal'
+              publishVstsFeed: 'COA'
               allowPackageConflicts: true
-              arguments: "--skip-duplicate"
-            env:
-              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+  - stage: PublishNuGetOrg
+    displayName: "Publish to NuGet.org"
+    dependsOn: PublishInternal
+    condition: and(succeeded(), eq(variables['shouldPublishToNuGet'], 'true'), eq(variables['isRelease'], 'true'))
+    jobs:
+      - job: PublishToNuGetOrg
+        displayName: "Publish to NuGet.org"
+        steps:
+          - task: DownloadBuildArtifacts@1
+            displayName: "Download artifacts"
+            inputs:
+              buildType: "current"
+              downloadType: "single"
+              artifactName: "packages"
+              downloadPath: "$(System.ArtifactsDirectory)"
+
+          - powershell: |
+              Write-Host "Packages to publish to NuGet.org:"
+              Write-Host "================================="
+              Get-ChildItem -Path "$(System.ArtifactsDirectory)\packages" -Filter "*.nupkg" | ForEach-Object {
+                  Write-Host $_.Name
+              }
+              Write-Host "================================="
+            displayName: "List packages to publish"
+
+          - task: NuGetCommand@2
+            displayName: "Push COA.CodeNav.McpServer to NuGet.org"
+            inputs:
+              command: 'push'
+              packagesToPush: '$(System.ArtifactsDirectory)/packages/COA.CodeNav.McpServer.*.nupkg'
+              nuGetFeedType: 'external'
+              publishFeedCredentials: 'NuGetOrg-ServiceConnection'
+              verbosityPush: 'Detailed'
+
+          - powershell: |
+              Write-Host "Successfully published package to NuGet.org!"
+              Write-Host "Package should appear at https://www.nuget.org shortly"
+              Write-Host "Install with: dotnet tool install --global COA.CodeNav.McpServer"
+            displayName: "Publish success message"
+
+          # Create Git tag if requested
+          - powershell: |
+              if ("$(shouldCreateTag)" -eq "true") {
+                  $version = "$(versionPrefix)"
+                  if ("$(versionSuffix)") {
+                      $version = "$(versionPrefix)-$(versionSuffix)"
+                  }
+                  
+                  Write-Host "Creating Git tag: v$version"
+                  git config user.email "build@coa.org"
+                  git config user.name "Azure DevOps Build"
+                  git tag -a "v$version" -m "Release version $version"
+                  git push origin "v$version"
+                  Write-Host "Git tag created successfully"
+              }
+              else {
+                  Write-Host "Skipping Git tag creation"
+              }
+            displayName: "Create Git tag"
+            condition: and(succeeded(), eq(variables['shouldCreateTag'], 'true'))

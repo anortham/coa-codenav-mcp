@@ -168,6 +168,9 @@ builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsGoToDefiniti
 builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsFindAllReferencesTool>();
 builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsHoverTool>();
 builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsRenameSymbolTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsDocumentSymbolsTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsSymbolSearchTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsFindImplementationsTool>();
 
 // Now discover and register all tools that inherit from McpToolBase
 // This finds the tools we registered above and sets them up as MCP tools
