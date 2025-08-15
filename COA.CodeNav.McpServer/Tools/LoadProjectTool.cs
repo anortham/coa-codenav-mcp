@@ -67,12 +67,10 @@ public class LoadProjectTool : McpToolBase<LoadProjectParams, LoadProjectResult>
 
         try
         {
-            // Load the project
-            var project = await _workspaceManager.LoadProjectAsync(
-                parameters.ProjectPath, 
-                parameters.WorkspaceId);
-
-            if (project == null)
+            // Load the project through workspace service (this handles both MSBuild and registration)
+            var workspaceInfo = await _workspaceService.LoadProjectAsync(parameters.ProjectPath);
+            
+            if (workspaceInfo == null)
             {
                 return new LoadProjectResult
                 {
@@ -96,19 +94,18 @@ public class LoadProjectTool : McpToolBase<LoadProjectParams, LoadProjectResult>
                 };
             }
 
-            // Register with workspace service
-            var workspaceInfo = await _workspaceService.LoadProjectAsync(parameters.ProjectPath);
-            
-            if (workspaceInfo == null)
+            // Get the project from the loaded workspace
+            var project = workspaceInfo.Solution?.Projects.FirstOrDefault();
+            if (project == null)
             {
                 return new LoadProjectResult
                 {
                     Success = false,
-                    Message = "Failed to register project in workspace service",
+                    Message = "Project loaded but no projects found in solution",
                     Error = new ErrorInfo
                     {
-                        Code = "WORKSPACE_REGISTRATION_FAILED",
-                        Message = "Failed to register project in workspace service"
+                        Code = "PROJECT_NOT_FOUND_IN_SOLUTION",
+                        Message = "Project was loaded but could not be found in the solution"
                     }
                 };
             }
