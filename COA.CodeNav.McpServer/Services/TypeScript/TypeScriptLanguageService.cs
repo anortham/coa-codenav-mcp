@@ -71,7 +71,7 @@ public class TypeScriptLanguageService
     /// <summary>
     /// Gets diagnostics using the TypeScript compiler directly
     /// </summary>
-    private async Task<List<TsDiagnostic>> GetDiagnosticsUsingCompilerAsync(
+    private Task<List<TsDiagnostic>> GetDiagnosticsUsingCompilerAsync(
         TypeScriptWorkspaceInfo workspace,
         string? filePath,
         CancellationToken cancellationToken)
@@ -133,7 +133,7 @@ public class TypeScriptLanguageService
             {
                 process.Kill();
                 _logger.LogWarning("TypeScript compiler timed out");
-                return diagnostics;
+                return Task.FromResult(diagnostics);
             }
 
             // Parse the output (TypeScript writes errors to stdout, not stderr!)
@@ -175,7 +175,7 @@ public class TypeScriptLanguageService
             _logger.LogError(ex, "Failed to run TypeScript compiler for diagnostics");
         }
 
-        return diagnostics;
+        return Task.FromResult(diagnostics);
     }
 
     /// <summary>

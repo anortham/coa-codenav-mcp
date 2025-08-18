@@ -101,7 +101,7 @@ public class SymbolInfo
 public class DocumentSymbol : SymbolInfo
 {
     [JsonPropertyName("modifiers")]
-    public List<string>? Modifiers { get; set; }
+    public new List<string>? Modifiers { get; set; }
 
     [JsonPropertyName("typeParameters")]
     public List<string>? TypeParameters { get; set; }

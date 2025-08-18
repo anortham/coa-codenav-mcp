@@ -116,7 +116,7 @@ public class TypeScriptCompilerManagerTests
     }
 
     [Fact(Skip = "TypeScript server functionality not currently used - diagnostics use direct compiler execution")]
-    public void TypeScriptCompilerManager_Dispose_ShouldCleanupAllServers()
+    public async Task TypeScriptCompilerManager_Dispose_ShouldCleanupAllServers()
     {
         // Create a new manager for this test
         var services = new ServiceCollection();
@@ -130,8 +130,8 @@ public class TypeScriptCompilerManagerTests
             {
                 // Create some servers
                 var testPath = Path.GetTempPath();
-                var task1 = manager.GetOrCreateServerAsync("dispose-test-1", testPath).GetAwaiter().GetResult();
-                var task2 = manager.GetOrCreateServerAsync("dispose-test-2", testPath).GetAwaiter().GetResult();
+                var task1 = await manager.GetOrCreateServerAsync("dispose-test-1", testPath);
+                var task2 = await manager.GetOrCreateServerAsync("dispose-test-2", testPath);
             }
             
             // Dispose should complete without throwing

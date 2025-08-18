@@ -333,7 +333,7 @@ public sealed class TsServerProtocolHandler : IDisposable
                         using var doc = JsonDocument.Parse(line);
                         ProcessMessage(doc.RootElement);
                     }
-                    catch (JsonException ex)
+                    catch (JsonException)
                     {
                         // Not JSON, might be other output
                         _logger.LogTrace("Non-JSON output from tsserver: {Line}", line);

@@ -398,7 +398,7 @@ Not for: Moving symbols between modules, changing symbol types (use other refact
         return info;
     }
 
-    private async Task<List<ConflictInfo>> CheckForConflictsAsync(
+    private Task<List<ConflictInfo>> CheckForConflictsAsync(
         TsServerProtocolHandler handler,
         RenameInfo renameInfo,
         CancellationToken cancellationToken)
@@ -429,7 +429,7 @@ Not for: Moving symbols between modules, changing symbol types (use other refact
             }
         }
 
-        return conflicts;
+        return Task.FromResult(conflicts);
     }
 
     private bool IsGenericName(string name)
