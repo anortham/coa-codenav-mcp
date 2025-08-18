@@ -101,6 +101,7 @@ builder.Services.AddSingleton<COA.CodeNav.McpServer.Services.TypeScript.TypeScri
 
 // Register TypeScript Response Builders
 builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.TypeScript.TsDiagnosticsResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.TypeScript.TsCallHierarchyResponseBuilder>();
 
 // Configure automatic resource caching (Framework v1.4.8+)
 builder.Services.Configure<COA.Mcp.Framework.Resources.ResourceCacheOptions>(options =>
@@ -171,6 +172,7 @@ builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsRenameSymbol
 builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsDocumentSymbolsTool>();
 builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsSymbolSearchTool>();
 builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsFindImplementationsTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsCallHierarchyTool>();
 
 // Now discover and register all tools that inherit from McpToolBase
 // This finds the tools we registered above and sets them up as MCP tools

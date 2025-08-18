@@ -108,7 +108,7 @@ dotnet tool uninstall --global COA.CodeNav.McpServer
 | `csharp_call_hierarchy`      | View call graph        | "Show who calls ProcessOrder"       |
 | `csharp_code_clone_detection`| Find duplicate code    | "Find duplicated code blocks"       |
 
-#### TypeScript Tools (6 tools)
+#### TypeScript Tools (7 tools)
 
 | Tool                         | Purpose                    | Example Usage                       |
 | ---------------------------- | -------------------------- | ----------------------------------- |
@@ -118,6 +118,7 @@ dotnet tool uninstall --global COA.CodeNav.McpServer
 | `ts_get_diagnostics`        | Get TypeScript errors      | "Check for TypeScript errors"       |
 | `ts_hover`                  | Get symbol information     | "What does this function do?"       |
 | `ts_rename_symbol`          | Rename across files        | "Rename UserService to UserManager" |
+| `ts_call_hierarchy`         | Analyze call relationships | "Show call hierarchy for function"  |
 
 ### Workspace Management
 
@@ -855,21 +856,21 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - ✅ **Symbol caching** for performance optimization
 
 ### TypeScript Analysis (Released)
-- ✅ **6 core TypeScript tools** implemented with TypeScript Server Protocol
+- ✅ **7 core TypeScript tools** implemented with TypeScript Server Protocol
 - ✅ **Project management** with tsconfig.json loading and workspace tracking  
-- ✅ **Navigation tools** - GoToDefinition, FindReferences, Hover working correctly
+- ✅ **Navigation tools** - GoToDefinition, FindReferences, Hover, CallHierarchy working correctly
 - ✅ **Real-time diagnostics** via tsc compiler integration
-- ✅ **28/32 tests passing** (87.5% success rate)
+- ✅ **Advanced analysis** - Call hierarchy with bidirectional call tracking
 
 ### Framework Integration
-- ✅ **COA.Mcp.Framework v1.7.0** - Latest framework with enhanced token management
+- ✅ **COA.Mcp.Framework v1.7.9** - Latest framework with enhanced token management
 - ✅ **AI-optimized responses** with insights, next actions, and error recovery
 - ✅ **Smart token management** with automatic response truncation
 - ✅ **Cross-platform support** - Windows, macOS, and Linux
 - ✅ **Global dotnet tool** packaging for easy installation
 
 ### Planned Features
-- 🚧 Additional TypeScript tools (DocumentSymbols, SymbolSearch, CallHierarchy)
+- 🚧 Additional TypeScript tools (DocumentSymbols, SymbolSearch, FindImplementations)
 - 🚧 Razor/Blazor support
 - 🚧 JavaScript support via TypeScript infrastructure
 

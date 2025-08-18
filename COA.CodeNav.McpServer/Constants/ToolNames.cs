@@ -46,6 +46,7 @@ public static class ToolNames
     public const string TsGoToDefinition = "ts_goto_definition";
     public const string TsFindAllReferences = "ts_find_all_references";
     public const string TsFindImplementations = "ts_find_implementations";
+    public const string TsCallHierarchy = "ts_call_hierarchy";
     
     // TypeScript Symbol Tools
     public const string TsSymbolSearch = "ts_symbol_search";

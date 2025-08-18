@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using COA.CodeNav.McpServer.Constants;
 using COA.Mcp.Framework.Models;
@@ -501,6 +502,158 @@ public class TsSymbolSearchParams
 
     [JsonPropertyName("includeExternal")]
     public bool IncludeExternal { get; set; } = false;
+}
+
+/// <summary>
+/// Parameters for TypeScript Call Hierarchy
+/// </summary>
+public class TsCallHierarchyParams
+{
+    [Required]
+    [JsonPropertyName("filePath")]
+    public string FilePath { get; set; } = string.Empty;
+
+    [Required]
+    [JsonPropertyName("line")]
+    public int Line { get; set; }
+
+    [Required]
+    [JsonPropertyName("character")]
+    public int Character { get; set; }
+
+    [JsonPropertyName("maxDepth")]
+    public int MaxDepth { get; set; } = 3;
+
+    [JsonPropertyName("includeOverrides")]
+    public bool IncludeOverrides { get; set; } = true;
+
+    [JsonPropertyName("workspaceId")]
+    public string? WorkspaceId { get; set; }
+}
+
+/// <summary>
+/// Result for TypeScript Call Hierarchy
+/// </summary>
+public class TsCallHierarchyResult : ToolResultBase
+{
+    public override string Operation => ToolNames.TsCallHierarchy;
+
+    [JsonPropertyName("query")]
+    public QueryInfo? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
+
+    [JsonPropertyName("root")]
+    public TsCallHierarchyItem? Root { get; set; }
+
+    [JsonPropertyName("incomingCalls")]
+    public List<TsIncomingCall>? IncomingCalls { get; set; }
+
+    [JsonPropertyName("outgoingCalls")]
+    public List<TsOutgoingCall>? OutgoingCalls { get; set; }
+
+    [JsonPropertyName("callTree")]
+    public TsCallTreeNode? CallTree { get; set; }
+
+    [JsonPropertyName("resultsSummary")]
+    public ResultsSummary? ResultsSummary { get; set; }
+}
+
+/// <summary>
+/// TypeScript Call Hierarchy Item
+/// </summary>
+public class TsCallHierarchyItem
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("kind")]
+    public string Kind { get; set; } = string.Empty;
+
+    [JsonPropertyName("file")]
+    public string File { get; set; } = string.Empty;
+
+    [JsonPropertyName("span")]
+    public TsTextSpan? Span { get; set; }
+
+    [JsonPropertyName("selectionSpan")]
+    public TsTextSpan? SelectionSpan { get; set; }
+
+    [JsonPropertyName("containerName")]
+    public string? ContainerName { get; set; }
+
+    [JsonPropertyName("detail")]
+    public string? Detail { get; set; }
+}
+
+/// <summary>
+/// TypeScript Incoming Call
+/// </summary>
+public class TsIncomingCall
+{
+    [JsonPropertyName("from")]
+    public TsCallHierarchyItem? From { get; set; }
+
+    [JsonPropertyName("fromSpans")]
+    public List<TsTextSpan>? FromSpans { get; set; }
+}
+
+/// <summary>
+/// TypeScript Outgoing Call
+/// </summary>
+public class TsOutgoingCall
+{
+    [JsonPropertyName("to")]
+    public TsCallHierarchyItem? To { get; set; }
+
+    [JsonPropertyName("fromSpans")]
+    public List<TsTextSpan>? FromSpans { get; set; }
+}
+
+/// <summary>
+/// TypeScript Call Tree Node for hierarchical display
+/// </summary>
+public class TsCallTreeNode
+{
+    [JsonPropertyName("item")]
+    public TsCallHierarchyItem? Item { get; set; }
+
+    [JsonPropertyName("depth")]
+    public int Depth { get; set; }
+
+    [JsonPropertyName("direction")]
+    public string Direction { get; set; } = string.Empty; // "incoming" or "outgoing"
+
+    [JsonPropertyName("children")]
+    public List<TsCallTreeNode>? Children { get; set; }
+
+    [JsonPropertyName("isExpanded")]
+    public bool IsExpanded { get; set; } = false;
+}
+
+/// <summary>
+/// TypeScript Text Span
+/// </summary>
+public class TsTextSpan
+{
+    [JsonPropertyName("start")]
+    public TsTextPosition? Start { get; set; }
+
+    [JsonPropertyName("end")]
+    public TsTextPosition? End { get; set; }
+}
+
+/// <summary>
+/// TypeScript Text Position
+/// </summary>
+public class TsTextPosition
+{
+    [JsonPropertyName("line")]
+    public int Line { get; set; }
+
+    [JsonPropertyName("character")]
+    public int Character { get; set; }
 }
 
 #endregion
