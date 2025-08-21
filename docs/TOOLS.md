@@ -1,6 +1,6 @@
 # COA CodeNav MCP Tools Reference
 
-Quick reference for all 26 available C# analysis tools.
+Quick reference for all 41 available C# analysis tools.
 
 ## Workspace Management
 - `csharp_load_solution` - Load a .sln file
@@ -20,6 +20,10 @@ Quick reference for all 26 available C# analysis tools.
 ## Refactoring
 - `csharp_rename_symbol` - Rename across solution
 - `csharp_extract_method` - Extract code to new method
+- `csharp_extract_interface` - Extract interface from class with generic support
+- `csharp_move_type` - Move types between files (class, interface, enum, struct, record)
+- `csharp_inline_method` - Inline method calls by replacing with method body
+- `csharp_inline_variable` - Replace variable usages with initialization value
 - `csharp_add_missing_usings` - Add required using directives
 - `csharp_format_document` - Format code per .editorconfig
 
@@ -38,8 +42,9 @@ Quick reference for all 26 available C# analysis tools.
 - `csharp_code_clone_detection` - Find duplicate code
 - `csharp_dependency_analysis` - Analyze dependencies
 
-## Usage Example
+## Usage Examples
 
+### Basic Navigation
 ```bash
 # Load a solution
 csharp_load_solution solutionPath="C:\\MyProject\\MyProject.sln"
@@ -52,4 +57,19 @@ csharp_find_all_references filePath="C:\\MyProject\\Program.cs" line=10 column=1
 
 # Get call hierarchy
 csharp_call_hierarchy filePath="C:\\MyProject\\Program.cs" line=25 column=20
+```
+
+### Refactoring Examples
+```bash
+# Extract interface from a class (with generic support)
+csharp_extract_interface filePath="C:\\MyProject\\UserService.cs" line=5 column=18 interfaceName="IUserService"
+
+# Move type to different file
+csharp_move_type filePath="C:\\MyProject\\Models.cs" typeName="User" targetFilePath="C:\\MyProject\\User.cs"
+
+# Inline method calls
+csharp_inline_method filePath="C:\\MyProject\\Helper.cs" line=15 column=12
+
+# Inline variable usage
+csharp_inline_variable filePath="C:\\MyProject\\Logic.cs" line=8 column=5
 ```

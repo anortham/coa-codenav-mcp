@@ -6,8 +6,8 @@ A powerful MCP (Model Context Protocol) server providing comprehensive **C# and 
 
 ### C# Analysis (Roslyn)
 - **Complete C# Code Analysis** - Full Roslyn compiler integration for accurate code understanding
-- **26 Powerful Tools** - Comprehensive suite covering navigation, analysis, refactoring, and code generation
-- **Advanced Refactoring** - Extract methods, rename symbols, generate code, and more
+- **41 Powerful Tools** - Comprehensive suite covering navigation, analysis, refactoring, and code generation
+- **Advanced Refactoring** - Extract methods/interfaces, inline code, move types, rename symbols, and more
 - **Deep Analysis** - Code metrics, dependency analysis, clone detection, and call hierarchies
 
 ### TypeScript Analysis (TSP)
@@ -95,7 +95,7 @@ dotnet tool uninstall --global COA.CodeNav.McpServer
 
 ### Quick Reference
 
-#### C# Tools (26 tools)
+#### C# Tools (41 tools)
 
 | Tool                         | Purpose                | Example Usage                       |
 | ---------------------------- | ---------------------- | ----------------------------------- |
@@ -105,10 +105,13 @@ dotnet tool uninstall --global COA.CodeNav.McpServer
 | `csharp_symbol_search`       | Search symbols         | "Find all \*Service classes"        |
 | `csharp_get_diagnostics`     | Get errors/warnings    | "Show me all errors"                |
 | `csharp_rename_symbol`       | Rename across solution | "Rename UserService to UserManager" |
+| `csharp_extract_interface`   | Extract interface      | "Extract IUserService interface"     |
+| `csharp_move_type`           | Move type to new file  | "Move User class to User.cs"        |
+| `csharp_inline_method`       | Inline method calls    | "Inline the helper method"          |
 | `csharp_call_hierarchy`      | View call graph        | "Show who calls ProcessOrder"       |
 | `csharp_code_clone_detection`| Find duplicate code    | "Find duplicated code blocks"       |
 
-#### TypeScript Tools (7 tools)
+#### TypeScript Tools (10 tools)
 
 | Tool                         | Purpose                    | Example Usage                       |
 | ---------------------------- | -------------------------- | ----------------------------------- |
