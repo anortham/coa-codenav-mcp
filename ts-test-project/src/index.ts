@@ -36,6 +36,6 @@ const newUser: User = {
 userService.addUser(newUser);
 const foundUser = userService.findUserById(1);
 
-// Intentional error for testing diagnostics
-let unusedVariable = "this should trigger a warning";
-console.log(foundUser?.name);
+// Test diagnostics with used variable
+let testVariable = "this is used for testing";
+console.log(foundUser?.name, testVariable);

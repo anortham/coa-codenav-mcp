@@ -441,3 +441,131 @@ public class RefreshQuery
     [JsonPropertyName("workspacePath")]
     public string? WorkspacePath { get; set; }
 }
+
+/// <summary>
+/// Result for ExtractInterface tool
+/// </summary>
+public class ExtractInterfaceResult : ToolResultBase
+{
+    public override string Operation => ToolNames.ExtractInterface;
+
+    [JsonPropertyName("query")]
+    public QueryInfo? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
+
+    [JsonPropertyName("interfaceName")]
+    public string? InterfaceName { get; set; }
+
+    [JsonPropertyName("interfaceCode")]
+    public string? InterfaceCode { get; set; }
+
+    [JsonPropertyName("updatedClassCode")]
+    public string? UpdatedClassCode { get; set; }
+
+    [JsonPropertyName("extractedMembers")]
+    public List<ExtractedMemberInfo>? ExtractedMembers { get; set; }
+}
+
+/// <summary>
+/// Information about an extracted member
+/// </summary>
+public class ExtractedMemberInfo
+{
+    [JsonPropertyName("name")]
+    public required string Name { get; set; }
+
+    [JsonPropertyName("kind")]
+    public required string Kind { get; set; }
+
+    [JsonPropertyName("signature")]
+    public required string Signature { get; set; }
+}
+
+/// <summary>
+/// Result for MoveType tool
+/// </summary>
+public class MoveTypeResult : ToolResultBase
+{
+    public override string Operation => ToolNames.MoveType;
+
+    [JsonPropertyName("query")]
+    public QueryInfo? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
+
+    [JsonPropertyName("typeName")]
+    public string? TypeName { get; set; }
+
+    [JsonPropertyName("sourceFilePath")]
+    public string? SourceFilePath { get; set; }
+
+    [JsonPropertyName("targetFilePath")]
+    public string? TargetFilePath { get; set; }
+
+    [JsonPropertyName("updatedSourceCode")]
+    public string? UpdatedSourceCode { get; set; }
+
+    [JsonPropertyName("updatedTargetCode")]
+    public string? UpdatedTargetCode { get; set; }
+
+    [JsonPropertyName("movedTypeCode")]
+    public string? MovedTypeCode { get; set; }
+
+    [JsonPropertyName("wasNewFileCreated")]
+    public bool WasNewFileCreated { get; set; }
+}
+
+/// <summary>
+/// Result for InlineMethod tool
+/// </summary>
+public class InlineMethodResult : ToolResultBase
+{
+    public override string Operation => ToolNames.InlineMethod;
+
+    [JsonPropertyName("query")]
+    public QueryInfo? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
+
+    [JsonPropertyName("methodName")]
+    public string? MethodName { get; set; }
+
+    [JsonPropertyName("inlinedCallSites")]
+    public int InlinedCallSites { get; set; }
+
+    [JsonPropertyName("methodBody")]
+    public string? MethodBody { get; set; }
+
+    [JsonPropertyName("updatedCode")]
+    public string? UpdatedCode { get; set; }
+}
+
+/// <summary>
+/// Result for InlineVariable tool
+/// </summary>
+public class InlineVariableResult : ToolResultBase
+{
+    public override string Operation => ToolNames.InlineVariable;
+
+    [JsonPropertyName("query")]
+    public QueryInfo? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public SummaryInfo? Summary { get; set; }
+
+    [JsonPropertyName("variableName")]
+    public string? VariableName { get; set; }
+
+    [JsonPropertyName("inlinedUsages")]
+    public int InlinedUsages { get; set; }
+
+    [JsonPropertyName("initializationValue")]
+    public string? InitializationValue { get; set; }
+
+    [JsonPropertyName("updatedCode")]
+    public string? UpdatedCode { get; set; }
+}

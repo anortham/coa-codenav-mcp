@@ -87,6 +87,12 @@ builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.DocumentSym
 builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.SolutionWideFindReplaceResponseBuilder>();
 builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.CodeMetricsResponseBuilder>();
 
+// Register Refactoring Response Builders
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.ExtractInterfaceResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.MoveTypeResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.InlineMethodResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.InlineVariableResponseBuilder>();
+
 // Register infrastructure services
 builder.Services.AddSingleton<MSBuildWorkspaceManager>();
 builder.Services.AddSingleton<RoslynWorkspaceService>();
@@ -143,6 +149,10 @@ builder.Services.AddScoped<GetTypeMembersTool>();
 // Refactoring tools
 builder.Services.AddScoped<RenameSymbolTool>();
 builder.Services.AddScoped<ExtractMethodTool>();
+builder.Services.AddScoped<ExtractInterfaceTool>();
+builder.Services.AddScoped<MoveTypeTool>();
+builder.Services.AddScoped<InlineMethodTool>();
+builder.Services.AddScoped<InlineVariableTool>();
 builder.Services.AddScoped<AddMissingUsingsTool>();
 builder.Services.AddScoped<FormatDocumentTool>();
 

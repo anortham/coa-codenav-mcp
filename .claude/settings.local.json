@@ -88,7 +88,23 @@
       "mcp__projectknowledge__save_checkpoint",
       "mcp__projectknowledge__show_activity",
       "mcp__projectknowledge__load_checkpoint",
-      "mcp__projectknowledge__list_checkpoints"
+      "mcp__projectknowledge__list_checkpoints",
+      "Bash(where tsc)",
+      "Bash(tsc --version)",
+      "Bash(tsc --noEmit)",
+      "Bash(tsc --noEmit --pretty false)",
+      "Bash(tsc:*)",
+      "mcp__codenav__ts_load_tsconfig",
+      "mcp__codenav__ts_get_diagnostics",
+      "mcp__codenav__ts_goto_definition",
+      "mcp__codenav__ts_hover",
+      "Bash(node:*)",
+      "mcp__codenav__ts_find_all_references",
+      "Bash(dotnet --version)",
+      "mcp__codenav__ts_document_symbols",
+      "WebSearch",
+      "Bash(timeout 60 dotnet test --filter \"InlineMethodToolUnitTests\" --verbosity normal)",
+      "Bash(timeout 120 dotnet test --filter \"ExtractInterfaceTool\" --verbosity minimal)"
     ],
     "deny": []
   }

@@ -23,6 +23,10 @@ public static class ToolNames
     // Refactoring Tools
     public const string RenameSymbol = "csharp_rename_symbol";
     public const string ExtractMethod = "csharp_extract_method";
+    public const string ExtractInterface = "csharp_extract_interface";
+    public const string MoveType = "csharp_move_type";
+    public const string InlineMethod = "csharp_inline_method";
+    public const string InlineVariable = "csharp_inline_variable";
     public const string GenerateCode = "csharp_generate_code";
     public const string AddMissingUsings = "csharp_add_missing_usings";
     public const string FormatDocument = "csharp_format_document";
