@@ -6,15 +6,16 @@ A powerful MCP (Model Context Protocol) server providing comprehensive **C# and 
 
 ### C# Analysis (Roslyn)
 - **Complete C# Code Analysis** - Full Roslyn compiler integration for accurate code understanding
-- **41 Powerful Tools** - Comprehensive suite covering navigation, analysis, refactoring, and code generation
+- **31 Powerful Tools** - Comprehensive suite covering navigation, analysis, refactoring, and code generation
 - **Advanced Refactoring** - Extract methods/interfaces, inline code, move types, rename symbols, and more
 - **Deep Analysis** - Code metrics, dependency analysis, clone detection, and call hierarchies
 
 ### TypeScript Analysis (TSP)
 - **TypeScript Server Protocol** - Native TSP integration for accurate TypeScript analysis
-- **Core Navigation Tools** - GoToDefinition, FindReferences, Hover, and symbol search
-- **Project Management** - Load tsconfig.json projects with full workspace support
-- **Real-time Diagnostics** - Compilation error and warning detection
+- **14 Comprehensive Tools** - Full suite covering navigation, analysis, refactoring, and workspace management
+- **Advanced Features** - Imports management, quick fixes, workspace loading, and symbol hierarchies
+- **Project Management** - Load tsconfig.json projects with full monorepo workspace support
+- **Real-time Diagnostics** - Compilation error detection with intelligent fixes
 
 ### AI-Optimized Experience
 - **AI-First Design** - Structured outputs with insights, next actions, and error recovery
@@ -95,7 +96,7 @@ dotnet tool uninstall --global COA.CodeNav.McpServer
 
 ### Quick Reference
 
-#### C# Tools (41 tools)
+#### C# Tools (31 tools)
 
 | Tool                         | Purpose                | Example Usage                       |
 | ---------------------------- | ---------------------- | ----------------------------------- |
@@ -111,17 +112,24 @@ dotnet tool uninstall --global COA.CodeNav.McpServer
 | `csharp_call_hierarchy`      | View call graph        | "Show who calls ProcessOrder"       |
 | `csharp_code_clone_detection`| Find duplicate code    | "Find duplicated code blocks"       |
 
-#### TypeScript Tools (10 tools)
+#### TypeScript Tools (14 tools)
 
 | Tool                         | Purpose                    | Example Usage                       |
 | ---------------------------- | -------------------------- | ----------------------------------- |
 | `ts_load_tsconfig`          | Load TypeScript project    | "Load tsconfig.json"                |
+| `ts_load_workspace`         | Load multi-project workspace | "Load TypeScript monorepo"        |
 | `ts_goto_definition`        | Navigate to definitions    | "Go to UserService definition"      |
 | `ts_find_all_references`    | Find symbol references     | "Where is processOrder used?"       |
+| `ts_find_implementations`   | Find interface implementations | "Find all User implementations"   |
 | `ts_get_diagnostics`        | Get TypeScript errors      | "Check for TypeScript errors"       |
 | `ts_hover`                  | Get symbol information     | "What does this function do?"       |
+| `ts_document_symbols`       | Extract file structure     | "Show all classes and methods"      |
+| `ts_symbol_search`          | Search for symbols         | "Find all *Service classes"         |
 | `ts_rename_symbol`          | Rename across files        | "Rename UserService to UserManager" |
 | `ts_call_hierarchy`         | Analyze call relationships | "Show call hierarchy for function"  |
+| `ts_add_missing_imports`    | Auto-add import statements | "Add missing imports to file"       |
+| `ts_organize_imports`       | Sort and organize imports  | "Clean up import statements"        |
+| `ts_apply_quick_fix`        | Apply TypeScript fixes     | "Fix this TypeScript error"         |
 
 ### Workspace Management
 

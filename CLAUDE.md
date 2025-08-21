@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-COA.CodeNav.McpServer provides Roslyn-based C# code analysis and navigation tools via MCP (Model Context Protocol). Built on COA.Mcp.Framework v1.4.1.
+COA.CodeNav.McpServer provides comprehensive C# and TypeScript code analysis and navigation tools via MCP (Model Context Protocol). Built on COA.Mcp.Framework v1.7.19.
 
 ## Build Commands
 
@@ -20,7 +20,7 @@ dotnet run --project COA.CodeNav.McpServer/COA.CodeNav.McpServer.csproj
 ```
 COA.CodeNav.McpServer/
 ├── Program.cs              # MCP server setup, tool registration
-├── Tools/                  # 26 MCP tool implementations
+├── Tools/                  # 45 MCP tool implementations (31 C# + 14 TypeScript)
 ├── Services/              # RoslynWorkspaceService, DocumentService
 ├── Infrastructure/        # MSBuildWorkspaceManager
 ├── Models/               # Result types inheriting from ToolResultBase
