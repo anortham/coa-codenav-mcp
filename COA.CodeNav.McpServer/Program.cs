@@ -108,6 +108,10 @@ builder.Services.AddSingleton<COA.CodeNav.McpServer.Services.TypeScript.TypeScri
 // Register TypeScript Response Builders
 builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.TypeScript.TsDiagnosticsResponseBuilder>();
 builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.TypeScript.TsCallHierarchyResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.TypeScript.TsOrganizeImportsResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.TypeScript.TsAddMissingImportsResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.TypeScript.TsApplyQuickFixResponseBuilder>();
+builder.Services.AddSingleton<COA.CodeNav.McpServer.ResponseBuilders.TypeScript.TsLoadWorkspaceResponseBuilder>();
 
 // Configure automatic resource caching (Framework v1.4.8+)
 builder.Services.Configure<COA.Mcp.Framework.Resources.ResourceCacheOptions>(options =>
@@ -183,6 +187,11 @@ builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsDocumentSymb
 builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsSymbolSearchTool>();
 builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsFindImplementationsTool>();
 builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsCallHierarchyTool>();
+// New TypeScript tools
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsOrganizeImportsTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsAddMissingImportsTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsApplyQuickFixTool>();
+builder.Services.AddScoped<COA.CodeNav.McpServer.Tools.TypeScript.TsLoadWorkspaceTool>();
 
 // Now discover and register all tools that inherit from McpToolBase
 // This finds the tools we registered above and sets them up as MCP tools

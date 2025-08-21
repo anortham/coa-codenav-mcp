@@ -656,4 +656,430 @@ public class TsTextPosition
     public int Character { get; set; }
 }
 
+// TypeScript-specific models
+
+/// <summary>
+/// TypeScript file change information
+/// </summary>
+public class TsFileChange
+{
+    [JsonPropertyName("startPosition")]
+    public int StartPosition { get; set; }
+
+    [JsonPropertyName("length")]
+    public int Length { get; set; }
+
+    [JsonPropertyName("newText")]
+    public string NewText { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+}
+
+// New TypeScript Tool Result Models
+
+/// <summary>
+/// Result from organizing imports in a TypeScript file
+/// </summary>
+public class TsOrganizeImportsResult : ToolResultBase
+{
+    public override string Operation => ToolNames.TsOrganizeImports;
+
+    [JsonPropertyName("query")]
+    public OrganizeImportsQuery? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public OrganizeImportsSummary? Summary { get; set; }
+
+    [JsonPropertyName("changes")]
+    public List<TsFileChange>? Changes { get; set; }
+
+    [JsonPropertyName("originalContent")]
+    public string? OriginalContent { get; set; }
+
+    [JsonPropertyName("updatedContent")]
+    public string? UpdatedContent { get; set; }
+}
+
+/// <summary>
+/// Query information for organize imports operation
+/// </summary>
+public class OrganizeImportsQuery
+{
+    [JsonPropertyName("filePath")]
+    public string? FilePath { get; set; }
+
+    [JsonPropertyName("preview")]
+    public bool Preview { get; set; }
+}
+
+/// <summary>
+/// Summary of organize imports operation
+/// </summary>
+public class OrganizeImportsSummary
+{
+    [JsonPropertyName("totalChanges")]
+    public int TotalChanges { get; set; }
+
+    [JsonPropertyName("organizedImports")]
+    public int OrganizedImports { get; set; }
+
+    [JsonPropertyName("removedDuplicates")]
+    public int RemovedDuplicates { get; set; }
+}
+
+/// <summary>
+/// Result from adding missing imports in a TypeScript file
+/// </summary>
+public class TsAddMissingImportsResult : ToolResultBase
+{
+    public override string Operation => ToolNames.TsAddMissingImports;
+
+    [JsonPropertyName("query")]
+    public AddMissingImportsQuery? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public AddMissingImportsSummary? Summary { get; set; }
+
+    [JsonPropertyName("changes")]
+    public List<TsFileChange>? Changes { get; set; }
+
+    [JsonPropertyName("originalContent")]
+    public string? OriginalContent { get; set; }
+
+    [JsonPropertyName("updatedContent")]
+    public string? UpdatedContent { get; set; }
+
+    [JsonPropertyName("missingImports")]
+    public List<MissingImportInfo>? MissingImports { get; set; }
+}
+
+/// <summary>
+/// Query information for add missing imports operation
+/// </summary>
+public class AddMissingImportsQuery
+{
+    [JsonPropertyName("filePath")]
+    public string? FilePath { get; set; }
+
+    [JsonPropertyName("preview")]
+    public bool Preview { get; set; }
+}
+
+/// <summary>
+/// Summary of add missing imports operation
+/// </summary>
+public class AddMissingImportsSummary
+{
+    [JsonPropertyName("totalImportsAdded")]
+    public int TotalImportsAdded { get; set; }
+
+    [JsonPropertyName("errorsFixed")]
+    public int ErrorsFixed { get; set; }
+}
+
+/// <summary>
+/// Information about a missing import for the response
+/// </summary>
+public class MissingImportInfo
+{
+    [JsonPropertyName("symbol")]
+    public string? Symbol { get; set; }
+
+    [JsonPropertyName("line")]
+    public int Line { get; set; }
+
+    [JsonPropertyName("character")]
+    public int Character { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+}
+
+/// <summary>
+/// Result from applying TypeScript quick fixes
+/// </summary>
+public class TsApplyQuickFixResult : ToolResultBase
+{
+    public override string Operation => ToolNames.TsApplyQuickFix;
+
+    [JsonPropertyName("query")]
+    public ApplyQuickFixQuery? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public ApplyQuickFixSummary? Summary { get; set; }
+
+    [JsonPropertyName("appliedFix")]
+    public QuickFixInfo? AppliedFix { get; set; }
+
+    [JsonPropertyName("availableFixes")]
+    public List<QuickFixInfo>? AvailableFixes { get; set; }
+
+    [JsonPropertyName("changes")]
+    public List<TsFileChange>? Changes { get; set; }
+
+    [JsonPropertyName("originalContent")]
+    public string? OriginalContent { get; set; }
+
+    [JsonPropertyName("updatedContent")]
+    public string? UpdatedContent { get; set; }
+}
+
+/// <summary>
+/// Query information for apply quick fix operation
+/// </summary>
+public class ApplyQuickFixQuery
+{
+    [JsonPropertyName("filePath")]
+    public string? FilePath { get; set; }
+
+    [JsonPropertyName("line")]
+    public int Line { get; set; }
+
+    [JsonPropertyName("character")]
+    public int Character { get; set; }
+
+    [JsonPropertyName("actionName")]
+    public string? ActionName { get; set; }
+
+    [JsonPropertyName("preview")]
+    public bool Preview { get; set; }
+}
+
+/// <summary>
+/// Summary of apply quick fix operation
+/// </summary>
+public class ApplyQuickFixSummary
+{
+    [JsonPropertyName("availableFixesCount")]
+    public int AvailableFixesCount { get; set; }
+
+    [JsonPropertyName("appliedFixesCount")]
+    public int AppliedFixesCount { get; set; }
+
+    [JsonPropertyName("changesCount")]
+    public int ChangesCount { get; set; }
+}
+
+/// <summary>
+/// Information about a TypeScript quick fix
+/// </summary>
+public class QuickFixInfo
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("category")]
+    public string? Category { get; set; }
+
+    [JsonPropertyName("priority")]
+    public int Priority { get; set; }
+}
+
+/// <summary>
+/// Result from loading TypeScript workspace
+/// </summary>
+public class TsLoadWorkspaceResult : ToolResultBase
+{
+    public override string Operation => ToolNames.TsLoadWorkspace;
+
+    [JsonPropertyName("query")]
+    public LoadWorkspaceQuery? Query { get; set; }
+
+    [JsonPropertyName("summary")]
+    public LoadWorkspaceSummary? Summary { get; set; }
+
+    [JsonPropertyName("projects")]
+    public List<TypeScriptProjectInfo>? Projects { get; set; }
+
+    [JsonPropertyName("crossReferences")]
+    public List<ProjectReference>? CrossReferences { get; set; }
+}
+
+/// <summary>
+/// Query information for load workspace operation
+/// </summary>
+public class LoadWorkspaceQuery
+{
+    [JsonPropertyName("workspacePath")]
+    public string? WorkspacePath { get; set; }
+
+    [JsonPropertyName("includeNodeModules")]
+    public bool IncludeNodeModules { get; set; }
+
+    [JsonPropertyName("maxDepth")]
+    public int MaxDepth { get; set; }
+}
+
+/// <summary>
+/// Summary of load workspace operation
+/// </summary>
+public class LoadWorkspaceSummary
+{
+    [JsonPropertyName("projectCount")]
+    public int ProjectCount { get; set; }
+
+    [JsonPropertyName("totalSourceFiles")]
+    public int TotalSourceFiles { get; set; }
+
+    [JsonPropertyName("crossReferencesCount")]
+    public int CrossReferencesCount { get; set; }
+}
+
+/// <summary>
+/// Information about a TypeScript project in a workspace
+/// </summary>
+public class TypeScriptProjectInfo
+{
+    [JsonPropertyName("projectPath")]
+    public string ProjectPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("projectType")]
+    public string? ProjectType { get; set; }
+
+    [JsonPropertyName("compilerOptions")]
+    public Dictionary<string, object>? CompilerOptions { get; set; }
+
+    [JsonPropertyName("sourceFiles")]
+    public List<string>? SourceFiles { get; set; }
+
+    [JsonPropertyName("dependencies")]
+    public List<string>? Dependencies { get; set; }
+
+    [JsonPropertyName("notes")]
+    public List<string>? Notes { get; set; }
+}
+
+/// <summary>
+/// Information about a cross-project reference
+/// </summary>
+public class ProjectReference
+{
+    [JsonPropertyName("fromProject")]
+    public string FromProject { get; set; } = string.Empty;
+
+    [JsonPropertyName("toProject")]
+    public string ToProject { get; set; } = string.Empty;
+
+    [JsonPropertyName("referenceType")]
+    public string ReferenceType { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Represents an error for a missing import
+/// </summary>
+public class MissingImportError
+{
+    [JsonPropertyName("code")]
+    public int Code { get; set; }
+
+    [JsonPropertyName("symbol")]
+    public string Symbol { get; set; } = string.Empty;
+
+    [JsonPropertyName("line")]
+    public int Line { get; set; }
+
+    [JsonPropertyName("character")]
+    public int Character { get; set; }
+
+    [JsonPropertyName("endLine")]
+    public int EndLine { get; set; }
+
+    [JsonPropertyName("endCharacter")]
+    public int EndCharacter { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+}
+
+/// <summary>
+/// Information about a TypeScript project loaded in a workspace
+/// </summary>
+public class WorkspaceProjectInfo
+{
+    [JsonPropertyName("projectPath")]
+    public string ProjectPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("projectName")]
+    public string ProjectName { get; set; } = string.Empty;
+
+    [JsonPropertyName("compilerOptions")]
+    public Dictionary<string, object>? CompilerOptions { get; set; }
+
+    [JsonPropertyName("sourceFiles")]
+    public List<string> SourceFiles { get; set; } = new();
+
+    [JsonPropertyName("references")]
+    public List<string> References { get; set; } = new();
+
+    [JsonPropertyName("loadedAt")]
+    public DateTime LoadedAt { get; set; }
+
+    [JsonPropertyName("notes")]
+    public List<string>? Notes { get; set; }
+}
+
+/// <summary>
+/// Information about a failed project load
+/// </summary>
+public class FailedProjectInfo
+{
+    [JsonPropertyName("projectPath")]
+    public string ProjectPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("error")]
+    public string Error { get; set; } = string.Empty;
+
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Information about dependencies between projects
+/// </summary>
+public class ProjectDependencyInfo
+{
+    [JsonPropertyName("fromProject")]
+    public string FromProject { get; set; } = string.Empty;
+
+    [JsonPropertyName("toProject")]
+    public string ToProject { get; set; } = string.Empty;
+
+    [JsonPropertyName("fromPath")]
+    public string FromPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("toPath")]
+    public string ToPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("dependencyType")]
+    public string DependencyType { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Information about a TypeScript code fix
+/// </summary>
+public class TsCodeFixInfo
+{
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [JsonPropertyName("changes")]
+    public List<TsFileChange> Changes { get; set; } = new();
+}
+
+/// <summary>
+/// Information about an available fix
+/// </summary>
+public class AvailableFixInfo
+{
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [JsonPropertyName("actionName")]
+    public string ActionName { get; set; } = string.Empty;
+}
+
 #endregion

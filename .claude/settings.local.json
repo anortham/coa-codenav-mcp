@@ -104,7 +104,10 @@
       "mcp__codenav__ts_document_symbols",
       "WebSearch",
       "Bash(timeout 60 dotnet test --filter \"InlineMethodToolUnitTests\" --verbosity normal)",
-      "Bash(timeout 120 dotnet test --filter \"ExtractInterfaceTool\" --verbosity minimal)"
+      "Bash(timeout 120 dotnet test --filter \"ExtractInterfaceTool\" --verbosity minimal)",
+      "mcp__goldfish__checkpoint",
+      "mcp__goldfish__restore_session",
+      "mcp__goldfish__view_todos"
     ],
     "deny": []
   }

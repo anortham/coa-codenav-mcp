@@ -884,6 +884,128 @@ public sealed class TsServerProtocolHandler : IDisposable
         return response != null;
     }
 
+    /// <summary>
+    /// Organizes imports for a file
+    /// </summary>
+    public async Task<JsonElement?> OrganizeImportsAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        var normalizedPath = NormalizePath(filePath);
+        
+        if (!await EnsureFileOpenAsync(normalizedPath, cancellationToken))
+            return null;
+
+        var request = new
+        {
+            seq = GetNextSequence(),
+            type = "request",
+            command = "organizeImports",
+            arguments = new
+            {
+                scope = new
+                {
+                    type = "file",
+                    args = new
+                    {
+                        file = normalizedPath
+                    }
+                }
+            }
+        };
+
+        var response = await SendRequestInternalAsync(request, cancellationToken);
+        return response?.TryGetProperty("body", out var body) == true ? body : null;
+    }
+
+    /// <summary>
+    /// Gets code fixes available at a position
+    /// </summary>
+    public async Task<JsonElement?> GetCodeFixesAsync(string filePath, int line, int offset, int? endLine = null, int? endOffset = null, string[]? errorCodes = null, CancellationToken cancellationToken = default)
+    {
+        var normalizedPath = NormalizePath(filePath);
+        
+        if (!await EnsureFileOpenAsync(normalizedPath, cancellationToken))
+            return null;
+
+        var request = new
+        {
+            seq = GetNextSequence(),
+            type = "request",
+            command = "getCodeFixes",
+            arguments = new
+            {
+                file = normalizedPath,
+                startLine = line,
+                startOffset = offset,
+                endLine = endLine ?? line,
+                endOffset = endOffset ?? offset,
+                errorCodes = errorCodes ?? new string[0]
+            }
+        };
+
+        var response = await SendRequestInternalAsync(request, cancellationToken);
+        return response?.TryGetProperty("body", out var body) == true ? body : null;
+    }
+
+    /// <summary>
+    /// Gets applicable refactors at a position or selection
+    /// </summary>
+    public async Task<JsonElement?> GetApplicableRefactorsAsync(string filePath, int line, int offset, int? endLine = null, int? endOffset = null, CancellationToken cancellationToken = default)
+    {
+        var normalizedPath = NormalizePath(filePath);
+        
+        if (!await EnsureFileOpenAsync(normalizedPath, cancellationToken))
+            return null;
+
+        var request = new
+        {
+            seq = GetNextSequence(),
+            type = "request",
+            command = "getApplicableRefactors",
+            arguments = new
+            {
+                file = normalizedPath,
+                startLine = line,
+                startOffset = offset,
+                endLine = endLine ?? line,
+                endOffset = endOffset ?? offset
+            }
+        };
+
+        var response = await SendRequestInternalAsync(request, cancellationToken);
+        return response?.TryGetProperty("body", out var body) == true ? body : null;
+    }
+
+    /// <summary>
+    /// Gets edits for a refactor
+    /// </summary>
+    public async Task<JsonElement?> GetEditsForRefactorAsync(string filePath, int line, int offset, int? endLine, int? endOffset, string refactor, string action, CancellationToken cancellationToken = default)
+    {
+        var normalizedPath = NormalizePath(filePath);
+        
+        if (!await EnsureFileOpenAsync(normalizedPath, cancellationToken))
+            return null;
+
+        var request = new
+        {
+            seq = GetNextSequence(),
+            type = "request",
+            command = "getEditsForRefactor",
+            arguments = new
+            {
+                file = normalizedPath,
+                startLine = line,
+                startOffset = offset,
+                endLine = endLine ?? line,
+                endOffset = endOffset ?? offset,
+                refactor,
+                action
+            }
+        };
+
+        var response = await SendRequestInternalAsync(request, cancellationToken);
+        return response?.TryGetProperty("body", out var body) == true ? body : null;
+    }
+
     #endregion
 
     #region Helper Methods

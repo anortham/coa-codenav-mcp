@@ -51,4 +51,7 @@ public static class ErrorCodes
     // Refactoring errors
     public const string RENAME_NOT_ALLOWED = "RENAME_NOT_ALLOWED";
     public const string INVALID_PARAMETER = "INVALID_PARAMETER";
+    public const string ORGANIZE_IMPORTS_FAILED = "ORGANIZE_IMPORTS_FAILED";
+    public const string ADD_IMPORTS_FAILED = "ADD_IMPORTS_FAILED";
+    public const string QUICK_FIX_FAILED = "QUICK_FIX_FAILED";
 }
