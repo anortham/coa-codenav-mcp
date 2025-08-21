@@ -483,7 +483,7 @@ Not for: Single project loading (use ts_load_tsconfig), loading non-TypeScript p
         return actions;
     }
 
-    private async Task<TsLoadWorkspaceResult> ApplyTokenOptimization(TsLoadWorkspaceResult result, double executionTime)
+    private Task<TsLoadWorkspaceResult> ApplyTokenOptimization(TsLoadWorkspaceResult result, double executionTime)
     {
         // Estimate current token usage
         var estimatedTokens = _tokenEstimator.EstimateObject(result);
@@ -549,7 +549,7 @@ Not for: Single project loading (use ts_load_tsconfig), loading non-TypeScript p
             ExecutionTime = $"{executionTime:F2}ms"
         };
         
-        return result;
+        return Task.FromResult(result);
     }
 
     #endregion

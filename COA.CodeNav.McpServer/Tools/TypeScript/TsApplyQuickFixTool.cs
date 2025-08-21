@@ -540,7 +540,7 @@ Not for: Manual code edits, complex refactoring (use specific refactoring tools)
         return actions;
     }
 
-    private async Task<TsApplyQuickFixResult> ApplyTokenOptimization(TsApplyQuickFixResult result, double executionTime)
+    private Task<TsApplyQuickFixResult> ApplyTokenOptimization(TsApplyQuickFixResult result, double executionTime)
     {
         // Estimate current token usage
         var estimatedTokens = _tokenEstimator.EstimateObject(result);
@@ -599,7 +599,7 @@ Not for: Manual code edits, complex refactoring (use specific refactoring tools)
             ExecutionTime = $"{executionTime:F2}ms"
         };
         
-        return result;
+        return Task.FromResult(result);
     }
 
     #endregion

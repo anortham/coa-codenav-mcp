@@ -594,7 +594,7 @@ Not for: Organizing existing imports (use ts_organize_imports), removing unused 
         return actions;
     }
 
-    private async Task<TsAddMissingImportsResult> ApplyTokenOptimization(TsAddMissingImportsResult result, double executionTime)
+    private Task<TsAddMissingImportsResult> ApplyTokenOptimization(TsAddMissingImportsResult result, double executionTime)
     {
         // Estimate current token usage
         var estimatedTokens = _tokenEstimator.EstimateObject(result);
@@ -653,7 +653,7 @@ Not for: Organizing existing imports (use ts_organize_imports), removing unused 
             ExecutionTime = $"{executionTime:F2}ms"
         };
         
-        return result;
+        return Task.FromResult(result);
     }
 
     #endregion

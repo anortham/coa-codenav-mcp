@@ -279,7 +279,7 @@ Not for: Renaming types (use csharp_rename_symbol), moving methods within types 
         }
     }
 
-    private async Task<Document> CreateNewDocument(string filePath, string? namespaceName, Project project)
+    private Task<Document> CreateNewDocument(string filePath, string? namespaceName, Project project)
     {
         var fileName = Path.GetFileName(filePath);
         var content = GenerateNewFileContent(namespaceName);
@@ -287,7 +287,7 @@ Not for: Renaming types (use csharp_rename_symbol), moving methods within types 
         // Add the document to the project
         var document = project.AddDocument(fileName, content, filePath: filePath);
         
-        return document;
+        return Task.FromResult(document);
     }
 
     private string GenerateNewFileContent(string? namespaceName)
