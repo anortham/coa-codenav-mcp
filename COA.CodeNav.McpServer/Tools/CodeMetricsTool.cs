@@ -29,12 +29,12 @@ public class CodeMetricsTool : McpToolBase<CodeMetricsParams, CodeMetricsResult>
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_code_metrics";
-    public override string Description => @"Calculate code metrics for methods, classes, and files.
-Returns: Cyclomatic complexity, lines of code, maintainability index, and depth of inheritance.
+    public override string Description => @"Calculate code quality metrics like cyclomatic complexity, lines of code, and maintainability index. Identifies refactoring candidates and technical debt.
+
+Critical: Use to identify overly complex methods and classes that need refactoring. High complexity scores indicate maintenance risks and testing challenges.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if file is not found.
-Use cases: Code quality assessment, identifying complex methods, refactoring candidates, technical debt analysis.
-AI benefit: Provides quantitative metrics for prioritizing code improvements.";
+Use cases: Code quality assessment, identifying complex methods, refactoring prioritization, technical debt analysis.";
 
     public CodeMetricsTool(
         ILogger<CodeMetricsTool> logger,

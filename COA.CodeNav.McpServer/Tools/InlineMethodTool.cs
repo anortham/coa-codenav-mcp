@@ -33,12 +33,12 @@ public class InlineMethodTool : McpToolBase<InlineMethodParams, InlineMethodResu
     private readonly InlineMethodResponseBuilder _responseBuilder;
 
     public override string Name => ToolNames.InlineMethod;
-    public override string Description => @"Inline a method by replacing all calls with the method body.
-Returns: Updated code with method calls replaced by method body and method declaration removed.
+    public override string Description => @"Inline methods by replacing calls with method body. Simplifies code by removing unnecessary abstraction layers.
+
+Critical: Before inlining, ensure the method is only used for abstraction and doesn't contain complex logic. Best for simple wrapper methods.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if inlining fails.
-Use cases: Simplifying code, removing unnecessary abstractions, improving performance.
-Not for: Complex methods with multiple return points, recursive methods, virtual methods.";
+Use cases: Simplifying code, removing unnecessary abstractions, improving performance, reducing method overhead.";
     public override ToolCategory Category => ToolCategory.Refactoring;
     
     public InlineMethodTool(

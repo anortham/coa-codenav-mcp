@@ -26,12 +26,12 @@ public class TypeHierarchyTool : McpToolBase<TypeHierarchyParams, TypeHierarchyR
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_type_hierarchy";
-    public override string Description => @"View the complete type hierarchy including base classes, derived types, and interface implementations.
-Returns: Hierarchical view of type relationships with inheritance chains and implementations.
+    public override string Description => @"View complete type hierarchy including base classes, derived types, and interface implementations. Maps inheritance relationships visually.
+
+Critical: Use to understand class inheritance before making changes to base classes or interfaces. Shows impact on all derived types.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if type is not found.
-Use cases: Understanding inheritance relationships, finding all implementations, exploring type hierarchies.
-AI benefit: Provides complete view of type relationships for better code understanding.";
+Use cases: Understanding inheritance relationships, finding implementations, exploring type hierarchies, planning changes.";
 
     public TypeHierarchyTool(
         ILogger<TypeHierarchyTool> logger,

@@ -33,12 +33,12 @@ public class InlineVariableTool : McpToolBase<InlineVariableParams, InlineVariab
     private readonly InlineVariableResponseBuilder _responseBuilder;
 
     public override string Name => ToolNames.InlineVariable;
-    public override string Description => @"Inline a variable by replacing all usages with its initialization value.
-Returns: Updated code with variable usages replaced by the initialization value and variable declaration removed.
+    public override string Description => @"Inline variables by replacing usage with initialization value. Simplifies code by removing unnecessary temporary variables.
+
+Critical: Before inlining, ensure the variable has a single assignment and simple value. Best for temporary variables that don't improve readability.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if inlining fails.
-Use cases: Simplifying code, removing temporary variables, improving readability.
-Not for: Variables with multiple assignments, complex expressions, variables used in different scopes.";
+Use cases: Simplifying code, removing temporary variables, improving readability, reducing variable clutter.";
     public override ToolCategory Category => ToolCategory.Refactoring;
     
     public InlineVariableTool(

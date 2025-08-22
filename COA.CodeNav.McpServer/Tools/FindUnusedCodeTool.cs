@@ -27,12 +27,12 @@ public class FindUnusedCodeTool : McpToolBase<FindUnusedCodeParams, FindUnusedCo
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_find_unused_code";
-    public override string Description => @"Find unused code elements in the codebase including classes, methods, properties, and fields.
-Returns: List of potentially unused code elements with their locations and types.
+    public override string Description => @"Find unused classes, methods, properties, and fields in the codebase. Identifies dead code that can be safely removed to reduce complexity.
+
+Critical: Use to clean up technical debt and reduce maintenance burden. Dead code increases cognitive load and can hide bugs or security issues.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if workspace is not loaded.
-Use cases: Code cleanup, reducing technical debt, identifying dead code, improving maintainability.
-AI benefit: Helps identify code that can be safely removed to reduce complexity.";
+Use cases: Code cleanup, reducing technical debt, identifying dead code, improving maintainability, security cleanup.";
 
     public FindUnusedCodeTool(
         ILogger<FindUnusedCodeTool> logger,

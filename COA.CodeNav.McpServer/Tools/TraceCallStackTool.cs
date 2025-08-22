@@ -29,12 +29,12 @@ public class TraceCallStackTool : McpToolBase<TraceCallStackParams, TraceCallSta
 
     public override string Name => ToolNames.TraceCallStack;
     
-    public override string Description => @"Trace execution paths through code from entry points to implementations.
-Returns: Complete call chains with conditions, branches, and insights about code flow.
+    public override string Description => @"Trace execution paths through code to understand complete call chains. Shows how methods connect from entry points to implementations.
+
+Critical: Use to debug complex call flows and understand how code execution moves through the system. Essential for debugging and impact analysis.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if starting point cannot be found.
-Use cases: Understanding API flows, tracing event handlers, debugging call chains, analyzing code paths.
-Not for: Static analysis (use other tools), finding implementations (use csharp_find_implementations).";
+Use cases: Understanding API flows, tracing event handlers, debugging call chains, analyzing execution paths.";
 
     public TraceCallStackTool(
         ILogger<TraceCallStackTool> logger,

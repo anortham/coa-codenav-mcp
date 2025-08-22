@@ -21,12 +21,12 @@ public class RefreshWorkspaceTool : McpToolBase<RefreshWorkspaceParams, RefreshW
     private readonly ITokenEstimator _tokenEstimator;
 
     public override string Name => ToolNames.RefreshWorkspace;
-    public override string Description => @"Refresh workspace or documents to resolve stale diagnostics and analysis results.
-Returns: Status of refresh operation with details on what was refreshed.
+    public override string Description => @"Refresh workspace to resolve stale diagnostics and sync with external file changes. Fixes cached analysis results that may be outdated.
+
+Critical: Use when analysis results seem stale or after external tools modify files. Resolves caching issues that cause incorrect diagnostics.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if refresh fails.
-Use cases: Fixing stale diagnostics, syncing with external file changes, resolving cache issues.
-Not for: Loading new workspaces (use csharp_load_solution), searching files (use other tools).";
+Use cases: Fixing stale diagnostics, syncing with external changes, resolving cache issues, troubleshooting analysis.";
 
     public RefreshWorkspaceTool(
         ILogger<RefreshWorkspaceTool> logger,

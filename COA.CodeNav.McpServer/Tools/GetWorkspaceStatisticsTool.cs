@@ -19,7 +19,11 @@ public class GetWorkspaceStatisticsTool : McpToolBase<GetWorkspaceStatisticsPara
     private readonly ITokenEstimator _tokenEstimator;
 
     public override string Name => "csharp_get_workspace_statistics";
-    public override string Description => "Get statistics about currently loaded workspaces and resource usage";
+    public override string Description => @"Get statistics about loaded workspaces including project count, file count, and resource usage. Useful for understanding workspace scope and performance.
+
+Critical: Use to monitor workspace health and troubleshoot performance issues. Large workspaces may require more memory and slower analysis.
+
+Use cases: Monitoring workspace health, troubleshooting performance, understanding project scope, resource management.";
 
     public GetWorkspaceStatisticsTool(
         ILogger<GetWorkspaceStatisticsTool> logger,

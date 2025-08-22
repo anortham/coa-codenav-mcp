@@ -30,12 +30,12 @@ public class CodeCloneDetectionTool : McpToolBase<CodeCloneDetectionParams, Code
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_code_clone_detection";
-    public override string Description => @"Detect duplicate code patterns across the solution for refactoring opportunities.
-Returns: Groups of similar code blocks with similarity scores and locations.
+    public override string Description => @"Detect duplicate code patterns across the solution to identify refactoring opportunities. Finds similar code blocks that could be consolidated.
+
+Critical: Use to identify technical debt and refactoring targets. Reveals hidden duplication patterns that reduce maintainability and increase bugs.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if analysis fails.
-Use cases: Identifying refactoring opportunities, reducing code duplication, improving maintainability.
-AI benefit: Reveals hidden duplication patterns that are hard to spot manually.";
+Use cases: Identifying refactoring opportunities, reducing code duplication, improving maintainability, finding copy-paste patterns.";
 
     public CodeCloneDetectionTool(
         ILogger<CodeCloneDetectionTool> logger,

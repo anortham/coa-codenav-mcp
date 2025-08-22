@@ -26,12 +26,12 @@ public class FindAllOverridesTool : McpToolBase<FindAllOverridesParams, FindAllO
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_find_all_overrides";
-    public override string Description => @"Find all overrides of virtual/abstract methods and properties, including interface implementations.
-Returns: Complete inheritance tree showing all overrides, implementations, and their relationships.
+    public override string Description => @"Find all overrides of virtual and abstract methods. Shows complete inheritance tree with all implementations and their relationships.
+
+Critical: Before changing virtual or abstract methods, see all overrides FIRST. Prevents breaking derived classes that override these methods.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if symbol is not overridable.
-Use cases: Impact analysis before changes, understanding inheritance hierarchy, finding all implementations.
-AI benefit: Provides complete override information that's difficult to piece together from other tools.";
+Use cases: Impact analysis before changes, understanding inheritance hierarchy, finding all implementations.";
 
     public FindAllOverridesTool(
         ILogger<FindAllOverridesTool> logger,
