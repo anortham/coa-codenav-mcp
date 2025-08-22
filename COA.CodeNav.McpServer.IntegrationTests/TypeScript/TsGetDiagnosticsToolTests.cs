@@ -60,8 +60,8 @@ public class TsGetDiagnosticsToolTests
     {
         _tool.Description.Should().Contain("TypeScript compilation errors");
         _tool.Description.Should().Contain("error messages");
-        _tool.Description.Should().Contain("Prerequisites");
-        _tool.Description.Should().Contain("ts_load_tsconfig");
+        _tool.Description.Should().Contain("type issues");
+        _tool.Description.Should().Contain("line numbers");
     }
 
     [Fact]

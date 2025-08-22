@@ -53,7 +53,7 @@ public class LoadTsConfigToolTests
     {
         _tool.Description.Should().Contain("Load TypeScript project");
         _tool.Description.Should().Contain("tsconfig.json");
-        _tool.Description.Should().Contain("Prerequisites");
+        _tool.Description.Should().Contain("compiler settings");
     }
 
     [Fact]
