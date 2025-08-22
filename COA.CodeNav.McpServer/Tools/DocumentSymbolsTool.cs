@@ -27,12 +27,37 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.DocumentSymbols;
-    public override string Description => @"Extract the symbol hierarchy from a C# document.
-Returns: Hierarchical list of classes, methods, properties, and fields with their locations.
+    public override string Description => @"**MAP OUT WHAT'S ACTUALLY IN A FILE** before making changes or assumptions. See all classes, methods, properties, and structure at once to understand the real layout.
+
+**FILE STRUCTURE VERIFICATION:**
+- About to modify a file? Get the complete overview first
+- Need to add new methods? See what exists to avoid duplicates
+- Implementing interface? Check what's already implemented
+- User mentions file changes? Map the territory before coding
+
+**Critical moments:**
+- Opening any file you haven't analyzed this session  
+- Before adding new methods, properties, or classes
+- When compilation errors mention missing members in specific files
+- User says 'modify this file' or 'add to this class'
+
+**What you'll discover:**
+- All classes and interfaces actually in the file
+- Every method with signatures and accessibility
+- Existing properties and their types
+- Fields, events, and nested types
+- Structure and organization patterns
+
+**Prevents common mistakes:**
+- Adding duplicate methods (they already exist with different names)
+- Wrong assumptions about class structure or organization  
+- Missing existing implementations when adding interface methods
+- Placing new code in wrong classes or namespaces
+
+**Time saved:** 5 minutes understanding structure prevents 30 minutes of confusion and rework.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if document is not found.
-Use cases: Code outline, document structure analysis, quick navigation within files.
-Not for: Solution-wide search (use csharp_symbol_search), cross-references (use csharp_find_all_references).";
+Follow up: Use csharp_get_type_members for detailed member information, csharp_goto_definition for implementations.";
 
     public DocumentSymbolsTool(
         ILogger<DocumentSymbolsTool> logger,

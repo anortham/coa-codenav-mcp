@@ -26,12 +26,25 @@ public class GetTypeMembersTool : McpToolBase<GetTypeMembersParams, GetTypeMembe
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.GetTypeMembers;
-    public override string Description => @"List all members of a type including methods, properties, fields, and events with their documentation.
-Returns: Comprehensive list of type members with signatures, accessibility, and XML documentation.
+    public override string Description => @"**ALWAYS USE BEFORE WRITING CODE** that uses any class, interface, or type. Shows the exact property names, method signatures, parameter types, and return types that actually exist.
+
+**CRITICAL TYPE VERIFICATION WORKFLOW:**
+1. User mentions using/implementing any type → Use this tool FIRST
+2. See exact member names and signatures → Copy them exactly
+3. Write code using verified members → No compilation errors
+
+**Prevents 90% of compilation errors by showing:**
+- Real property names (not assumed ones like 'fullName' vs actual 'firstName')  
+- Actual method signatures (parameters, return types, async vs sync)
+- What's public vs private (saves embarrassing access errors)
+- Exact spelling and casing (prevents typos)
+
+**Essential triggers:** When you hear 'implement', 'use this class', 'add property', 'call method' - STOP and verify the type first.
+
+**Saves massive time:** No more rewriting code 3-4 times due to wrong assumptions. Get it right the first time.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if type cannot be found.
-Use cases: Exploring API surface, understanding class structure, generating documentation.
-Not for: Finding references to members (use csharp_find_all_references), navigating (use csharp_goto_definition).";
+See also: csharp_hover for individual members, csharp_goto_definition for full type source.";
 
     public GetTypeMembersTool(
         ILogger<GetTypeMembersTool> logger,

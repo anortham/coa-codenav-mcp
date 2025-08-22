@@ -24,12 +24,35 @@ public class TsSymbolSearchTool : McpToolBase<TsSymbolSearchParams, TsSymbolSear
 
     public override string Name => ToolNames.TsSymbolSearch;
     
-    public override string Description => @"Search for TypeScript symbols by name or pattern across the entire project.
-Returns: List of matching symbols with their locations, types, and metadata.
+    public override string Description => @"**FIND TYPES BEFORE USING THEM** - When the user mentions any TypeScript type, interface, class, or function name, search for it FIRST to verify it exists and get the exact name.
+
+**CRITICAL TYPE DISCOVERY WORKFLOW:**
+1. User mentions 'use UserProfile' or any type name → Search for it immediately
+2. Find exact matches → Note precise naming (UserProfile vs userProfile)
+3. See where it's defined → Navigate to the source for full details
+4. Then use the verified type → No more 'Cannot find name' errors
+
+**Prevents common TypeScript frustrations:**
+- Implementing non-existent types or interfaces
+- Wrong capitalization (UserService vs userService)
+- Using types from wrong modules or files
+- Guessing at generic type parameters
+
+**Essential before coding when:**
+- User mentions any type name you haven't seen
+- You get 'Cannot find name' TypeScript errors  
+- Need to import types but don't know exact names
+- Working with large codebases with many similar types
+
+**Search strategies:**
+- Partial names: 'User' finds UserProfile, UserService, etc.
+- Patterns: 'Service' finds all service classes
+- Exact matches: 'AuthProvider' finds the precise type
+
+**The discovery rule:** If you don't know exactly where a TypeScript type is defined, search for it. No assumptions.
+
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Error handling: Returns specific error codes with recovery steps if no workspace is loaded.
-Use cases: Finding symbols by name/pattern, discovering types, locating functions, exploring modules.
-Not for: Finding references to a symbol (use ts_find_all_references), navigating to definition (use ts_goto_definition).";
+Follow up: Use ts_goto_definition to see full type definition, ts_hover for quick signature check.";
 
     public TsSymbolSearchTool(
         ILogger<TsSymbolSearchTool> logger,

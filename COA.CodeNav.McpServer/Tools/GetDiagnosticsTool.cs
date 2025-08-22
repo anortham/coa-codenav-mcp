@@ -31,12 +31,38 @@ public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosti
     private const int MAX_DIAGNOSTICS_PER_RESPONSE = 50;
 
     public override string Name => ToolNames.GetDiagnostics;
-    public override string Description => @"Get compilation errors, warnings, and analyzer diagnostics for files, projects, or the entire solution.
-Returns: List of diagnostics with severity, location, and suggested fixes.
+    public override string Description => @"**RUN IMMEDIATELY AFTER ANY CODE CHANGE** - Don't wait for the user to ask about errors. If you just wrote, modified, or generated any code, run this NOW to catch issues before they compound.
+
+**INSTANT FEEDBACK LOOP:**
+- Just wrote any method, class, or property? Check for errors immediately
+- Made any code changes? Verify they compile successfully  
+- User reports issues? Get the actual error messages first
+- After any refactoring or renaming? Confirm nothing broke
+
+**Catch problems early:**
+- Compilation errors (wrong types, missing references, syntax)
+- Missing using statements or wrong namespaces
+- Type mismatches and invalid conversions
+- Analyzer warnings that indicate code quality issues
+
+**Critical moments to run:**
+- Immediately after generating or writing any code
+- Before declaring 'task complete' or 'problem solved'
+- When user mentions anything about errors, warnings, or build issues
+- After making changes based on type verification
+
+**What you'll discover:**
+- Exact error messages with line numbers and locations
+- Specific problems with your type usage or assumptions
+- Missing dependencies or incorrect references  
+- Code quality warnings that guide improvements
+
+**Saves massive debugging time:** Find and fix issues in seconds instead of hunting them down later.
+
+**The habit:** Code → Check diagnostics → Fix issues → Repeat. Every time.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if workspace is not loaded.
-Use cases: Finding compilation errors, checking code quality, identifying warnings, running analyzers.
-Not for: Code metrics (use future csharp_code_metrics), finding specific symbols (use csharp_symbol_search).";
+Follow up: Use csharp_apply_code_fix for automated fixes, csharp_add_missing_usings for namespace issues.";
 
     public GetDiagnosticsTool(
         ILogger<GetDiagnosticsTool> logger,

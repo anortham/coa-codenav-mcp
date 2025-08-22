@@ -24,12 +24,32 @@ public class TsGoToDefinitionTool : McpToolBase<TsGoToDefinitionParams, TsGoToDe
 
     public override string Name => ToolNames.TsGoToDefinition;
     
-    public override string Description => @"Navigate to the definition of a TypeScript symbol at a given position.
-Returns: Symbol definition location with type information and documentation.
+    public override string Description => @"**MANDATORY FIRST STEP** when working with any TypeScript type, interface, function, or property you haven't verified this session. See the ACTUAL implementation, not what you assume exists.
+
+**CRITICAL VERIFICATION WORKFLOW:**
+1. User mentions any type/interface → Go to its definition FIRST
+2. Read the actual source code → Understand real structure  
+3. Note exact property names and types → Copy them precisely
+4. Only then write code using verified information
+
+**Prevents the most expensive TypeScript mistakes:**
+- Implementing against non-existent properties or methods
+- Wrong parameter types, signatures, or return values
+- Misunderstanding interface implementations or type definitions
+- Using deprecated or internal-only members
+
+**Essential when you see:**
+- Any type name you're not 100% sure about
+- TypeScript error messages about missing members or wrong signatures
+- User mentions 'use this interface' or 'implement this type'
+- Before making any assumptions about existing TypeScript code
+
+**Time saved:** 15 minutes of trial-and-error coding prevented by 30 seconds of verification.
+
+**The rule:** If you haven't seen the TypeScript definition this session, look it up. No exceptions.
+
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Error handling: Returns specific error codes with recovery steps if symbol cannot be resolved.
-Use cases: Jumping to source code, understanding symbol origins, TypeScript code navigation.
-Not for: Finding references (use ts_find_all_references), searching symbols (use ts_symbol_search).";
+See also: ts_hover for quick signature check, ts_symbol_search for finding types by name.";
 
     public TsGoToDefinitionTool(
         ILogger<TsGoToDefinitionTool> logger,

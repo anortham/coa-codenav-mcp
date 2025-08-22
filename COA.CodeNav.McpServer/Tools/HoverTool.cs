@@ -28,12 +28,30 @@ public class HoverTool : McpToolBase<HoverParams, HoverToolResult>
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.Hover;
-    public override string Description => @"Get hover information (quick info) for a symbol at a given position.
-Returns: Symbol signature, documentation, type information, and parameter details.
+    public override string Description => @"**CHECK THIS FIRST** before using any unfamiliar method, property, or type. Shows exact signatures, parameter types, return types, and documentation in seconds.
+
+**INSTANT TYPE VERIFICATION:**
+- About to call a method? Check parameters and return type first
+- Using a property? Verify its actual type and accessibility  
+- Need overload info? See all available signatures instantly
+- Documentation unclear? Get the real XML docs
+
+**Critical moments to use:**
+- Before writing ANY method call you're unsure about
+- When seeing compilation errors about parameters or types
+- Before assuming async vs sync method variants exist
+- When user asks 'how do I call this?' or 'what parameters?'
+
+**Prevents common mistakes:**
+- Wrong parameter types (string vs int, nullable vs non-nullable)
+- Missing required parameters or wrong parameter order
+- Assuming methods exist (GetAsync when only Get exists)
+- Using wrong return types in assignments
+
+**Speed advantage:** 2 seconds to verify vs 5 minutes debugging compilation errors later.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if symbol cannot be resolved.
-Use cases: View method signatures, read XML documentation, understand parameter types, check return types.
-Not for: Navigation (use csharp_goto_definition), finding usages (use csharp_find_all_references).";
+See also: csharp_get_type_members for full type overview, csharp_goto_definition for complete source.";
 
     public HoverTool(
         ILogger<HoverTool> logger,
