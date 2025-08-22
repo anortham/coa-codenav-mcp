@@ -58,8 +58,8 @@ public class TsGetDiagnosticsToolTests
     [Fact]
     public void TsGetDiagnosticsTool_ShouldHaveProperDescription()
     {
-        _tool.Description.Should().Contain("TypeScript compilation diagnostics");
-        _tool.Description.Should().Contain("errors, warnings");
+        _tool.Description.Should().Contain("TypeScript compilation errors");
+        _tool.Description.Should().Contain("error messages");
         _tool.Description.Should().Contain("Prerequisites");
         _tool.Description.Should().Contain("ts_load_tsconfig");
     }

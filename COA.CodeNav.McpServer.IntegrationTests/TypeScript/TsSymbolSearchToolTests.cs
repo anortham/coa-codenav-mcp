@@ -227,7 +227,7 @@ public class TsSymbolSearchToolTests : IDisposable
         _tool.Description.Should().NotBeNullOrWhiteSpace();
         _tool.Description.Should().Contain("Search");
         _tool.Description.Should().Contain("TypeScript");
-        _tool.Description.Should().Contain("symbols");
+        _tool.Description.Should().Contain("types");
     }
 
     public void Dispose()

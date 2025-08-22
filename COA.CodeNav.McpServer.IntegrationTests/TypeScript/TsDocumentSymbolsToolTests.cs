@@ -161,7 +161,7 @@ public class TsDocumentSymbolsToolTests : IDisposable
     public void DocumentSymbols_ShouldHaveProperDescription()
     {
         _tool.Description.Should().NotBeNullOrWhiteSpace();
-        _tool.Description.Should().Contain("symbol hierarchy");
+        _tool.Description.Should().Contain("file structure");
         _tool.Description.Should().Contain("TypeScript");
     }
 

@@ -51,7 +51,7 @@ public class LoadTsConfigToolTests
     [Fact]
     public void LoadTsConfigTool_ShouldHaveProperDescription()
     {
-        _tool.Description.Should().Contain("Load a TypeScript project");
+        _tool.Description.Should().Contain("Load TypeScript project");
         _tool.Description.Should().Contain("tsconfig.json");
         _tool.Description.Should().Contain("Prerequisites");
     }
