@@ -26,36 +26,12 @@ public class TsCallHierarchyTool : McpToolBase<TsCallHierarchyParams, TsCallHier
 
     public override string Name => ToolNames.TsCallHierarchy;
     
-    public override string Description => @"**UNDERSTAND TYPESCRIPT FUNCTION IMPACT IN ONE GLANCE** - Before changing any function, see who calls it and what it calls. Essential for safe refactoring and debugging complex TypeScript codebases.
+    public override string Description => @"Show complete TypeScript function call hierarchy - who calls this function and what it calls. Essential for understanding impact before changes.
 
-**COMPLETE DEPENDENCY VISUALIZATION:**
-- See ALL functions that call this one (incoming) - know the blast radius
-- See ALL functions this one calls (outgoing) - understand dependencies  
-- Get the full picture in seconds instead of hunting through files
-- Trace complex call chains across multiple TypeScript modules
-
-**CRITICAL BEFORE REFACTORING:**
-- Planning to change a function signature? See who will break first
-- Want to delete a function? Know exactly what depends on it
-- Refactoring component methods? Understand the call relationships
-- Debugging async/await chains? See the complete execution flow
-
-**SAVES REFACTORING DISASTERS:**
-- No more breaking 20 components when you change one function
-- No more 'This function is not used' mistakes (it actually is!)
-- No more mysterious runtime errors from changed dependencies
-- No more digging through dozens of files to trace call paths
-
-**DEBUGGING SUPERPOWER:**
-- Trace function calls backwards to find the root cause
-- Follow execution paths forward to see side effects
-- Understand complex async function relationships instantly
-- Map out component interaction patterns visually
-
-**THE SAFE CHANGE RULE:** Before modifying any TypeScript function, check its call hierarchy. Know what breaks before you break it.
+Critical: Before modifying any function, see its call hierarchy FIRST. Understand the blast radius and dependencies to avoid breaking changes.
 
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-See also: ts_find_all_references for broader usage, ts_goto_definition for implementation details.";
+Use cases: Impact analysis, refactoring planning, debugging call chains, understanding dependencies.";
 
     public TsCallHierarchyTool(
         ILogger<TsCallHierarchyTool> logger,

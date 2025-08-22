@@ -17,41 +17,12 @@ public class LoadTsConfigTool : McpToolBase<TsLoadConfigParams, TsLoadConfigResu
 
     public override string Name => ToolNames.TsLoadTsConfig;
     
-    public override string Description => @"**ESSENTIAL FIRST STEP FOR ALL TYPESCRIPT WORK** - Before using any TypeScript tools, load your project configuration. This is the foundation that enables intelligent TypeScript analysis and navigation.
+    public override string Description => @"Load TypeScript project configuration BEFORE using other TypeScript tools. Reads tsconfig.json to enable intelligent analysis and navigation.
 
-**PROJECT INITIALIZATION:**
-- Starting work on any TypeScript project? Run this FIRST before anything else
-- Opens and analyzes your tsconfig.json to understand project structure
-- Loads compiler options, path mappings, and project references
-- Enables all other TypeScript tools to work with full context
-
-**TYPESCRIPT INTELLIGENCE FOUNDATION:**
-- Provides the compiler settings that drive intelligent analysis
-- Understands your custom path mappings and module resolution
-- Loads project references for monorepo and multi-project setups
-- Establishes the TypeScript version and strict mode settings
-
-**CRITICAL FOR ACCURACY:**
-- Without loading tsconfig first, other tools can't provide accurate results
-- Ensures type checking follows your exact project configuration
-- Respects your include/exclude patterns and file organization
-- Uses your specific compiler options for diagnostics and navigation
-
-**ONE-TIME SETUP PER SESSION:**
-- Load once per TypeScript project to enable all features
-- Handles complex project configurations automatically
-- Works with modern TypeScript setups including workspaces
-- Validates TypeScript installation and project structure
-
-**THE TYPESCRIPT WORKFLOW:**
-1. **ALWAYS start here** - Load your tsconfig.json
-2. Then use any other TypeScript tools with full intelligence
-3. All navigation, diagnostics, and refactoring now work perfectly
-
-**SUCCESS GUARANTEE:** This tool makes every other TypeScript tool work better by providing complete project context.
+Critical: Run this FIRST when starting TypeScript work. Without loading tsconfig, other TypeScript tools can't provide accurate results.
 
 Prerequisites: TypeScript must be installed (npm install -g typescript).
-See also: All other ts_ tools require this to be run first for optimal results.";
+Use cases: Starting TypeScript projects, enabling intelligent analysis, loading compiler settings.";
 
     public override ToolCategory Category => ToolCategory.Resources;
 

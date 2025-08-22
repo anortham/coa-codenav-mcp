@@ -24,41 +24,12 @@ public class TsFindImplementationsTool : McpToolBase<TsFindImplementationsParams
 
     public override string Name => ToolNames.TsFindImplementations;
     
-    public override string Description => @"**DISCOVER ALL TYPESCRIPT INTERFACE IMPLEMENTATIONS INSTANTLY** - Working with interfaces or abstract classes? Find every concrete implementation across your entire codebase in seconds.
+    public override string Description => @"Find all TypeScript interface implementations and abstract method overrides. Discover every concrete class that implements interfaces or extends abstracts.
 
-**INTERFACE IMPLEMENTATION DISCOVERY:**
-- Wondering which classes implement IUserService? Find them all instantly
-- Working with abstract base classes? See all concrete derived classes
-- Debugging interface issues? See exactly how each implementation differs
-- Planning interface changes? Know which implementations will be affected
-
-**TYPESCRIPT ARCHITECTURE INSIGHTS:**
-- Map out your interface-based architecture visually
-- Understand inheritance hierarchies across multiple files
-- Find all concrete implementations of generic interfaces
-- Discover forgotten or unused interface implementations
-
-**ESSENTIAL FOR REFACTORING:**
-- Before changing an interface, see all implementations that will break
-- Planning to add interface methods? See where you'll need to implement them
-- Want to delete interface methods? Find all implementations to update
-- Refactoring inheritance? See the complete implementation tree
-
-**DEBUGGING POLYMORPHISM:**
-- Track down which implementation is actually being called at runtime
-- Compare different implementations of the same interface method
-- Find missing implementations that might cause runtime errors
-- Understand why certain interface methods behave differently
-
-**CODEBASE EXPLORATION:**
-- Learn how interfaces are used throughout large TypeScript projects
-- Find examples of proper interface implementation patterns
-- Discover unused or redundant interface implementations
-
-**THE INTERFACE RULE:** Before changing any TypeScript interface, find all implementations to understand the impact.
+Critical: Before changing interfaces or abstract methods, see all implementations FIRST. Prevents breaking concrete classes across the codebase.
 
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-See also: ts_goto_definition for interface details, ts_call_hierarchy for usage patterns.";
+Use cases: Finding implementations, understanding inheritance patterns, planning interface changes.";
 
     public TsFindImplementationsTool(
         ILogger<TsFindImplementationsTool> logger,
