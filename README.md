@@ -4,6 +4,13 @@ A powerful MCP (Model Context Protocol) server providing comprehensive **C# and 
 
 ## 🚀 Features
 
+### Auto-Loading System ⚡
+- **Zero Configuration** - Solutions and TypeScript projects load automatically at startup
+- **Multi-Language Support** - Simultaneous C# and TypeScript workspace initialization
+- **Smart Discovery** - Automatically finds .sln, .csproj, and tsconfig.json files
+- **Background Loading** - Non-blocking startup with parallel workspace preparation
+- **Graceful Fallbacks** - Falls back to manual loading if auto-detection fails
+
 ### C# Analysis (Roslyn)
 - **Complete C# Code Analysis** - Full Roslyn compiler integration for accurate code understanding
 - **31 Powerful Tools** - Comprehensive suite covering navigation, analysis, refactoring, and code generation
@@ -21,6 +28,7 @@ A powerful MCP (Model Context Protocol) server providing comprehensive **C# and 
 - **AI-First Design** - Structured outputs with insights, next actions, and error recovery
 - **Smart Token Management** - Automatic response truncation to prevent context overflow
 - **Progressive Disclosure** - Automatic response summarization for large results
+- **Intelligent Hooks** - Claude Code integration with smart type verification suggestions
 - **Cross-platform Support** - Windows, macOS, and Linux compatibility
 
 ## 📦 Installation
@@ -96,11 +104,13 @@ dotnet tool uninstall --global COA.CodeNav.McpServer
 
 ### Quick Reference
 
+> 💡 **New**: With auto-loading enabled, solutions and TypeScript projects load automatically - no manual loading required!
+
 #### C# Tools (31 tools)
 
 | Tool                         | Purpose                | Example Usage                       |
 | ---------------------------- | ---------------------- | ----------------------------------- |
-| `csharp_load_solution`       | Load VS solution       | "Load MyApp.sln"                    |
+| `csharp_load_solution`       | Load VS solution*      | "Load MyApp.sln"                    |
 | `csharp_goto_definition`     | Jump to definition     | "Go to UserService definition"      |
 | `csharp_find_all_references` | Find usages            | "Where is ProcessOrder used?"       |
 | `csharp_symbol_search`       | Search symbols         | "Find all \*Service classes"        |
@@ -112,12 +122,14 @@ dotnet tool uninstall --global COA.CodeNav.McpServer
 | `csharp_call_hierarchy`      | View call graph        | "Show who calls ProcessOrder"       |
 | `csharp_code_clone_detection`| Find duplicate code    | "Find duplicated code blocks"       |
 
+*Only needed if auto-loading fails or for additional solutions
+
 #### TypeScript Tools (14 tools)
 
 | Tool                         | Purpose                    | Example Usage                       |
 | ---------------------------- | -------------------------- | ----------------------------------- |
-| `ts_load_tsconfig`          | Load TypeScript project    | "Load tsconfig.json"                |
-| `ts_load_workspace`         | Load multi-project workspace | "Load TypeScript monorepo"        |
+| `ts_load_tsconfig`          | Load TypeScript project*   | "Load tsconfig.json"                |
+| `ts_load_workspace`         | Load multi-project workspace* | "Load TypeScript monorepo"        |
 | `ts_goto_definition`        | Navigate to definitions    | "Go to UserService definition"      |
 | `ts_find_all_references`    | Find symbol references     | "Where is processOrder used?"       |
 | `ts_find_implementations`   | Find interface implementations | "Find all User implementations"   |
@@ -131,11 +143,73 @@ dotnet tool uninstall --global COA.CodeNav.McpServer
 | `ts_organize_imports`       | Sort and organize imports  | "Clean up import statements"        |
 | `ts_apply_quick_fix`        | Apply TypeScript fixes     | "Fix this TypeScript error"         |
 
+*Only needed if auto-loading fails or for additional projects
+
+### 🔄 Auto-Loading System
+
+The MCP server now features an intelligent auto-loading system that automatically discovers and loads your projects at startup, eliminating the need for manual workspace setup in most cases.
+
+#### How Auto-Loading Works
+
+1. **Startup Detection**: When the MCP server starts, it scans the current directory and subdirectories
+2. **Multi-Language Discovery**: Simultaneously searches for:
+   - C# solutions (`.sln` files)
+   - C# projects (`.csproj` files) 
+   - TypeScript configs (`tsconfig.json` files)
+3. **Smart Prioritization**: Prefers solutions over individual projects, respects configuration preferences
+4. **Background Loading**: Loads workspaces in parallel without blocking the server startup
+5. **Graceful Fallbacks**: Falls back to manual loading if auto-detection fails
+
+#### Configuration (appsettings.json)
+
+```json
+{
+  "Startup": {
+    "AutoLoadSolution": true,              // Enable auto-loading
+    "SolutionPath": "MyApp.sln",          // Preferred solution name
+    "MaxSearchDepth": 5,                   // Directory search depth
+    "PreferredSolutionName": "MyApp",      // Preferred solution prefix
+    "RequireSolution": false               // Allow project-only loading
+  }
+}
+```
+
+#### Auto-Loading Status
+
+Use `csharp_get_workspace_statistics` to check if auto-loading succeeded:
+
+```json
+{
+  "totalWorkspaces": 1,
+  "workspaceDetails": [{
+    "workspaceId": "C:\\Projects\\MyApp\\MyApp.sln",
+    "loadedPath": "C:\\Projects\\MyApp\\MyApp.sln",
+    "createdAt": "2025-01-20T10:30:00Z",
+    "lastAccessedAt": "2025-01-20T10:35:00Z"
+  }]
+}
+```
+
+#### When Manual Loading is Still Needed
+
+- **Additional Solutions**: Loading secondary solutions not in the startup directory
+- **Specific Projects**: Loading individual projects when solution auto-loading fails
+- **Remote Paths**: Loading solutions from network locations or different drives
+- **Multi-Workspace**: Working with multiple unrelated solutions simultaneously
+
+#### Benefits of Auto-Loading
+
+- ✅ **Zero Configuration** - Works out of the box for most projects
+- ✅ **Faster Startup** - Parallel loading reduces time to first usable state  
+- ✅ **Multi-Language** - Handles C# and TypeScript projects simultaneously
+- ✅ **Intelligence Ready** - Type verification and navigation tools available immediately
+- ✅ **Backward Compatible** - Manual loading still available when needed
+
 ### Workspace Management
 
 #### `csharp_load_solution`
 
-Load a complete Visual Studio solution for analysis.
+Load a complete Visual Studio solution for analysis (typically only needed if auto-loading fails or for additional solutions).
 
 **When to use:**
 
@@ -757,6 +831,7 @@ The server provides 26 tools organized into these categories:
 3. **Error Recovery** - Detailed error information with actionable steps
 4. **Performance** - Symbol caching and efficient workspace management
 5. **Extensibility** - Easy to add new tools using attribute-based discovery
+6. **Intelligent Integration** - Seamless Claude Code hooks for enhanced development workflow
 
 ### Token Management
 
@@ -768,33 +843,204 @@ All tools implement smart token management:
 - Store full results in resources
 - Provide clear next actions for pagination
 
+## 🎯 Claude Code Integration
+
+### Intelligent Hooks System
+
+COA CodeNav MCP includes sophisticated Claude Code hooks that enhance the development experience by providing contextual guidance and automatic workspace management.
+
+#### Available Hooks
+
+**Session Start Hook** (`session_start_codenav.py`)
+- Triggered on session startup and resume
+- Reports auto-loading status for detected projects
+- Provides fallback guidance if auto-loading fails
+- Shows immediate readiness status for type verification tools
+
+**Pre-Edit Guard Rails** (`guard_rails_pre.py`)
+- Triggered before Edit/Write/MultiEdit operations
+- Analyzes code for type references and complexity
+- Suggests type verification when working with custom types
+- Accounts for auto-loaded solutions to avoid redundant suggestions
+
+**Post-Tool Success Tracking** (`guard_rails_post.py`)
+- Tracks successful CodeNav tool usage
+- Builds session-local knowledge of verified types
+- Provides concise feedback optimized for auto-loading environments
+- Maintains verification statistics across the session
+
+#### Hook Features
+
+- **Auto-Loading Aware**: Hooks understand when solutions are already loaded via auto-loading
+- **Reduced Noise**: Cleaner output since manual loading reminders are no longer needed
+- **Type Verification Focus**: Emphasis shifted from "load solutions" to "verify types"
+- **Session Memory**: Tracks verified types to avoid redundant suggestions
+- **Backward Compatible**: Gracefully handles manual loading scenarios
+
+#### Example Hook Output
+
+**Session Start (Auto-Loading Active)**:
+```
+🔥 SESSION START HOOK TRIGGERED
+🚀 CodeNav Auto-Loading Status
+=============================================
+
+📁 C# Project Detected
+   ✅ Solution auto-loaded: COA.CodeNav.McpServer.sln
+   🚀 C# type verification ready!
+
+📁 TypeScript Project Detected
+   ✅ TypeScript workspace auto-loaded
+   🚀 TypeScript type verification ready!
+
+✨ Auto-Loading Benefits:
+   • Solutions/projects loaded automatically at startup
+   • No manual loading steps required
+   • Instant type verification tools available
+   • Seamless hover tooltips and go-to-definition
+```
+
+**Pre-Edit Guidance**:
+```
+💡 Type Verification Suggestion:
+   💡 Verify C# types: UserService, OrderProcessor, PaymentValidator
+      mcp__codenav__csharp_hover <file> <line> <col> → UserService details
+```
+
+**Post-Tool Success**:
+```
+✅ Type verified: UserService
+   Properties: Id, Name, Email (+2 more)
+   Methods: GetUser, UpdateUser (+3 more)
+   Session: 12 types verified
+```
+
+#### Installation
+
+The hooks are automatically installed with the MCP server. To use them with Claude Code:
+
+1. Place the hook files in `.claude/hooks/`
+2. Configure `.claude/settings.json` with hook triggers
+3. Hooks will activate automatically on session start and tool usage
+
+#### Hook Configuration
+
+Example `.claude/settings.json` configuration:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "source": "startup",
+        "hooks": [
+          {
+            "type": "command", 
+            "command": "uv run .claude/hooks/session_start_codenav.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run .claude/hooks/guard_rails_pre.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "csharp_hover|csharp_goto_definition|ts_hover|ts_goto_definition",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run .claude/hooks/guard_rails_post.py"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ## 🔧 Troubleshooting
 
 ### Common Issues
 
-**"Workspace not loaded" error**
+**Auto-Loading Issues**
 
-- Ensure you've called `csharp_load_solution` or `csharp_load_project` first
-- Check the solution/project path is correct
-- Verify the solution builds successfully in Visual Studio
+- **"No workspace loaded" despite auto-loading**: Check that solution/project files exist in the current directory or subdirectories
+- **Auto-loading found wrong solution**: Use manual `csharp_load_solution` with the specific path you want
+- **TypeScript not auto-loading**: Ensure `tsconfig.json` exists and TypeScript is installed globally (`npm install -g typescript`)
+- **Multiple solutions detected**: Configure `PreferredSolutionName` in appsettings.json to specify which solution to prefer
 
-**"Symbol not found" errors**
+**Workspace Errors**
 
-- Make sure the file is part of the loaded solution/project
-- Check that the line and column numbers are correct (1-based)
-- Ensure the code compiles without errors
+- **"Workspace not loaded" error**: 
+  - First, check `csharp_get_workspace_statistics` to see if auto-loading worked
+  - If no workspaces loaded, manually call `csharp_load_solution` or `csharp_load_project`
+  - Verify the solution builds successfully in Visual Studio
 
-**Performance issues**
+**Symbol Navigation Issues**
 
-- Use `csharp_get_workspace_statistics` to check memory usage
-- Consider loading individual projects instead of large solutions
-- Enable response summarization for large results
+- **"Symbol not found" errors**:
+  - Ensure the file is part of the loaded solution/project
+  - Check that line and column numbers are correct (1-based)
+  - Verify the code compiles without errors
+  - Use `csharp_get_diagnostics` to check for compilation issues
 
-**"Response truncated" messages**
+**Performance Issues**
 
-- This is normal for large results
-- Use the provided next actions to get more results
-- Consider using more specific queries
+- **Slow response times**:
+  - Use `csharp_get_workspace_statistics` to check memory usage
+  - Consider loading individual projects instead of large solutions
+  - Enable response summarization for large results
+  - Check if multiple workspaces are loaded unnecessarily
+
+**Hook-Related Issues**
+
+- **Hooks not triggering**: Verify `.claude/settings.json` configuration and ensure Python/uv is available
+- **Excessive hook output**: Hooks are optimized for auto-loading environments; consider disabling if not using auto-loading
+- **Type verification suggestions not helpful**: Hooks learn from your session; suggestions improve as you verify more types
+
+**Response Issues**
+
+- **"Response truncated" messages**:
+  - This is normal for large results to prevent context overflow
+  - Use the provided next actions to get more results
+  - Consider using more specific queries to reduce result size
+
+### Auto-Loading Configuration
+
+**Disable Auto-Loading**:
+```json
+{
+  "Startup": {
+    "AutoLoadSolution": false
+  }
+}
+```
+
+**Configure Search Behavior**:
+```json
+{
+  "Startup": {
+    "AutoLoadSolution": true,
+    "MaxSearchDepth": 3,                    // Reduce for faster startup
+    "PreferredSolutionName": "MyMainApp",   // Prefer specific solution
+    "RequireSolution": true                 // Don't fallback to projects
+  }
+}
+```
+
+**Debug Auto-Loading**:
+- Check logs in `%LOCALAPPDATA%\COA.CodeNav.McpServer\logs` (Windows) or `~/.local/share/COA.CodeNav.McpServer/logs` (Linux/macOS)
+- Use `csharp_get_workspace_statistics` to see what was loaded
+- Verify that solution/project files are accessible and not corrupted
 
 ### Logging
 
@@ -859,47 +1105,66 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📊 Project Status
 
+### Auto-Loading System (New! ⚡)
+- ✅ **Intelligent workspace discovery** - Automatically finds and loads C# solutions and TypeScript projects
+- ✅ **Multi-language support** - Simultaneous C# and TypeScript workspace initialization
+- ✅ **Background loading** - Non-blocking startup with parallel workspace preparation
+- ✅ **Smart fallbacks** - Graceful degradation to manual loading when needed
+- ✅ **Claude Code integration** - Hooks system optimized for auto-loading workflow
+
 ### C# Analysis (Complete)
-- ✅ **26 Roslyn tools** implemented and tested
-- ✅ **Full MSBuild workspace** support with solution/project loading
+- ✅ **31 Roslyn tools** implemented and tested
+- ✅ **Full MSBuild workspace** support with auto-loading and manual fallback
 - ✅ **Advanced refactoring** - extract methods, rename symbols, generate code
 - ✅ **Deep analysis** - metrics, dependencies, clone detection, call hierarchies
 - ✅ **Symbol caching** for performance optimization
 
 ### TypeScript Analysis (Released)
-- ✅ **7 core TypeScript tools** implemented with TypeScript Server Protocol
-- ✅ **Project management** with tsconfig.json loading and workspace tracking  
+- ✅ **14 TypeScript tools** implemented with TypeScript Server Protocol
+- ✅ **Project management** with auto-loading tsconfig.json and workspace tracking  
 - ✅ **Navigation tools** - GoToDefinition, FindReferences, Hover, CallHierarchy working correctly
 - ✅ **Real-time diagnostics** via tsc compiler integration
 - ✅ **Advanced analysis** - Call hierarchy with bidirectional call tracking
+- ✅ **Imports management** - Auto-organize and fix missing imports
 
 ### Framework Integration
-- ✅ **COA.Mcp.Framework v1.7.9** - Latest framework with enhanced token management
+- ✅ **COA.Mcp.Framework v1.7.19** - Latest framework with enhanced token management
 - ✅ **AI-optimized responses** with insights, next actions, and error recovery
 - ✅ **Smart token management** with automatic response truncation
 - ✅ **Cross-platform support** - Windows, macOS, and Linux
 - ✅ **Global dotnet tool** packaging for easy installation
+- ✅ **Claude Code hooks** - Intelligent session management and type verification guidance
 
 ### Planned Features
+- 🚧 Python language support (architecture ready for extension)
 - 🚧 Additional TypeScript tools (DocumentSymbols, SymbolSearch, FindImplementations)
 - 🚧 Razor/Blazor support
 - 🚧 JavaScript support via TypeScript infrastructure
 
 ## 🚀 Getting Started
 
-### C# Projects
+### C# Projects (with Auto-Loading)
 1. **Install**: `dotnet tool install --global COA.CodeNav.McpServer`
-2. **Configure** your AI assistant (see Installation section)
-3. **Load** a solution: "Load the MyApp.sln solution"
-4. **Explore**: "What does the UserService class do?"
+2. **Configure** your AI assistant (see Installation section)  
+3. **Start session** in your project directory - solutions auto-load! ⚡
+4. **Explore immediately**: "What does the UserService class do?"
 5. **Navigate**: "Find all references to ProcessOrder"
 6. **Refactor**: "Rename UserService to UserManager"
 
-### TypeScript Projects  
+*Manual loading only needed for additional solutions: "Load the MyApp.sln solution"*
+
+### TypeScript Projects (with Auto-Loading)
 1. **Prerequisites**: Ensure TypeScript is installed: `npm install -g typescript`
-2. **Load** a project: "Load the tsconfig.json file"
-3. **Navigate**: "Go to the definition of UserService"
+2. **Start session** in your project directory - tsconfig.json auto-loads! ⚡
+3. **Navigate immediately**: "Go to the definition of UserService"
 4. **Analyze**: "Check for TypeScript compilation errors"
 5. **Explore**: "Find all references to processOrder method"
+
+*Manual loading only needed for additional projects: "Load the tsconfig.json file"*
+
+### Quick Verification
+After starting a session, check that auto-loading worked:
+- **C#**: "Show workspace statistics" - should show loaded solution
+- **TypeScript**: "Check for TypeScript errors" - should show project status
 
 ---

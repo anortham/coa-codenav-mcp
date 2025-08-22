@@ -100,6 +100,9 @@ builder.Services.AddSingleton<DocumentService>();
 builder.Services.AddSingleton<SymbolCache>();
 builder.Services.AddSingleton<CodeFixService>();
 
+// Register startup workspace loader as hosted service
+builder.Services.AddHostedService<StartupWorkspaceLoader>();
+
 // Register TypeScript services
 builder.Services.AddSingleton<COA.CodeNav.McpServer.Infrastructure.TypeScript.TypeScriptCompilerManager>();
 builder.Services.AddSingleton<COA.CodeNav.McpServer.Services.TypeScript.TypeScriptWorkspaceService>();
