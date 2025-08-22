@@ -31,12 +31,12 @@ public class AddMissingUsingsTool : McpToolBase<AddMissingUsingsParams, AddMissi
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.AddMissingUsings;
-    public override string Description => @"Add missing using directives for unresolved types.
-Returns: Updated document with added using statements.
+    public override string Description => @"Automatically add missing using statements for unresolved types. Fixes 'type not found' errors by importing the correct namespaces.
+
+Critical: When you see missing namespace errors, run this FIRST. Saves time manually typing using statements and finds the correct namespaces automatically.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if document cannot be processed.
-Use cases: Fixing compilation errors, adding missing imports automatically, code cleanup.
-Not for: Manual namespace management, removing unused usings (different feature).";
+Use cases: Fixing compilation errors, adding missing imports, cleaning up namespace issues.";
     
     public AddMissingUsingsTool(
         ILogger<AddMissingUsingsTool> logger,

@@ -32,12 +32,12 @@ public class MoveTypeTool : McpToolBase<MoveTypeParams, MoveTypeResult>
     private readonly MoveTypeResponseBuilder _responseBuilder;
 
     public override string Name => ToolNames.MoveType;
-    public override string Description => @"Move a type (class, interface, enum, struct) to a different file or namespace.
-Returns: Updated source code with the type moved to the new location.
+    public override string Description => @"Move classes, interfaces, or types to different files or namespaces. Improves code organization and separates concerns properly.
+
+Critical: Before moving types, check dependencies to avoid breaking references. Updates using statements and imports automatically.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if move fails.
-Use cases: Organizing code structure, separating concerns, improving file organization.
-Not for: Renaming types (use csharp_rename_symbol), moving methods within types (use other refactoring tools).";
+Use cases: Organizing code structure, separating concerns, improving file organization, namespace cleanup.";
     public override ToolCategory Category => ToolCategory.Refactoring;
     
     public MoveTypeTool(

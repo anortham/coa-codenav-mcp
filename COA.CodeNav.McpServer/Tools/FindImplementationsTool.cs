@@ -26,12 +26,12 @@ public class FindImplementationsTool : McpToolBase<FindImplementationsParams, Fi
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.FindImplementations;
-    public override string Description => @"Find all implementations of interfaces and overrides of virtual/abstract methods.
-Returns: List of implementing types/members with their locations and metadata.
+    public override string Description => @"Find all implementations of interfaces and abstract method overrides. Discover every concrete class that implements interfaces or extends abstracts.
+
+Critical: Before changing interfaces or abstract methods, see all implementations FIRST. Prevents breaking concrete classes across the codebase.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if symbol is not found.
-Use cases: Finding concrete implementations, discovering derived classes, locating overrides.
-Not for: Finding references (use csharp_find_all_references), finding base types (use csharp_goto_definition).";
+Use cases: Finding implementations, understanding inheritance patterns, planning interface changes.";
 
     public FindImplementationsTool(
         ILogger<FindImplementationsTool> logger,

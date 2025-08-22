@@ -19,7 +19,11 @@ public class LoadProjectTool : McpToolBase<LoadProjectParams, LoadProjectResult>
     private readonly ITokenEstimator _tokenEstimator;
 
     public override string Name => "csharp_load_project";
-    public override string Description => "Load a C# project file into the Roslyn workspace";
+    public override string Description => @"Load C# project into workspace for code analysis. Required first step before using any other C# navigation or analysis tools.
+
+Critical: Run this FIRST when starting work on a C# project. Without loading the project, other tools can't provide accurate results.
+
+Use cases: Starting C# projects, enabling code analysis, loading project dependencies and references.";
 
     public LoadProjectTool(
         ILogger<LoadProjectTool> logger,

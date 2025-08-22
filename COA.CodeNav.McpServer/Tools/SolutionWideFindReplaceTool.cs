@@ -29,12 +29,12 @@ public class SolutionWideFindReplaceTool : McpToolBase<SolutionWideFindReplacePa
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_solution_wide_find_replace";
-    public override string Description => @"Perform find and replace operations across the entire solution with preview and filtering.
-Returns: List of files that would be modified, with before/after snippets and change counts.
+    public override string Description => @"Find and replace text patterns across the entire solution with preview. Enables bulk changes like renaming patterns or updating deprecated APIs.
+
+Critical: Always use preview mode FIRST to see impact before applying changes. Supports regex patterns for powerful text transformations.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if pattern is invalid.
-Use cases: Bulk renaming, pattern replacement, code modernization, fixing deprecated APIs.
-AI benefit: Enables large-scale refactoring that would be tedious to do file by file.";
+Use cases: Bulk renaming, pattern replacement, code modernization, fixing deprecated APIs across files.";
 
     public SolutionWideFindReplaceTool(
         ILogger<SolutionWideFindReplaceTool> logger,

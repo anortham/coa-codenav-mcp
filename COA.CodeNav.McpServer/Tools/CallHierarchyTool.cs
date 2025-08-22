@@ -30,12 +30,12 @@ public class CallHierarchyTool : McpToolBase<CallHierarchyParams, CallHierarchyR
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_call_hierarchy";
-    public override string Description => @"Get complete call hierarchy (incoming and outgoing calls) for a method at once.
-Returns: Bidirectional call tree with incoming (callers) and outgoing (callees) in a single view.
+    public override string Description => @"Show complete method call hierarchy - who calls this method and what it calls. Essential for understanding impact before changes.
+
+Critical: Before modifying any method, see its call hierarchy FIRST. Understand the blast radius and dependencies to avoid breaking changes.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if method cannot be found.
-Use cases: Understanding method dependencies, impact analysis, refactoring planning, debugging entry points.
-AI benefit: Provides complete context that agents can't easily piece together from separate tools.";
+Use cases: Impact analysis, refactoring planning, debugging call chains, understanding dependencies.";
 
     public CallHierarchyTool(
         ILogger<CallHierarchyTool> logger,
