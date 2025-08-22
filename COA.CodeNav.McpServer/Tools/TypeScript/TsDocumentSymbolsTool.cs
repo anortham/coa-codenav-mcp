@@ -24,12 +24,7 @@ public class TsDocumentSymbolsTool : McpToolBase<TsDocumentSymbolsParams, TsDocu
 
     public override string Name => ToolNames.TsDocumentSymbols;
     
-    public override string Description => @"Map TypeScript file structure BEFORE making changes. Shows all interfaces, classes, functions, and exports to understand what actually exists.
-
-Critical: Before using anything from a TypeScript file, map its contents FIRST. Prevents import errors from non-existent types or wrong assumptions about file structure.
-
-Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Use cases: Understanding file organization, checking available exports, planning code changes.";
+    public override string Description => @"Map TypeScript file structure showing all interfaces, classes, functions, and exports to understand what exists before making changes.";
 
     public TsDocumentSymbolsTool(
         ILogger<TsDocumentSymbolsTool> logger,

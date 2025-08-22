@@ -38,12 +38,7 @@ public class TsOrganizeImportsTool : McpToolBase<TsOrganizeImportsParams, TsOrga
     public override string Name => ToolNames.TsOrganizeImports;
     public override ToolCategory Category => ToolCategory.Refactoring;
     
-    public override string Description => @"Organize and sort TypeScript import statements automatically. Groups imports, removes unused ones, and applies consistent formatting.
-
-Critical: Use after adding imports or before committing code. Ensures professional import organization and removes import clutter.
-
-Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Use cases: Cleaning up imports, preparing for code review, maintaining consistent formatting.";
+    public override string Description => @"Organize and sort TypeScript import statements automatically. Groups imports, removes unused ones, and applies consistent formatting.";
 
     public TsOrganizeImportsTool(
         ILogger<TsOrganizeImportsTool> logger,

@@ -26,12 +26,7 @@ public class TsGetDiagnosticsTool : McpToolBase<TsGetDiagnosticsParams, TsGetDia
 
     public override string Name => ToolNames.TsGetDiagnostics;
     
-    public override string Description => @"Check TypeScript compilation errors IMMEDIATELY after writing code. Shows exact error messages, type mismatches, and import issues with line numbers.
-
-Critical: After ANY TypeScript change, run diagnostics FIRST. Prevents compound type errors and finds issues in seconds instead of hunting them down later.
-
-Prerequisites: TypeScript project must be loaded via ts_load_tsconfig.
-Use cases: Verifying TypeScript compiles, finding type errors, checking import issues.";
+    public override string Description => @"Check TypeScript compilation errors and type issues showing exact error messages, type mismatches, and import issues with line numbers.";
 
     public override ToolCategory Category => ToolCategory.Diagnostics;
 

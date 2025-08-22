@@ -26,12 +26,7 @@ public class DependencyAnalysisTool : McpToolBase<DependencyAnalysisParams, Depe
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_dependency_analysis";
-    public override string Description => @"Analyze dependencies and coupling between types, namespaces, and projects. Detects circular dependencies and tight coupling issues.
-
-Critical: Use to identify architectural problems and refactoring opportunities. Circular dependencies and high coupling reduce maintainability and testability.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Architecture analysis, identifying tight coupling, finding circular dependencies, planning refactoring.";
+    public override string Description => @"Analyze dependencies and coupling between types, namespaces, and projects. Detects circular dependencies and tight coupling issues for architecture analysis.";
 
     public DependencyAnalysisTool(
         ILogger<DependencyAnalysisTool> logger,

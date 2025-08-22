@@ -24,12 +24,7 @@ public class TsRenameSymbolTool : McpToolBase<TsRenameSymbolParams, TsRenameSymb
 
     public override string Name => ToolNames.TsRenameSymbol;
     
-    public override string Description => @"Safely rename TypeScript symbols across the entire project with conflict detection. Finds every usage and prevents breaking changes.
-
-Critical: Use this for renaming instead of manual find-replace. Prevents missing references in distant files, name conflicts, and broken imports.
-
-Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Use cases: Safe refactoring, improving naming conventions, large-scale symbol renames.";
+    public override string Description => @"Safely rename TypeScript symbols across the entire project with conflict detection to prevent breaking changes.";
 
     public TsRenameSymbolTool(
         ILogger<TsRenameSymbolTool> logger,

@@ -17,12 +17,7 @@ public class LoadTsConfigTool : McpToolBase<TsLoadConfigParams, TsLoadConfigResu
 
     public override string Name => ToolNames.TsLoadTsConfig;
     
-    public override string Description => @"Load TypeScript project configuration BEFORE using other TypeScript tools. Reads tsconfig.json to enable intelligent analysis and navigation.
-
-Critical: Run this FIRST when starting TypeScript work. Without loading tsconfig, other TypeScript tools can't provide accurate results.
-
-Prerequisites: TypeScript must be installed (npm install -g typescript).
-Use cases: Starting TypeScript projects, enabling intelligent analysis, loading compiler settings.";
+    public override string Description => @"Load TypeScript project configuration to enable intelligent analysis and navigation. Reads tsconfig.json and compiler settings for accurate results.";
 
     public override ToolCategory Category => ToolCategory.Resources;
 

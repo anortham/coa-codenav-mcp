@@ -24,12 +24,7 @@ public class TsHoverTool : McpToolBase<TsHoverParams, TsHoverResult>, IDisposabl
 
     public override string Name => ToolNames.TsHover;
     
-    public override string Description => @"Check TypeScript method signatures and types BEFORE calling. Shows exact parameter types, return values, and JSDoc documentation to prevent type errors.
-
-Critical: Before calling any unfamiliar TypeScript method, verify its signature first. Prevents wrong parameter types, missing optional properties, or using deprecated overloads.
-
-Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Use cases: Verifying function signatures, checking optional properties, understanding generic types.";
+    public override string Description => @"Check TypeScript method signatures and types showing exact parameter types, return values, and JSDoc documentation.";
 
     public TsHoverTool(
         ILogger<TsHoverTool> logger,

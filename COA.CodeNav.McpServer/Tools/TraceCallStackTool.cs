@@ -29,12 +29,7 @@ public class TraceCallStackTool : McpToolBase<TraceCallStackParams, TraceCallSta
 
     public override string Name => ToolNames.TraceCallStack;
     
-    public override string Description => @"Trace execution paths through code to understand complete call chains. Shows how methods connect from entry points to implementations.
-
-Critical: Use to debug complex call flows and understand how code execution moves through the system. Essential for debugging and impact analysis.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Understanding API flows, tracing event handlers, debugging call chains, analyzing execution paths.";
+    public override string Description => @"Trace execution paths through code to understand complete call chains. Shows how methods connect from entry points to implementations for debugging and impact analysis.";
 
     public TraceCallStackTool(
         ILogger<TraceCallStackTool> logger,

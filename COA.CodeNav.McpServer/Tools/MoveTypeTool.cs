@@ -32,12 +32,7 @@ public class MoveTypeTool : McpToolBase<MoveTypeParams, MoveTypeResult>
     private readonly MoveTypeResponseBuilder _responseBuilder;
 
     public override string Name => ToolNames.MoveType;
-    public override string Description => @"Move classes, interfaces, or types to different files or namespaces. Improves code organization and separates concerns properly.
-
-Critical: Before moving types, check dependencies to avoid breaking references. Updates using statements and imports automatically.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Organizing code structure, separating concerns, improving file organization, namespace cleanup.";
+    public override string Description => @"Move classes, interfaces, or types to different files or namespaces. Improves code organization and updates using statements automatically.";
     public override ToolCategory Category => ToolCategory.Refactoring;
     
     public MoveTypeTool(

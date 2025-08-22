@@ -30,12 +30,7 @@ public class FormatDocumentTool : McpToolBase<FormatDocumentParams, FormatDocume
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.FormatDocument;
-    public override string Description => @"Format code according to project settings and style guidelines. Ensures consistent indentation, spacing, and organization across files.
-
-Critical: Use before committing code or during reviews. Maintains team consistency and professional code appearance.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Code cleanup, enforcing style guidelines, preparing for code review, maintaining consistency.";
+    public override string Description => @"Format code according to project settings and style guidelines ensuring consistent indentation, spacing, and organization.";
     
     public FormatDocumentTool(
         ILogger<FormatDocumentTool> logger,

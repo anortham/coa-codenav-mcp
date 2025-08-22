@@ -26,12 +26,7 @@ public class GetTypeMembersTool : McpToolBase<GetTypeMembersParams, GetTypeMembe
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.GetTypeMembers;
-    public override string Description => @"Verify type members BEFORE writing code. Shows exact property names, method signatures, and accessibility to prevent compilation errors.
-
-Critical: When user mentions 'implement X' or 'use this class', verify the type FIRST. Prevents wrong assumptions about property names (fullName vs firstName), method signatures (async vs sync), and missing members.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Before implementing interfaces, calling methods, or using any unfamiliar type.";
+    public override string Description => "Get all members of a type including properties, methods, and fields. Shows exact signatures and accessibility for understanding type structure.";
 
     public GetTypeMembersTool(
         ILogger<GetTypeMembersTool> logger,

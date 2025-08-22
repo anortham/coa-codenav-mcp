@@ -26,12 +26,7 @@ public class TsFindAllReferencesTool : McpToolBase<TsFindAllReferencesParams, Ts
 
     public override string Name => ToolNames.TsFindAllReferences;
     
-    public override string Description => @"Find all TypeScript usages BEFORE changing interfaces or public functions. Essential safety check to prevent breaking changes across the codebase.
-
-Critical: Before modifying any exported TypeScript member, find references FIRST. Prevents breaking function calls, type errors, and component failures.
-
-Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Use cases: Impact analysis before changes, understanding dependencies, refactoring preparation.";
+    public override string Description => @"Find all TypeScript usages across the codebase for impact analysis before modifying interfaces or public functions.";
 
     public TsFindAllReferencesTool(
         ILogger<TsFindAllReferencesTool> logger,

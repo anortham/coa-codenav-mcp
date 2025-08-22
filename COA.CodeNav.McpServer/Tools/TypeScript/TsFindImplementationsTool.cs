@@ -24,12 +24,7 @@ public class TsFindImplementationsTool : McpToolBase<TsFindImplementationsParams
 
     public override string Name => ToolNames.TsFindImplementations;
     
-    public override string Description => @"Find all TypeScript interface implementations and abstract method overrides. Discover every concrete class that implements interfaces or extends abstracts.
-
-Critical: Before changing interfaces or abstract methods, see all implementations FIRST. Prevents breaking concrete classes across the codebase.
-
-Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Use cases: Finding implementations, understanding inheritance patterns, planning interface changes.";
+    public override string Description => @"Find all TypeScript interface implementations and abstract method overrides to discover concrete classes that implement interfaces.";
 
     public TsFindImplementationsTool(
         ILogger<TsFindImplementationsTool> logger,

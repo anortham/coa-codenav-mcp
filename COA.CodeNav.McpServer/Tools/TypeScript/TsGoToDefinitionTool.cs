@@ -24,12 +24,7 @@ public class TsGoToDefinitionTool : McpToolBase<TsGoToDefinitionParams, TsGoToDe
 
     public override string Name => ToolNames.TsGoToDefinition;
     
-    public override string Description => @"Navigate to TypeScript type definitions BEFORE using unfamiliar interfaces or types. See actual implementation to understand structure and properties.
-
-Critical: When user mentions 'use this interface' or you see unfamiliar TypeScript types, go to definition FIRST. Prevents implementing against non-existent properties or wrong signatures.
-
-Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Use cases: Understanding interface structure, verifying type properties, reading implementation details.";
+    public override string Description => @"Navigate to TypeScript type definitions showing actual implementation structure and properties. Understand interfaces and types before using them.";
 
     public TsGoToDefinitionTool(
         ILogger<TsGoToDefinitionTool> logger,

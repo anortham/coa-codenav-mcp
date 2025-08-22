@@ -26,12 +26,7 @@ public class TsCallHierarchyTool : McpToolBase<TsCallHierarchyParams, TsCallHier
 
     public override string Name => ToolNames.TsCallHierarchy;
     
-    public override string Description => @"Show complete TypeScript function call hierarchy - who calls this function and what it calls. Essential for understanding impact before changes.
-
-Critical: Before modifying any function, see its call hierarchy FIRST. Understand the blast radius and dependencies to avoid breaking changes.
-
-Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Use cases: Impact analysis, refactoring planning, debugging call chains, understanding dependencies.";
+    public override string Description => @"Show complete TypeScript function call hierarchy showing who calls this function and what it calls for impact analysis.";
 
     public TsCallHierarchyTool(
         ILogger<TsCallHierarchyTool> logger,

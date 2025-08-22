@@ -30,12 +30,7 @@ public class GenerateCodeTool : McpToolBase<GenerateCodeParams, GenerateCodeTool
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.GenerateCode;
-    public override string Description => @"Generate boilerplate code like constructors, properties, and interface implementations. Saves time writing repetitive code patterns.
-
-Critical: Use to quickly implement interfaces and create standard patterns. Ensures consistent code structure and reduces manual typing errors.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Boilerplate code generation, implementing interfaces, creating constructors, property generation.";
+    public override string Description => @"Generate boilerplate code like constructors, properties, and interface implementations. Saves time writing repetitive code patterns and ensures consistent structure.";
     
     public GenerateCodeTool(
         ILogger<GenerateCodeTool> logger,
