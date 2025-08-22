@@ -27,37 +27,12 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.DocumentSymbols;
-    public override string Description => @"**MAP OUT WHAT'S ACTUALLY IN A FILE** before making changes or assumptions. See all classes, methods, properties, and structure at once to understand the real layout.
+    public override string Description => @"Map file structure BEFORE making changes. Shows all classes, methods, properties, and organization to understand what already exists.
 
-**FILE STRUCTURE VERIFICATION:**
-- About to modify a file? Get the complete overview first
-- Need to add new methods? See what exists to avoid duplicates
-- Implementing interface? Check what's already implemented
-- User mentions file changes? Map the territory before coding
-
-**Critical moments:**
-- Opening any file you haven't analyzed this session  
-- Before adding new methods, properties, or classes
-- When compilation errors mention missing members in specific files
-- User says 'modify this file' or 'add to this class'
-
-**What you'll discover:**
-- All classes and interfaces actually in the file
-- Every method with signatures and accessibility
-- Existing properties and their types
-- Fields, events, and nested types
-- Structure and organization patterns
-
-**Prevents common mistakes:**
-- Adding duplicate methods (they already exist with different names)
-- Wrong assumptions about class structure or organization  
-- Missing existing implementations when adding interface methods
-- Placing new code in wrong classes or namespaces
-
-**Time saved:** 5 minutes understanding structure prevents 30 minutes of confusion and rework.
+Critical: Before modifying any file, map its structure FIRST. Prevents adding duplicate methods or placing code in wrong classes.
 
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Follow up: Use csharp_get_type_members for detailed member information, csharp_goto_definition for implementations.";
+Use cases: Understanding file organization, checking existing methods, planning code additions.";
 
     public DocumentSymbolsTool(
         ILogger<DocumentSymbolsTool> logger,

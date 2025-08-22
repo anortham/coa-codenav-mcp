@@ -26,38 +26,12 @@ public class FindAllReferencesTool : McpToolBase<FindAllReferencesParams, FindAl
     private readonly FindAllReferencesResponseBuilder _responseBuilder;
 
     public override string Name => "csharp_find_all_references";
-    public override string Description => @"**BEFORE CHANGING ANY PUBLIC METHOD OR PROPERTY** - find every place it's used to prevent breaking changes. This is your safety net against accidentally breaking the codebase.
+    public override string Description => @"Find all usages BEFORE changing public methods or properties. Essential safety check to prevent breaking changes across the codebase.
 
-**CRITICAL CHANGE PROTECTION:**
-- About to modify a method signature? STOP - Find all uses first
-- Changing a property name or type? STOP - See who depends on it  
-- Refactoring or renaming? STOP - Check impact across the solution
-- User wants to 'change' or 'update' anything? Find references first
-
-**Essential before:**
-- Changing method parameters, return types, or names
-- Modifying public properties or fields
-- Deleting or moving any public members
-- Any refactoring that affects interfaces or public APIs
-
-**What you'll prevent:**
-- Breaking dozens of method calls across the solution
-- Compilation errors in unexpected places  
-- Tests failing due to changed signatures
-- Other developers' code breaking when they pull changes
-
-**Impact assessment:**
-- See exactly how many places will break
-- Understand which projects and components are affected
-- Plan changes to minimize disruption
-- Decide if the change is worth the impact
-
-**The safety rule:** If it's public and you're changing it, find references first. No exceptions.
-
-**Use cases:** Impact analysis, refactoring preparation, understanding dependencies, change planning.
+Critical: Before modifying any public member, find references FIRST. Prevents breaking dozens of method calls, compilation errors, and failed tests.
 
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-See also: csharp_rename_symbol for safe renaming, csharp_goto_definition for understanding the target.";
+Use cases: Impact analysis before changes, understanding dependencies, refactoring preparation.";
     public override ToolCategory Category => ToolCategory.Query;
 
     public FindAllReferencesTool(

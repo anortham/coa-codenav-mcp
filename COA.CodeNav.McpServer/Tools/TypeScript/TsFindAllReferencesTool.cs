@@ -26,38 +26,12 @@ public class TsFindAllReferencesTool : McpToolBase<TsFindAllReferencesParams, Ts
 
     public override string Name => ToolNames.TsFindAllReferences;
     
-    public override string Description => @"**BEFORE CHANGING ANY TYPESCRIPT INTERFACE OR PUBLIC FUNCTION** - find every place it's used to prevent breaking changes. This is your safety net against accidentally breaking the TypeScript codebase.
+    public override string Description => @"Find all TypeScript usages BEFORE changing interfaces or public functions. Essential safety check to prevent breaking changes across the codebase.
 
-**CRITICAL CHANGE PROTECTION:**
-- About to modify an interface property? STOP - Find all uses first
-- Changing a function signature or parameter types? STOP - See who depends on it  
-- Refactoring or renaming TypeScript code? STOP - Check impact across the project
-- User wants to 'change' or 'update' any TypeScript? Find references first
-
-**Essential before:**
-- Changing interface properties, method signatures, or type definitions
-- Modifying exported functions, classes, or types
-- Deleting or moving any exported TypeScript members
-- Any refactoring that affects public APIs or shared types
-
-**What you'll prevent:**
-- Breaking dozens of function calls across TypeScript files
-- Type errors in unexpected places throughout the project  
-- Components failing due to changed interface properties
-- Other developers' code breaking when they pull changes
-
-**Impact assessment:**
-- See exactly how many places will break with your changes
-- Understand which files and components are affected
-- Plan changes to minimize disruption across the codebase
-- Decide if the change is worth the widespread impact
-
-**The TypeScript safety rule:** If it's exported and you're changing it, find references first. No exceptions.
-
-**Use cases:** Impact analysis, refactoring preparation, understanding TypeScript dependencies, change planning.
+Critical: Before modifying any exported TypeScript member, find references FIRST. Prevents breaking function calls, type errors, and component failures.
 
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-See also: ts_rename_symbol for safe renaming, ts_goto_definition for understanding the target.";
+Use cases: Impact analysis before changes, understanding dependencies, refactoring preparation.";
 
     public TsFindAllReferencesTool(
         ILogger<TsFindAllReferencesTool> logger,

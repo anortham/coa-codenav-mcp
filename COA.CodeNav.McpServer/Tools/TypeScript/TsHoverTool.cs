@@ -24,30 +24,12 @@ public class TsHoverTool : McpToolBase<TsHoverParams, TsHoverResult>, IDisposabl
 
     public override string Name => ToolNames.TsHover;
     
-    public override string Description => @"**CHECK THIS FIRST** before using any unfamiliar TypeScript method, property, interface, or type. Shows exact signatures, parameter types, return types, and JSDoc documentation in seconds.
+    public override string Description => @"Check TypeScript method signatures and types BEFORE calling. Shows exact parameter types, return values, and JSDoc documentation to prevent type errors.
 
-**INSTANT TYPE VERIFICATION:**
-- Unsure about a method signature? Check it instantly
-- Need to know exact parameter types? Get them immediately  
-- Want to see return type without guessing? Hover shows all
-- Confused about optional vs required properties? See the truth
-
-**Prevents TypeScript headaches:**
-- Wrong function signatures and parameter mismatches
-- Incorrect property access on types and interfaces
-- Missing optional chaining where needed
-- Using deprecated methods or wrong overloads
-
-**Perfect for quick checks:**
-- Before calling any method you're not 100% sure about
-- When TypeScript shows errors about wrong types
-- To understand complex generic types or union types
-- To read JSDoc comments and usage examples
-
-**The 10-second rule:** If you're not certain about a TypeScript symbol's signature, hover it. Takes 10 seconds, saves 10 minutes.
+Critical: Before calling any unfamiliar TypeScript method, verify its signature first. Prevents wrong parameter types, missing optional properties, or using deprecated overloads.
 
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-See also: ts_goto_definition for full source code, ts_symbol_search for finding types by name.";
+Use cases: Verifying function signatures, checking optional properties, understanding generic types.";
 
     public TsHoverTool(
         ILogger<TsHoverTool> logger,

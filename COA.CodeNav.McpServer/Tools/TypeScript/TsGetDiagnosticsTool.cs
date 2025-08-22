@@ -26,38 +26,12 @@ public class TsGetDiagnosticsTool : McpToolBase<TsGetDiagnosticsParams, TsGetDia
 
     public override string Name => ToolNames.TsGetDiagnostics;
     
-    public override string Description => @"**RUN IMMEDIATELY AFTER ANY TYPESCRIPT CODE CHANGE** - Don't wait for user complaints about errors. If you just wrote, modified, or generated any TypeScript, run this NOW to catch issues before they spread.
+    public override string Description => @"Check TypeScript compilation errors IMMEDIATELY after writing code. Shows exact error messages, type mismatches, and import issues with line numbers.
 
-**INSTANT TYPESCRIPT FEEDBACK LOOP:**
-- Just wrote any function, interface, or type? Check for errors immediately
-- Made any code changes? Verify TypeScript compilation succeeds  
-- User reports TypeScript issues? Get the actual error messages first
-- After any refactoring or type changes? Confirm nothing broke
-
-**Catch TypeScript problems early:**
-- Type errors (wrong types, missing properties, interface mismatches)
-- Missing imports or wrong module references
-- Generic type parameter issues and constraint violations
-- Strict mode violations and null/undefined errors
-
-**Critical moments to run:**
-- Immediately after generating or writing any TypeScript code
-- Before declaring 'task complete' or 'TypeScript problem solved'
-- When user mentions anything about TypeScript errors or build failures
-- After making changes based on type verification from other tools
-
-**What you'll discover:**
-- Exact TypeScript error messages with precise line numbers
-- Specific problems with your type usage or interface implementations
-- Missing dependencies or incorrect import statements  
-- Type safety warnings that guide proper TypeScript patterns
-
-**Saves massive debugging time:** Find and fix TypeScript issues in seconds instead of hunting them down later.
-
-**The TypeScript habit:** Code → Check diagnostics → Fix type errors → Repeat. Every single time.
+Critical: After ANY TypeScript change, run diagnostics FIRST. Prevents compound type errors and finds issues in seconds instead of hunting them down later.
 
 Prerequisites: TypeScript project must be loaded via ts_load_tsconfig.
-Follow up: Use ts_apply_quick_fix for automated fixes, ts_add_missing_imports for import issues.";
+Use cases: Verifying TypeScript compiles, finding type errors, checking import issues.";
 
     public override ToolCategory Category => ToolCategory.Diagnostics;
 

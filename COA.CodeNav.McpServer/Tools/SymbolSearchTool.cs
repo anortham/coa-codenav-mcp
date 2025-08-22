@@ -30,35 +30,12 @@ public class SymbolSearchTool : McpToolBase<SymbolSearchParams, SymbolSearchTool
     private const int AGGRESSIVE_MAX_RESULTS = 500; // For when we have token budget
 
     public override string Name => ToolNames.SymbolSearch;
-    public override string Description => @"**FIND TYPES BEFORE USING THEM** - the essential first step before writing any code that references classes, interfaces, or methods you're not certain exist.
+    public override string Description => @"Find classes, interfaces, and methods BEFORE using them. Search by name patterns to verify types exist and locate exact definitions.
 
-**TYPE DISCOVERY WORKFLOW:**
-1. User mentions any class/interface name → Search for it FIRST
-2. Verify it exists and see exact spelling → Avoid typos and wrong assumptions
-3. Check multiple matches → Pick the right one from right namespace
-4. Then proceed to get definition or members → Write correct code
-
-**Critical discovery moments:**
-- 'Use the User class' → Search 'User' to see if it exists and where
-- 'Call the email service' → Search '*email*' or '*service*' to find actual names
-- 'Implement IRepository' → Search 'IRepository' to verify interface exists
-- Any mention of unfamiliar type names → Search to confirm
-
-**Prevents costly mistakes:**
-- Using non-existent types (compile errors before you even start)
-- Wrong class names ('UserManager' vs 'UserService' vs 'UserController')  
-- Wrong namespaces (multiple User classes, which one?)
-- Typos in type names (catches before wasting time coding)
-
-**Search patterns that work:**
-- Exact names: 'UserService'
-- Wildcards: '*Service', 'User*', '*Repository*'  
-- Partial matches: 'email' finds 'EmailService', 'EmailProvider', etc.
-
-**The rule:** Never assume a type exists. Search first, verify, then code.
+Critical: When user mentions any type name, search for it FIRST. Prevents using non-existent types (UserManager vs UserService) or wrong namespaces (multiple User classes).
 
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Next steps: Use csharp_goto_definition or csharp_get_type_members on found symbols.";
+Use cases: Verifying type existence, finding exact class names, locating interfaces before implementation.";
     public override ToolCategory Category => ToolCategory.Query;
 
     public SymbolSearchTool(

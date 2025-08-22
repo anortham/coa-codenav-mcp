@@ -25,32 +25,12 @@ public class GoToDefinitionTool : McpToolBase<GoToDefinitionParams, GoToDefiniti
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_goto_definition";
-    public override string Description => @"**MANDATORY FIRST STEP** when working with any type, method, or property you haven't verified this session. See the ACTUAL implementation, not what you assume exists.
+    public override string Description => @"Navigate to source code definitions BEFORE using unfamiliar types. See the actual implementation to understand structure, properties, and methods.
 
-**CRITICAL VERIFICATION WORKFLOW:**
-1. User mentions any type/class → Go to its definition FIRST
-2. Read the actual source code → Understand real structure  
-3. Note exact names and implementations → Copy them precisely
-4. Only then write code using verified information
-
-**Prevents the most expensive mistakes:**
-- Implementing against non-existent properties or methods
-- Wrong parameter types, signatures, or return values
-- Misunderstanding class inheritance or interface implementations
-- Using deprecated or internal-only members
-
-**Essential when you see:**
-- Any type name you're not 100% sure about
-- Error messages about missing members or wrong signatures
-- User mentions 'use this class' or 'implement this interface'
-- Before making any assumptions about existing code
-
-**Time saved:** 15 minutes of trial-and-error coding prevented by 30 seconds of verification.
-
-**The rule:** If you haven't seen the definition this session, look it up. No exceptions.
+Critical: When user mentions 'use this class' or you see unfamiliar types, go to definition FIRST. Prevents implementing against non-existent properties or wrong method signatures.
 
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-See also: csharp_get_type_members for member overview, csharp_hover for quick signature check.";
+Use cases: Understanding type structure, verifying member existence, reading implementation details.";
     
     public GoToDefinitionTool(
         ILogger<GoToDefinitionTool> logger,

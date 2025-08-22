@@ -26,25 +26,12 @@ public class GetTypeMembersTool : McpToolBase<GetTypeMembersParams, GetTypeMembe
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.GetTypeMembers;
-    public override string Description => @"**ALWAYS USE BEFORE WRITING CODE** that uses any class, interface, or type. Shows the exact property names, method signatures, parameter types, and return types that actually exist.
+    public override string Description => @"Verify type members BEFORE writing code. Shows exact property names, method signatures, and accessibility to prevent compilation errors.
 
-**CRITICAL TYPE VERIFICATION WORKFLOW:**
-1. User mentions using/implementing any type → Use this tool FIRST
-2. See exact member names and signatures → Copy them exactly
-3. Write code using verified members → No compilation errors
-
-**Prevents 90% of compilation errors by showing:**
-- Real property names (not assumed ones like 'fullName' vs actual 'firstName')  
-- Actual method signatures (parameters, return types, async vs sync)
-- What's public vs private (saves embarrassing access errors)
-- Exact spelling and casing (prevents typos)
-
-**Essential triggers:** When you hear 'implement', 'use this class', 'add property', 'call method' - STOP and verify the type first.
-
-**Saves massive time:** No more rewriting code 3-4 times due to wrong assumptions. Get it right the first time.
+Critical: When user mentions 'implement X' or 'use this class', verify the type FIRST. Prevents wrong assumptions about property names (fullName vs firstName), method signatures (async vs sync), and missing members.
 
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-See also: csharp_hover for individual members, csharp_goto_definition for full type source.";
+Use cases: Before implementing interfaces, calling methods, or using any unfamiliar type.";
 
     public GetTypeMembersTool(
         ILogger<GetTypeMembersTool> logger,

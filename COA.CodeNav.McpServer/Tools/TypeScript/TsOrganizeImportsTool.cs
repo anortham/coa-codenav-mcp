@@ -38,12 +38,38 @@ public class TsOrganizeImportsTool : McpToolBase<TsOrganizeImportsParams, TsOrga
     public override string Name => ToolNames.TsOrganizeImports;
     public override ToolCategory Category => ToolCategory.Refactoring;
     
-    public override string Description => @"Organize and sort import statements in a TypeScript file.
-Returns: Updated file content with organized imports and change details.
+    public override string Description => @"**INSTANTLY CLEAN UP MESSY TYPESCRIPT IMPORTS** - Transform chaotic import sections into perfectly organized, professional-looking code that follows TypeScript best practices.
+
+**AUTOMATIC IMPORT ORGANIZATION:**
+- Sorts imports alphabetically and by import type automatically
+- Groups related imports together (third-party, relative, etc.)
+- Removes unused imports that clutter your files
+- Formats import statements consistently across your codebase
+
+**PROFESSIONAL CODE STANDARDS:**
+- Follows industry-standard import ordering conventions
+- Makes code reviews cleaner by eliminating import noise
+- Ensures consistent formatting across team members' code
+- Prepares files for production with clean, organized imports
+
+**SAVES MANUAL CLEANUP TIME:**
+- No more manually sorting dozens of import statements
+- No more hunting for unused imports to remove
+- No more inconsistent import formatting across files
+- No more messy import sections that distract from actual code
+
+**PERFECT FOR:**
+- Before code reviews - make imports look professional
+- After adding many dependencies - organize the resulting chaos
+- Legacy file cleanup - bring old files up to modern standards
+- Team consistency - ensure everyone follows the same import style
+
+**THE CLEAN CODE HABIT:** After adding imports throughout development, run this to polish your TypeScript files to professional standards.
+
+**INSTANT GRATIFICATION:** Turn messy import chaos into satisfying, organized perfection in seconds.
+
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Error handling: Returns specific error codes with recovery steps if organization fails.
-Use cases: Code cleanup, enforcing import ordering, preparing code for review.
-Not for: Adding missing imports (use ts_add_missing_imports), removing unused imports (different tool).";
+See also: ts_add_missing_imports for missing dependencies, ts_get_diagnostics to verify clean compilation.";
 
     public TsOrganizeImportsTool(
         ILogger<TsOrganizeImportsTool> logger,

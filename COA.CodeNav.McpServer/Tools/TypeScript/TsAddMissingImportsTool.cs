@@ -37,12 +37,12 @@ public class TsAddMissingImportsTool : McpToolBase<TsAddMissingImportsParams, Ts
     public override string Name => ToolNames.TsAddMissingImports;
     public override ToolCategory Category => ToolCategory.Refactoring;
     
-    public override string Description => @"Automatically add missing import statements for TypeScript symbols.
-Returns: Updated file content with added imports and change details.
+    public override string Description => @"Automatically add missing TypeScript import statements. Fixes 'Cannot find name' errors by detecting and importing the correct modules.
+
+Critical: When you see missing import errors, run this FIRST. Saves time manually typing import paths and finds the correct modules automatically.
+
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Error handling: Returns specific error codes with recovery steps if import addition fails.
-Use cases: Fixing compilation errors, auto-importing dependencies, code completion.
-Not for: Organizing existing imports (use ts_organize_imports), removing unused imports (different tool).";
+Use cases: Fixing import errors, adding new library imports, cleaning up copied code.";
 
     public TsAddMissingImportsTool(
         ILogger<TsAddMissingImportsTool> logger,

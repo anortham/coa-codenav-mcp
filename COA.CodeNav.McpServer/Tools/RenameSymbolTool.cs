@@ -28,12 +28,36 @@ public class RenameSymbolTool : McpToolBase<RenameSymbolParams, RenameSymbolTool
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.RenameSymbol;
-    public override string Description => @"Rename a symbol across the entire solution with conflict detection and preview.
-Returns: Preview of all changes or applied changes with conflict resolution.
+    public override string Description => @"**SAFELY RENAME C# SYMBOLS ACROSS YOUR ENTIRE SOLUTION** - The intelligent way to refactor without breaking anything. Always finds every usage and prevents conflicts before they happen.
+
+**SMART REFACTORING WORKFLOW:**
+- Need to rename a method, property, or class? Use this FIRST before manual changes
+- Worried about breaking references across projects? This tool finds them ALL
+- Want to improve naming without fear? Get conflict detection and preview
+- Refactoring legacy code? See exactly what will change before committing
+
+**PREVENTS REFACTORING DISASTERS:**
+- No more broken method calls when renaming public APIs
+- No more missed references in distant assemblies or projects
+- No more accidental naming conflicts with existing symbols
+- No more compilation errors after supposedly simple renames
+
+**CONFIDENCE THROUGH VERIFICATION:**
+- Shows EVERY file that will be modified before making changes
+- Detects naming conflicts with existing symbols automatically
+- Provides safe preview mode to review all changes first
+- Handles complex cases like interface implementations and overrides
+
+**ENTERPRISE-SAFE REFACTORING:**
+- Works across entire solutions with multiple projects
+- Respects inheritance hierarchies and polymorphic usage
+- Updates XML documentation and comments automatically
+- Maintains code integrity during large-scale refactoring
+
+**THE SAFE REFACTORING RULE:** Never rename C# symbols manually. Always use this tool to see the full impact and prevent breaking changes.
+
 Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Error handling: Returns specific error codes with recovery steps if rename fails or conflicts exist.
-Use cases: Refactoring symbol names, fixing naming conventions, large-scale renames.
-Not for: Moving symbols between namespaces, changing symbol types (use other refactoring tools).";
+See also: csharp_find_all_references to understand impact, csharp_get_diagnostics to verify no errors after rename.";
     
     public RenameSymbolTool(
         ILogger<RenameSymbolTool> logger,

@@ -37,12 +37,36 @@ public class TsApplyQuickFixTool : McpToolBase<TsApplyQuickFixParams, TsApplyQui
     public override string Name => ToolNames.TsApplyQuickFix;
     public override ToolCategory Category => ToolCategory.Refactoring;
     
-    public override string Description => @"Apply TypeScript compiler quick fixes and code actions at a specific position.
-Returns: Applied changes with file modifications and available fixes.
+    public override string Description => @"**ONE-CLICK TYPESCRIPT ERROR FIXES** - See a TypeScript error with a suggested fix? Apply it instantly without manual editing. The smart way to let TypeScript fix itself.
+
+**INSTANT ERROR RESOLUTION:**
+- TypeScript suggests 'Add missing function declaration'? Apply it immediately
+- See 'Property does not exist' with 'Add missing property'? One click done
+- Get 'Missing return statement' with suggested fix? Instant application
+- TypeScript offers 'Convert to async function'? Apply without rewriting
+
+**SMART AUTOMATED FIXES:**
+- Automatically applies TypeScript compiler's own suggestions
+- Handles complex fixes like adding missing overloads or type annotations
+- Applies safe refactoring actions like extracting types or interfaces
+- Uses TypeScript's intelligence to suggest optimal fixes
+
+**SAVES TEDIOUS MANUAL WORK:**
+- No more manually typing out suggested function signatures
+- No more copy-pasting type definitions from error messages
+- No more rewriting code to match TypeScript's suggestions
+- No more guessing at the exact syntax TypeScript wants
+
+**THE QUICK FIX WORKFLOW:** 
+1. TypeScript shows error with lightbulb suggestion
+2. Run this tool at the error location  
+3. TypeScript applies the fix automatically
+4. Back to coding in seconds
+
+**DEVELOPER HAPPINESS:** Turn frustrating TypeScript errors into satisfying one-click solutions.
+
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Error handling: Returns specific error codes with recovery steps if quick fix cannot be applied.
-Use cases: Automated error fixing, applying compiler suggestions, code refactoring actions.
-Not for: Manual code edits, complex refactoring (use specific refactoring tools).";
+See also: ts_get_diagnostics to find fixable errors, ts_add_missing_imports for import-specific fixes.";
 
     public TsApplyQuickFixTool(
         ILogger<TsApplyQuickFixTool> logger,

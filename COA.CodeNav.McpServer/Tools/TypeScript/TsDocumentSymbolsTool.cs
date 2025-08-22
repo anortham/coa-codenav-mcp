@@ -24,36 +24,12 @@ public class TsDocumentSymbolsTool : McpToolBase<TsDocumentSymbolsParams, TsDocu
 
     public override string Name => ToolNames.TsDocumentSymbols;
     
-    public override string Description => @"**MAP OUT WHAT'S ACTUALLY IN A TYPESCRIPT FILE** before making assumptions. Shows all interfaces, classes, functions, types, and exports that actually exist in the file.
+    public override string Description => @"Map TypeScript file structure BEFORE making changes. Shows all interfaces, classes, functions, and exports to understand what actually exists.
 
-**CRITICAL FILE ANALYSIS WORKFLOW:**
-1. User mentions working with any TypeScript file → Map its contents FIRST
-2. See all interfaces, types, classes, functions → Note exact names and structures
-3. Understand the actual organization → Don't guess at what might be there
-4. Then write code using verified information → No more import errors
-
-**Prevents TypeScript file confusion:**
-- Trying to import non-existent types or functions
-- Wrong assumptions about file structure and exports
-- Missing interfaces or classes you thought were there
-- Incorrect understanding of public vs private members
-
-**Essential when:**
-- User says 'use the types from X file' but you don't know what's there
-- You get import errors from a TypeScript file
-- Need to understand a file's structure before modifying it
-- Working with unfamiliar TypeScript codebases
-
-**What you'll see:**
-- All exported interfaces, types, and classes with exact names
-- Function signatures and parameter types  
-- Import/export structure and module organization
-- Hierarchical view showing nested types and namespaces
-
-**The file reconnaissance rule:** Before using anything from a TypeScript file, map out what's actually in it.
+Critical: Before using anything from a TypeScript file, map its contents FIRST. Prevents import errors from non-existent types or wrong assumptions about file structure.
 
 Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Follow up: Use ts_goto_definition for detailed implementations, ts_hover for quick signature checks.";
+Use cases: Understanding file organization, checking available exports, planning code changes.";
 
     public TsDocumentSymbolsTool(
         ILogger<TsDocumentSymbolsTool> logger,
