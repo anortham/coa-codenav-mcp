@@ -342,7 +342,7 @@ Use cases: Simplifying code, removing temporary variables, improving readability
             }
         }
 
-        var formatted = Formatter.Format(newRoot, document.Project.Solution.Workspace);
+        var formatted = Formatter.Format(newRoot!, document.Project.Solution.Workspace);
         return formatted.ToFullString();
     }
 

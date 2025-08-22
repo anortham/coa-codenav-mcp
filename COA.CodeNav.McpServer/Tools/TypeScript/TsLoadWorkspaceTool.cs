@@ -454,7 +454,7 @@ See also: ts_load_tsconfig for single projects, all ts_ tools work across loaded
         {
             insights.Add($"Successfully loaded {loadedProjects.Count} of {totalDiscovered} TypeScript project(s)");
             
-            var totalFiles = loadedProjects.Sum(p => p.SourceFiles.Count);
+            var totalFiles = loadedProjects.Sum(p => p.SourceFiles?.Count ?? 0);
             insights.Add($"Total source files across all projects: {totalFiles}");
 
             if (loadedProjects.Any(p => p.Dependencies?.Count > 0))
@@ -491,7 +491,7 @@ See also: ts_load_tsconfig for single projects, all ts_ tools work across loaded
                     Description = $"Check diagnostics for {Path.GetFileNameWithoutExtension(project.ProjectPath)}",
                     Parameters = new Dictionary<string, object>
                     {
-                        ["filePath"] = project.SourceFiles.FirstOrDefault() ?? project.ProjectPath
+                        ["filePath"] = project.SourceFiles?.FirstOrDefault() ?? project.ProjectPath
                     }
                 });
             }
