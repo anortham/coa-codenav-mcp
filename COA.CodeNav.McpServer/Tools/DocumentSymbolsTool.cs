@@ -27,12 +27,7 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.DocumentSymbols;
-    public override string Description => @"Map file structure BEFORE making changes. Shows all classes, methods, properties, and organization to understand what already exists.
-
-Critical: Before modifying any file, map its structure FIRST. Prevents adding duplicate methods or placing code in wrong classes.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Understanding file organization, checking existing methods, planning code additions.";
+    public override string Description => "Get an outline of all symbols in a file. Shows classes, methods, properties, and their structure for understanding code organization.";
 
     public DocumentSymbolsTool(
         ILogger<DocumentSymbolsTool> logger,

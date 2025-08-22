@@ -29,12 +29,7 @@ public class ApplyCodeFixTool : McpToolBase<ApplyCodeFixParams, ApplyCodeFixTool
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.ApplyCodeFix;
-    public override string Description => @"Apply automated code fixes for compiler errors and warnings. One-click solutions for common issues like missing braces, wrong accessibility, etc.
-
-Critical: When diagnostics show available fixes, apply them IMMEDIATELY. Faster than manual editing and prevents introducing new errors.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Fixing compiler warnings, applying analyzer suggestions, automated error resolution.";
+    public override string Description => "Apply automated fixes for compiler errors and warnings. One-click solutions for common issues like missing braces or wrong accessibility.";
     
     public ApplyCodeFixTool(
         ILogger<ApplyCodeFixTool> logger,

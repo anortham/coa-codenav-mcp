@@ -25,12 +25,7 @@ public class GoToDefinitionTool : McpToolBase<GoToDefinitionParams, GoToDefiniti
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_goto_definition";
-    public override string Description => @"Navigate to source code definitions BEFORE using unfamiliar types. See the actual implementation to understand structure, properties, and methods.
-
-Critical: When user mentions 'use this class' or you see unfamiliar types, go to definition FIRST. Prevents implementing against non-existent properties or wrong method signatures.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Understanding type structure, verifying member existence, reading implementation details.";
+    public override string Description => "Navigate to where a symbol is defined. Quickly jump to class definitions, method implementations, or see the actual structure of types.";
     
     public GoToDefinitionTool(
         ILogger<GoToDefinitionTool> logger,

@@ -31,12 +31,7 @@ public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosti
     private const int MAX_DIAGNOSTICS_PER_RESPONSE = 50;
 
     public override string Name => ToolNames.GetDiagnostics;
-    public override string Description => @"Check for compilation errors IMMEDIATELY after writing code. Shows exact error messages, warnings, and analyzer issues with line numbers.
-
-Critical: After ANY code change, run diagnostics FIRST. Prevents compound errors and finds issues in seconds instead of hunting them down later.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Verifying code compiles, finding syntax errors, checking analyzer warnings.";
+    public override string Description => "Get compilation errors, warnings, and analyzer issues with line numbers. See exactly what needs fixing in your code.";
 
     public GetDiagnosticsTool(
         ILogger<GetDiagnosticsTool> logger,

@@ -24,12 +24,7 @@ public class TsSymbolSearchTool : McpToolBase<TsSymbolSearchParams, TsSymbolSear
 
     public override string Name => ToolNames.TsSymbolSearch;
     
-    public override string Description => @"Find TypeScript types and interfaces BEFORE using them. Search by name patterns to verify types exist and get exact spelling.
-
-Critical: When user mentions any TypeScript type name, search for it FIRST. Prevents 'Cannot find name' errors, wrong capitalization (UserService vs userService), or importing from wrong modules.
-
-Prerequisites: Call ts_load_tsconfig first to load the TypeScript project.
-Use cases: Verifying type existence, finding exact names, locating interfaces before implementation.";
+    public override string Description => "Search for TypeScript symbols by name or pattern. Great for finding interfaces, types, or functions across your TypeScript project.";
 
     public TsSymbolSearchTool(
         ILogger<TsSymbolSearchTool> logger,

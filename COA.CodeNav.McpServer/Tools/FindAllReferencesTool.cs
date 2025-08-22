@@ -26,12 +26,7 @@ public class FindAllReferencesTool : McpToolBase<FindAllReferencesParams, FindAl
     private readonly FindAllReferencesResponseBuilder _responseBuilder;
 
     public override string Name => "csharp_find_all_references";
-    public override string Description => @"Find all usages BEFORE changing public methods or properties. Essential safety check to prevent breaking changes across the codebase.
-
-Critical: Before modifying any public member, find references FIRST. Prevents breaking dozens of method calls, compilation errors, and failed tests.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Impact analysis before changes, understanding dependencies, refactoring preparation.";
+    public override string Description => "Find all usages of a symbol across your solution. Perfect for understanding impact before refactoring or seeing how a method is used throughout the codebase.";
     public override ToolCategory Category => ToolCategory.Query;
 
     public FindAllReferencesTool(

@@ -28,12 +28,7 @@ public class HoverTool : McpToolBase<HoverParams, HoverToolResult>
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.Hover;
-    public override string Description => @"Check method signatures and parameters BEFORE calling. Shows exact parameter types, return values, and overloads to prevent compilation errors.
-
-Critical: Before calling any unfamiliar method, verify its signature first. Prevents wrong parameter types (string vs int), missing parameters, or assuming methods exist (GetAsync when only Get exists).
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Verifying method signatures, checking overloads, understanding parameter requirements.";
+    public override string Description => "Get detailed information about a symbol at a specific position. Shows method signatures, parameter types, return values, and documentation.";
 
     public HoverTool(
         ILogger<HoverTool> logger,

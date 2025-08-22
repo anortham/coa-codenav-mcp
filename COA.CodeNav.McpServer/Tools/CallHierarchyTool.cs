@@ -30,12 +30,7 @@ public class CallHierarchyTool : McpToolBase<CallHierarchyParams, CallHierarchyR
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_call_hierarchy";
-    public override string Description => @"Show complete method call hierarchy - who calls this method and what it calls. Essential for understanding impact before changes.
-
-Critical: Before modifying any method, see its call hierarchy FIRST. Understand the blast radius and dependencies to avoid breaking changes.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Impact analysis, refactoring planning, debugging call chains, understanding dependencies.";
+    public override string Description => "Show what calls a method and what it calls. Perfect for understanding execution flow and dependencies before making changes.";
 
     public CallHierarchyTool(
         ILogger<CallHierarchyTool> logger,

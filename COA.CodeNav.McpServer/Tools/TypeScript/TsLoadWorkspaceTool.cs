@@ -34,42 +34,7 @@ public class TsLoadWorkspaceTool : McpToolBase<TsLoadWorkspaceParams, TsLoadWork
     public override string Name => ToolNames.TsLoadWorkspace;
     public override ToolCategory Category => ToolCategory.Resources;
     
-    public override string Description => @"**MONOREPO AND MULTI-PROJECT TYPESCRIPT MASTERY** - Working with multiple TypeScript projects? Load your entire workspace at once for powerful cross-project analysis and navigation.
-
-**ENTERPRISE-SCALE TYPESCRIPT:**
-- Managing a monorepo with dozens of TypeScript packages? Load them all
-- Working across multiple related TypeScript projects? See connections instantly  
-- Need cross-project refactoring? Get complete workspace understanding
-- Complex project dependencies? Map the entire relationship network
-
-**COMPREHENSIVE WORKSPACE INTELLIGENCE:**
-- Loads all tsconfig.json files and project references automatically
-- Understands cross-project dependencies and shared types
-- Enables navigation between projects seamlessly
-- Provides workspace-wide TypeScript diagnostics and analysis
-
-**PERFECT FOR LARGE CODEBASES:**
-- Monorepos with shared libraries and multiple applications
-- Microservices architectures with TypeScript APIs
-- Component libraries used across multiple projects
-- Enterprise applications with modular TypeScript architecture
-
-**UNLOCKS ADVANCED FEATURES:**
-- Refactor symbols used across multiple projects safely
-- Find all references to shared types throughout the workspace
-- Navigate from application code to library implementations instantly
-- Understand dependency chains across project boundaries
-
-**SAVES CONTEXT-SWITCHING TIME:**
-- No more loading projects one by one
-- No more losing context when jumping between projects
-- No more missing cross-project dependencies
-- No more isolated project analysis that misses the big picture
-
-**THE ENTERPRISE WORKFLOW:** For complex TypeScript architectures, start here to get complete workspace understanding before any analysis or refactoring.
-
-Prerequisites: TypeScript must be installed globally (npm install -g typescript).
-See also: ts_load_tsconfig for single projects, all ts_ tools work across loaded workspace.";
+    public override string Description => "Load multiple TypeScript projects from a workspace for cross-project analysis. Great for monorepos with shared libraries and multiple applications.";
 
     public TsLoadWorkspaceTool(
         ILogger<TsLoadWorkspaceTool> logger,

@@ -30,12 +30,7 @@ public class SymbolSearchTool : McpToolBase<SymbolSearchParams, SymbolSearchTool
     private const int AGGRESSIVE_MAX_RESULTS = 500; // For when we have token budget
 
     public override string Name => ToolNames.SymbolSearch;
-    public override string Description => @"Find classes, interfaces, and methods BEFORE using them. Search by name patterns to verify types exist and locate exact definitions.
-
-Critical: When user mentions any type name, search for it FIRST. Prevents using non-existent types (UserManager vs UserService) or wrong namespaces (multiple User classes).
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Verifying type existence, finding exact class names, locating interfaces before implementation.";
+    public override string Description => "Search for classes, interfaces, and methods by name or pattern. Great for finding that UserService class or checking if an interface exists.";
     public override ToolCategory Category => ToolCategory.Query;
 
     public SymbolSearchTool(

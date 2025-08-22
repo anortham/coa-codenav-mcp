@@ -32,12 +32,7 @@ public class ExtractInterfaceTool : McpToolBase<ExtractInterfaceParams, ExtractI
     private readonly ExtractInterfaceResponseBuilder _responseBuilder;
 
     public override string Name => ToolNames.ExtractInterface;
-    public override string Description => @"Extract an interface from a class to improve testability and implement dependency inversion. Creates contract definitions from existing implementations.
-
-Critical: Before extracting interfaces, understand which members should be public contract vs implementation details. Improves code testability and modularity.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Creating contracts, improving testability, implementing dependency inversion, enabling mocking.";
+    public override string Description => "Extract an interface from a class to improve testability and dependency inversion. Creates clean contracts from existing implementations.";
     public override ToolCategory Category => ToolCategory.Refactoring;
     
     public ExtractInterfaceTool(

@@ -30,12 +30,7 @@ public class ExtractMethodTool : McpToolBase<ExtractMethodParams, ExtractMethodR
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.ExtractMethod;
-    public override string Description => @"Extract selected code into a new method for better organization. Reduces method complexity and improves code readability.
-
-Critical: Before extracting, ensure the selected code block is self-contained. Creates proper parameter passing and return value handling automatically.
-
-Prerequisites: Call csharp_load_solution or csharp_load_project first.
-Use cases: Reducing method complexity, improving code organization, creating reusable code blocks.";
+    public override string Description => "Extract selected code into a new method. Clean up long methods by breaking them into smaller, more focused pieces.";
     
     public ExtractMethodTool(
         ILogger<ExtractMethodTool> logger,
