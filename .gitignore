@@ -365,3 +365,10 @@ FodyWeavers.xsd
 .codesearch
 .codenav
 
+# Claude Code local configuration and data
+.claude/data/
+.claude/hooks/
+.claude/agents/
+.claude/TYPE_VERIFICATION_README.md
+NUL
+
