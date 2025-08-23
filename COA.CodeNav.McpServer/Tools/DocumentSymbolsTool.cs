@@ -27,7 +27,7 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => ToolNames.DocumentSymbols;
-    public override string Description => "Get an outline of all symbols in a file. Shows classes, methods, properties, and their structure for understanding code organization.";
+    public override string Description => "Get an outline of all symbols in a file. Shows classes, methods, properties, and their structure for understanding code organization.\n\nHierarchy navigation strategies:\n\u2022 Overview scan: Start with default settings to see overall file structure\n\u2022 Focused analysis: Use symbolKinds: [\"Class\", \"Interface\"] for architecture review\n\u2022 Public API view: Set includePrivate: false to see exposed surface\n\u2022 Implementation details: Set includePrivate: true for complete internal structure\n\u2022 Large files: Results auto-truncated at 10,000 tokens - use filtering for complex files\n\nTypical workflow: Overview \u2192 Focus on public types \u2192 Drill into implementations \u2192 Navigate to definitions";
 
     public DocumentSymbolsTool(
         ILogger<DocumentSymbolsTool> logger,
@@ -171,22 +171,12 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
         // Generate next actions
         var actions = GenerateNextActions(parameters.FilePath, allSymbols);
 
-        // Add action to get more results if limited
+        // Add enhanced truncation guidance if limited
         if (wasLimited)
         {
-            actions.Insert(0, new AIAction
-            {
-                Action = ToolNames.DocumentSymbols,
-                Description = "Get additional symbols",
-                Parameters = new Dictionary<string, object>
-                {
-                    ["filePath"] = parameters.FilePath,
-                    ["maxResults"] = Math.Min(totalSymbolCount, 500),
-                    ["includePrivate"] = parameters.IncludePrivate
-                },
-                Priority = 90,
-                Category = "pagination"
-            });
+            insights.InsertRange(0, GenerateEnhancedTruncationInsights(
+                returnedSymbols.Count, totalSymbolCount, estimatedTokens > 10000, 
+                parameters, allSymbols));
         }
 
         // Generate distribution
@@ -602,40 +592,41 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
     {
         var insights = new List<string>();
 
-        // Count by type
+        // Enhanced hierarchy analysis with smart categorization
         var typeCounts = new Dictionary<string, int>();
         CountSymbolTypes(symbols, typeCounts);
         
+        // File complexity assessment
+        var fileComplexity = GetFileComplexity(typeCounts, totalCount);
+        insights.Add($"{fileComplexity.Icon} File complexity: {fileComplexity.Level} ({totalCount} total symbols)");
+        
         if (typeCounts.Any())
         {
-            var topTypes = typeCounts.OrderByDescending(kvp => kvp.Value).Take(3);
-            insights.Add($"Contains {string.Join(", ", topTypes.Select(kvp => $"{kvp.Value} {kvp.Key.ToLower()}s"))}");
+            var architecture = AnalyzeArchitecture(typeCounts, symbols);
+            insights.Add($"🏗️ Architecture: {architecture}");
         }
 
-        // Namespace structure
+        // Namespace organization insights
         var namespaces = symbols.Where(s => s.Kind == "Namespace").ToList();
         if (namespaces.Count > 1)
         {
-            insights.Add($"Multiple namespaces defined ({namespaces.Count})");
+            insights.Add($"📦 Multi-namespace file ({namespaces.Count} namespaces) - consider splitting");
+        }
+        else if (namespaces.Count == 1)
+        {
+            insights.Add($"📦 Single namespace: {namespaces.First().Name}");
         }
 
-        // Class structure insights
-        var classes = GetAllSymbolsOfKind(symbols, "Class");
-        if (classes.Any())
+        // API surface analysis
+        var publicSymbols = GetPublicApiSurface(symbols);
+        if (publicSymbols.Classes > 0 || publicSymbols.Interfaces > 0)
         {
-            var publicClasses = classes.Count(c => c.Modifiers?.Contains("public") == true);
-            if (publicClasses > 0)
-            {
-                insights.Add($"{publicClasses} public class(es) exposed as API");
-            }
+            insights.Add($"🌐 Public API: {publicSymbols.Classes} classes, {publicSymbols.Interfaces} interfaces, {publicSymbols.Methods} methods");
         }
-
-        // Method insights
-        var methods = GetAllSymbolsOfKind(symbols, "Method");
-        if (methods.Count > 10)
-        {
-            insights.Add($"Complex file with {methods.Count} methods - consider refactoring");
-        }
+        
+        // Code organization patterns
+        var organizationInsights = AnalyzeCodeOrganization(symbols, typeCounts);
+        insights.AddRange(organizationInsights);
 
         return insights;
     }
@@ -719,65 +710,344 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
     private List<AIAction> GenerateNextActions(string filePath, List<DocumentSymbol> symbols)
     {
         var actions = new List<AIAction>();
+        var totalSymbols = CountSymbols(symbols);
+        var fileName = Path.GetFileName(filePath);
 
-        // Suggest go to definition for key types
+        // Smart navigation based on file structure and complexity
         var publicTypes = GetAllSymbolsOfKind(symbols, "Class")
             .Concat(GetAllSymbolsOfKind(symbols, "Interface"))
             .Where(s => s.Modifiers?.Contains("public") == true)
-            .Take(3);
+            .OrderByDescending(t => GetSymbolImportance(t))
+            .Take(2);
 
+        // Priority navigation targets
         foreach (var type in publicTypes)
         {
             if (type.Location != null)
             {
+                var importance = GetSymbolImportance(type);
+                var typeDescription = type.Kind == "Interface" ? "🔌 Interface" : "🏷️ Class";
+                
                 actions.Add(new AIAction
                 {
                     Action = ToolNames.GoToDefinition,
-                    Description = $"Go to {type.Name} definition",
+                    Description = $"{typeDescription} Navigate to key type: {type.Name}",
                     Parameters = new Dictionary<string, object>
                     {
                         ["filePath"] = type.Location.FilePath,
                         ["line"] = type.Location.Line,
                         ["column"] = type.Location.Column
                     },
-                    Priority = 80,
+                    Priority = 95 - (type == publicTypes.First() ? 0 : 5),
                     Category = "navigation"
                 });
 
                 actions.Add(new AIAction
                 {
                     Action = ToolNames.FindAllReferences,
-                    Description = $"Find references to {type.Name}",
+                    Description = $"🔍 Analyze usage of {type.Name} across solution",
                     Parameters = new Dictionary<string, object>
                     {
                         ["filePath"] = type.Location.FilePath,
                         ["line"] = type.Location.Line,
-                        ["column"] = type.Location.Column
+                        ["column"] = type.Location.Column,
+                        ["maxResults"] = 50
                     },
-                    Priority = 70,
-                    Category = "navigation"
+                    Priority = 85,
+                    Category = "analysis"
                 });
             }
         }
-
-        // Suggest symbol search for complex files
-        if (CountSymbols(symbols) > 50)
+        
+        // Hierarchy-specific filtering actions
+        var typeCounts = new Dictionary<string, int>();
+        CountSymbolTypes(symbols, typeCounts);
+        
+        if (typeCounts.Count > 3) // Complex file with multiple symbol types
+        {
+            // Focus on architecture elements first
+            if (typeCounts.ContainsKey("Class") || typeCounts.ContainsKey("Interface"))
+            {
+                actions.Add(new AIAction
+                {
+                    Action = ToolNames.DocumentSymbols,
+                    Description = $"🏗️ Focus on architecture (classes & interfaces only)",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = filePath,
+                        ["symbolKinds"] = new[] { "Class", "Interface" },
+                        ["includePrivate"] = false,
+                        ["maxResults"] = 200
+                    },
+                    Priority = 92,
+                    Category = "filtering"
+                });
+            }
+            
+            // Focus on public API surface
+            actions.Add(new AIAction
+            {
+                Action = ToolNames.DocumentSymbols,
+                Description = $"🌐 View public API surface only",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["filePath"] = filePath,
+                    ["includePrivate"] = false,
+                    ["maxResults"] = 300
+                },
+                Priority = 90,
+                Category = "filtering"
+            });
+            
+            // Focus on implementation details
+            actions.Add(new AIAction
+            {
+                Action = ToolNames.DocumentSymbols,
+                Description = $"🔧 View implementation details (methods & properties)",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["filePath"] = filePath,
+                    ["symbolKinds"] = new[] { "Method", "Property", "Field" },
+                    ["includePrivate"] = true,
+                    ["maxResults"] = 200
+                },
+                Priority = 88,
+                Category = "filtering"
+            });
+        }
+        
+        // Analysis actions based on file characteristics
+        if (totalSymbols > 50)
+        {
+            actions.Add(new AIAction
+            {
+                Action = ToolNames.CodeMetrics,
+                Description = $"📊 Analyze complexity metrics for large file ({totalSymbols} symbols)",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["filePath"] = filePath,
+                    ["includeInherited"] = false
+                },
+                Priority = 82,
+                Category = "analysis"
+            });
+        }
+        
+        // Cross-file analysis for namespaces
+        var namespace_ = symbols.FirstOrDefault(s => s.Kind == "Namespace");
+        if (namespace_ != null)
         {
             actions.Add(new AIAction
             {
                 Action = ToolNames.SymbolSearch,
-                Description = "Search for specific symbols in solution",
+                Description = $"🔍 Find other files in namespace {namespace_.Name}",
                 Parameters = new Dictionary<string, object>
                 {
                     ["query"] = "*",
-                    ["namespaceFilter"] = symbols.FirstOrDefault(s => s.Kind == "Namespace")?.Name ?? ""
+                    ["namespaceFilter"] = namespace_.Name,
+                    ["maxResults"] = 100
                 },
-                Priority = 60,
-                Category = "search"
+                Priority = 78,
+                Category = "exploration"
+            });
+        }
+        
+        // Code quality suggestions for complex files
+        if (totalSymbols > 100)
+        {
+            actions.Add(new AIAction
+            {
+                Action = ToolNames.CodeCloneDetection,
+                Description = $"🔍 Check for duplicated code patterns in large file",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["filePattern"] = fileName,
+                    ["minLines"] = 5,
+                    ["similarityThreshold"] = 0.85
+                },
+                Priority = 75,
+                Category = "quality"
             });
         }
 
-        return actions;
+        return actions.OrderByDescending(a => a.Priority).ToList();
+    }
+    
+    private List<string> GenerateEnhancedTruncationInsights(
+        int displayedSymbols, int totalSymbols, bool tokenLimitApplied,
+        DocumentSymbolsParams parameters, List<DocumentSymbol> allSymbols)
+    {
+        var insights = new List<string>();
+        var fileName = Path.GetFileName(parameters.FilePath);
+        
+        // Clear explanation of truncation
+        if (tokenLimitApplied)
+        {
+            insights.Add($"🔄 Results auto-truncated to prevent context overflow (10,000 token safety limit)");
+            insights.Add($"📊 Showing {displayedSymbols} of {totalSymbols} symbols prioritized by importance");
+        }
+        else
+        {
+            insights.Add($"📋 Showing {displayedSymbols} of {totalSymbols} symbols (maxResults limit applied)");
+        }
+        
+        // File scope and filtering context
+        var filters = new List<string>();
+        if (parameters.SymbolKinds?.Any() == true)
+        {
+            filters.Add($"kinds: {string.Join(", ", parameters.SymbolKinds)}");
+        }
+        if (!parameters.IncludePrivate)
+        {
+            filters.Add("public only");
+        }
+        
+        var filterText = filters.Any() ? $" (filtered: {string.Join(", ", filters)})" : "";
+        insights.Add($"🎯 Analysis scope: {fileName}{filterText}");
+        
+        // Strategic guidance for large files
+        if (totalSymbols > 100)
+        {
+            insights.Add($"📚 Large file detected - use strategic filtering:");
+            insights.Add($"   • Focus on architecture: symbolKinds: [\"Class\", \"Interface\"]");
+            insights.Add($"   • Public API only: includePrivate: false");
+            insights.Add($"   • Implementation focus: symbolKinds: [\"Method\", \"Property\"]");
+        }
+        else if (totalSymbols > 50)
+        {
+            insights.Add($"📖 Medium complexity - consider focusing on specific symbol types");
+        }
+        
+        // Provide context about what was excluded
+        var excluded = totalSymbols - displayedSymbols;
+        if (excluded > 0)
+        {
+            var typeCounts = new Dictionary<string, int>();
+            CountSymbolTypes(allSymbols, typeCounts);
+            var largestTypes = typeCounts.OrderByDescending(kvp => kvp.Value).Take(2);
+            insights.Add($"📝 Excluded {excluded} symbols - mostly {string.Join(" and ", largestTypes.Select(kvp => kvp.Key.ToLower() + "s"))}");
+        }
+        
+        return insights;
+    }
+    
+    private (string Icon, string Level) GetFileComplexity(Dictionary<string, int> typeCounts, int totalCount)
+    {
+        if (totalCount > 100)
+            return ("🚨", "High");
+        else if (totalCount > 50)
+            return ("⚠️", "Medium");
+        else if (totalCount > 20)
+            return ("📄", "Moderate");
+        else
+            return ("✅", "Simple");
+    }
+    
+    private string AnalyzeArchitecture(Dictionary<string, int> typeCounts, List<DocumentSymbol> symbols)
+    {
+        var patterns = new List<string>();
+        
+        if (typeCounts.ContainsKey("Interface") && typeCounts.ContainsKey("Class"))
+        {
+            patterns.Add("Contract-based design");
+        }
+        else if (typeCounts.ContainsKey("Interface"))
+        {
+            patterns.Add("Interface definitions");
+        }
+        else if (typeCounts.ContainsKey("Class") && typeCounts["Class"] > 1)
+        {
+            patterns.Add("Multiple classes");
+        }
+        else if (typeCounts.ContainsKey("Class"))
+        {
+            patterns.Add("Single class");
+        }
+        
+        if (typeCounts.ContainsKey("Enum"))
+        {
+            patterns.Add("with enumerations");
+        }
+        
+        if (typeCounts.ContainsKey("Delegate"))
+        {
+            patterns.Add("delegate patterns");
+        }
+        
+        return patterns.Any() ? string.Join(", ", patterns) : "Mixed structure";
+    }
+    
+    private (int Classes, int Interfaces, int Methods) GetPublicApiSurface(List<DocumentSymbol> symbols)
+    {
+        var publicClasses = GetAllSymbolsOfKind(symbols, "Class")
+            .Count(c => c.Modifiers?.Contains("public") == true);
+        var publicInterfaces = GetAllSymbolsOfKind(symbols, "Interface")
+            .Count(i => i.Modifiers?.Contains("public") == true);
+        var publicMethods = GetAllSymbolsOfKind(symbols, "Method")
+            .Count(m => m.Modifiers?.Contains("public") == true);
+        
+        return (publicClasses, publicInterfaces, publicMethods);
+    }
+    
+    private List<string> AnalyzeCodeOrganization(List<DocumentSymbol> symbols, Dictionary<string, int> typeCounts)
+    {
+        var insights = new List<string>();
+        
+        // Check for good separation of concerns
+        if (typeCounts.ContainsKey("Interface") && typeCounts.ContainsKey("Class"))
+        {
+            var interfaces = typeCounts["Interface"];
+            var classes = typeCounts["Class"];
+            
+            if (interfaces > 0 && classes > 0)
+            {
+                insights.Add($"🎯 Good separation: {interfaces} interface(s) with {classes} implementation(s)");
+            }
+        }
+        
+        // Check for potential code smells
+        var methods = GetAllSymbolsOfKind(symbols, "Method");
+        if (methods.Count > 20)
+        {
+            var publicMethods = methods.Count(m => m.Modifiers?.Contains("public") == true);
+            var privateMethods = methods.Count - publicMethods;
+            
+            if (publicMethods > privateMethods * 2)
+            {
+                insights.Add($"⚠️ High public method count ({publicMethods}) - consider extracting services");
+            }
+        }
+        
+        // Check for nested types
+        var hasNestedTypes = symbols.Any(s => s.Children.Any(c => c.Kind == "Class" || c.Kind == "Interface"));
+        if (hasNestedTypes)
+        {
+            insights.Add($"🏗️ Contains nested types - may indicate helper patterns");
+        }
+        
+        return insights;
+    }
+    
+    private int GetSymbolImportance(DocumentSymbol symbol)
+    {
+        int importance = 0;
+        
+        // Public symbols are more important
+        if (symbol.Modifiers?.Contains("public") == true) importance += 100;
+        
+        // Interfaces are architectural elements
+        if (symbol.Kind == "Interface") importance += 80;
+        
+        // Classes are core elements
+        if (symbol.Kind == "Class") importance += 70;
+        
+        // More children indicate complexity
+        importance += symbol.Children.Count * 5;
+        
+        // Static symbols may be utilities
+        if (symbol.Modifiers?.Contains("static") == true) importance += 30;
+        
+        return importance;
     }
 }
 

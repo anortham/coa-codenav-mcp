@@ -31,7 +31,17 @@ public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosti
     private const int MAX_DIAGNOSTICS_PER_RESPONSE = 50;
 
     public override string Name => ToolNames.GetDiagnostics;
-    public override string Description => "Get compilation errors, warnings, and analyzer issues with line numbers. See exactly what needs fixing in your code.";
+    public override string Description => @"Get compilation errors, warnings, and analyzer issues with line numbers. See exactly what needs fixing in your code.
+
+Usage examples for effective diagnostics analysis:
+• Basic: `csharp_get_diagnostics` - Gets solution-wide diagnostics (may be truncated if many issues)
+• Errors only: `severities: ['Error']` - Focus on compilation errors first
+• Specific file: `scope: 'file', filePath: 'Services/UserService.cs'` - Diagnose one file
+• Filter warnings: `severities: ['Warning'], idFilter: 'CS8'` - Nullable reference warnings
+• By category: `categoryFilter: 'Compiler'` - Compiler vs analyzer issues
+• Project scope: `scope: 'project', filePath: 'path/to/any/file/in/project'` - Project-level issues
+
+When results are truncated, use the suggested actions to filter effectively. Always fix errors before warnings.";
 
     public GetDiagnosticsTool(
         ILogger<GetDiagnosticsTool> logger,
@@ -137,27 +147,22 @@ public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosti
         List<DiagnosticInfo> returnedDiagnostics;
         var tokenLimitApplied = false;
 
-        // Use framework's token optimization
+        // Use smart prioritization for truncation
         var estimatedTokens = _tokenEstimator.EstimateObject(allDiagnostics);
         if (estimatedTokens > 10000)
         {
-            // Use framework's progressive reduction
-            returnedDiagnostics = _tokenEstimator.ApplyProgressiveReduction(
-                allDiagnostics,
-                diagnostic => _tokenEstimator.EstimateObject(diagnostic),
-                10000,
-                new[] { 50, 40, 30, 20, 10 } // Progressive reduction steps
-            );
-            var effectiveLimit = Math.Min(returnedDiagnostics.Count, maxResults);
-            returnedDiagnostics = returnedDiagnostics.Take(effectiveLimit).ToList();
+            // Smart truncation: ensure all errors are included, then prioritize important warnings
+            var targetCount = CalculateTargetCountForTokenLimit(allDiagnostics, 10000);
+            returnedDiagnostics = ApplySmartTruncation(allDiagnostics, targetCount);
             tokenLimitApplied = true;
             
-            _logger.LogWarning("Token optimization applied: reducing diagnostics from {Total} to {Safe}", 
+            _logger.LogWarning("Smart truncation applied: reducing diagnostics from {Total} to {Safe}", 
                 allDiagnostics.Count, returnedDiagnostics.Count);
         }
         else if (totalDiagnostics > maxResults)
         {
-            returnedDiagnostics = allDiagnostics.Take(maxResults).ToList();
+            // Apply smart truncation even for max results limit
+            returnedDiagnostics = ApplySmartTruncation(allDiagnostics, maxResults);
         }
         else
         {
@@ -181,25 +186,40 @@ public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosti
         var warningCount = allDiagnostics.Count(d => d.Severity == "Warning");
         var infoCount = allDiagnostics.Count(d => d.Severity == "Info");
 
-        // Add insight about truncation if applicable
+        // Add enhanced insight about truncation if applicable
         if (shouldTruncate)
         {
+            var excludedErrors = allDiagnostics.Count(d => d.Severity == "Error") - returnedDiagnostics.Count(d => d.Severity == "Error");
+            var excludedWarnings = allDiagnostics.Count(d => d.Severity == "Warning") - returnedDiagnostics.Count(d => d.Severity == "Warning");
+            var excludedInfo = allDiagnostics.Count(d => d.Severity == "Info") - returnedDiagnostics.Count(d => d.Severity == "Info");
+            
             if (tokenLimitApplied)
             {
-                insights.Insert(0, $"⚠️ Token limit applied. Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics.");
+                insights.Insert(0, $"🔄 Results truncated to prevent context overflow (10,000 token safety limit)");
+                insights.Insert(1, $"📊 Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics: {returnedDiagnostics.Count(d => d.Severity == "Error")} errors, {returnedDiagnostics.Count(d => d.Severity == "Warning")} warnings");
+                
+                if (excludedErrors > 0)
+                {
+                    insights.Insert(2, $"⚠️ WARNING: {excludedErrors} errors were excluded due to space - use error-only filter!");
+                }
+                else if (errorCount > 0)
+                {
+                    insights.Insert(2, $"✅ All {errorCount} errors are included (excluded: {excludedWarnings} warnings, {excludedInfo} info)");
+                }
+                else
+                {
+                    insights.Insert(2, $"📝 No errors found (excluded: {excludedWarnings} warnings, {excludedInfo} info)");
+                }
             }
             else
             {
-                insights.Insert(0, $"Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics (max results limit)");
+                insights.Insert(0, $"📋 Showing {returnedDiagnostics.Count} of {totalDiagnostics} diagnostics (max results limit: {maxResults})");
             }
+            
             if (resourceUri != null)
             {
-                insights.Add($"Full results available at resource: {resourceUri}");
-                var totalPages = (int)Math.Ceiling((double)totalDiagnostics / 100); // Resource provider uses 100 items per page
-                if (totalPages > 1)
-                {
-                    insights.Add($"Resource contains {totalPages} pages (100 diagnostics per page). Access pages: {resourceUri}/page/1 to {resourceUri}/page/{totalPages}");
-                }
+                insights.Add($"💾 Full results stored in resource for detailed analysis");
+                insights.Add($"🔍 To access: ReadMcpResourceTool with uri: '{resourceUri}'");
             }
         }
 
@@ -600,6 +620,97 @@ public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosti
         return filtered.ToList();
     }
 
+    private int CalculateTargetCountForTokenLimit(List<DiagnosticInfo> diagnostics, int tokenLimit)
+    {
+        if (diagnostics.Count == 0) return 0;
+        
+        // Estimate average tokens per diagnostic
+        var sampleSize = Math.Min(10, diagnostics.Count);
+        var sample = diagnostics.Take(sampleSize).ToList();
+        var sampleTokens = _tokenEstimator.EstimateObject(sample);
+        var avgTokensPerDiagnostic = sampleTokens / sampleSize;
+        
+        // Calculate target count with some safety margin (80% of limit)
+        var safeTokenLimit = (int)(tokenLimit * 0.8);
+        var targetCount = Math.Max(1, safeTokenLimit / avgTokensPerDiagnostic);
+        
+        return Math.Min(targetCount, diagnostics.Count);
+    }
+    
+    private List<DiagnosticInfo> ApplySmartTruncation(List<DiagnosticInfo> allDiagnostics, int targetLimit)
+    {
+        var result = new List<DiagnosticInfo>();
+        
+        // Step 1: Always include all errors (highest priority)
+        var errors = allDiagnostics.Where(d => d.Severity == "Error").ToList();
+        result.AddRange(errors);
+        
+        if (result.Count >= targetLimit)
+        {
+            return result.Take(targetLimit).ToList();
+        }
+        
+        var remainingCapacity = targetLimit - result.Count;
+        var remainingDiagnostics = allDiagnostics.Where(d => d.Severity != "Error").ToList();
+        
+        // Step 2: Prioritize warnings by importance
+        var importantWarnings = remainingDiagnostics
+            .Where(d => d.Severity == "Warning")
+            .OrderBy(d => GetWarningPriority(d.Id))
+            .ThenBy(d => d.FilePath)
+            .ThenBy(d => d.Location?.Line ?? 0)
+            .ToList();
+        
+        var warningsToInclude = Math.Min(importantWarnings.Count, (int)(remainingCapacity * 0.8)); // 80% for warnings
+        result.AddRange(importantWarnings.Take(warningsToInclude));
+        
+        // Step 3: Include some info/hidden diagnostics if space remains
+        var infoCapacity = remainingCapacity - warningsToInclude;
+        if (infoCapacity > 0)
+        {
+            var infoDiagnostics = remainingDiagnostics
+                .Where(d => d.Severity == "Info" || d.Severity == "Hidden")
+                .Take(infoCapacity);
+            result.AddRange(infoDiagnostics);
+        }
+        
+        return result.Take(targetLimit).ToList();
+    }
+    
+    private int GetWarningPriority(string diagnosticId)
+    {
+        // Lower numbers = higher priority (included first)
+        return diagnosticId switch
+        {
+            // Nullable reference warnings - important for modern C#
+            var id when id.StartsWith("CS8") => 1,
+            
+            // Unused code - easy to fix and clean up
+            "CS0168" or "CS0169" or "CS0219" => 2,
+            
+            // Potential null reference before nullable era
+            "CS8600" or "CS8601" or "CS8602" or "CS8603" or "CS8604" => 1,
+            
+            // Accessibility and API design
+            "CS1591" => 3, // Missing XML documentation
+            
+            // Performance related
+            "CA1822" or "CA1852" => 4, // Member can be static, class can be sealed
+            
+            // Security related
+            var id when id.StartsWith("CA") && (id.Contains("Security") || id.Contains("Sql")) => 1,
+            
+            // General analyzer warnings
+            var id when id.StartsWith("CA") => 5,
+            
+            // Compiler warnings (usually important)
+            var id when id.StartsWith("CS") => 3,
+            
+            // Unknown warnings
+            _ => 6
+        };
+    }
+
     private List<DiagnosticInfo> SortDiagnostics(List<DiagnosticInfo> diagnostics, string sortBy)
     {
         return sortBy.ToLower() switch
@@ -724,31 +835,98 @@ public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosti
     private List<AIAction> GenerateNextActions(List<DiagnosticInfo> diagnostics, GetDiagnosticsParams parameters, bool wasTruncated, int totalCount)
     {
         var actions = new List<AIAction>();
+        var allErrors = diagnostics.Count(d => d.Severity == "Error");
+        var allWarnings = diagnostics.Count(d => d.Severity == "Warning");
 
         if (wasTruncated)
         {
-            actions.Add(new AIAction
+            // Priority 1: If errors were excluded, get them immediately
+            var excludedErrors = totalCount > 0 && allErrors == 0 && diagnostics.Any(d => d.Severity != "Error");
+            if (excludedErrors)
             {
-                Action = "csharp_get_diagnostics",
-                Description = $"Get more diagnostics (up to 500)",
-                Parameters = new Dictionary<string, object>
+                actions.Add(new AIAction
                 {
-                    ["scope"] = parameters.Scope ?? "solution",
-                    ["filePath"] = parameters.FilePath ?? "",
-                    ["maxResults"] = Math.Min(totalCount, 500)
-                },
-                Priority = 90
-            });
+                    Action = "csharp_get_diagnostics",
+                    Description = "🚨 Get errors only (highest priority)",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["severities"] = new[] { "Error" },
+                        ["scope"] = parameters.Scope ?? "solution",
+                        ["maxResults"] = 100
+                    },
+                    Priority = 95
+                });
+            }
+
+            // Priority 2: Focus on specific file if many diagnostics
+            var worstFile = diagnostics.Where(d => d.FilePath != null)
+                                      .GroupBy(d => d.FilePath)
+                                      .OrderByDescending(g => g.Count())
+                                      .FirstOrDefault();
+            if (worstFile != null && worstFile.Count() > 5)
+            {
+                var fileName = Path.GetFileName(worstFile.Key!);
+                actions.Add(new AIAction
+                {
+                    Action = "csharp_get_diagnostics",
+                    Description = $"📁 Focus on worst file: {fileName} ({worstFile.Count()} issues)",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = worstFile.Key!,
+                        ["scope"] = "file"
+                    },
+                    Priority = 85
+                });
+            }
+
+            // Priority 3: Filter by category if mixed types
+            var categories = diagnostics.Select(d => d.Category ?? "General").Distinct().Take(2);
+            if (categories.Count() > 1)
+            {
+                foreach (var category in categories)
+                {
+                    var categoryCount = diagnostics.Count(d => (d.Category ?? "General") == category);
+                    actions.Add(new AIAction
+                    {
+                        Action = "csharp_get_diagnostics",
+                        Description = $"🏷️ Show only {category} issues ({categoryCount} total)",
+                        Parameters = new Dictionary<string, object>
+                        {
+                            ["categoryFilter"] = category,
+                            ["scope"] = parameters.Scope ?? "solution",
+                            ["maxResults"] = 50
+                        },
+                        Priority = 75
+                    });
+                }
+            }
+
+            // Priority 4: Common filter suggestions based on content
+            if (allWarnings > 20)
+            {
+                actions.Add(new AIAction
+                {
+                    Action = "csharp_get_diagnostics", 
+                    Description = "⚠️ Show warnings by type (nullable, unused, etc.)",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["severities"] = new[] { "Warning" },
+                        ["idFilter"] = "CS8", // Nullable warnings
+                        ["scope"] = parameters.Scope ?? "solution"
+                    },
+                    Priority = 65
+                });
+            }
         }
 
-        // Suggest fixing errors first
+        // Always suggest fixing errors first
         var firstError = diagnostics.FirstOrDefault(d => d.Severity == "Error" && d.Location != null);
         if (firstError?.Location != null)
         {
             actions.Add(new AIAction
             {
-                Action = "csharp_goto_definition",
-                Description = $"Go to first error: {firstError.Id}",
+                Action = "csharp_hover",
+                Description = $"🔍 Examine first error: {firstError.Id} - {firstError.Message?.Substring(0, Math.Min(50, firstError.Message.Length))}...",
                 Parameters = new Dictionary<string, object>
                 {
                     ["filePath"] = firstError.Location.FilePath ?? "",
@@ -759,39 +937,22 @@ public class GetDiagnosticsTool : McpToolBase<GetDiagnosticsParams, GetDiagnosti
             });
         }
 
-        // Suggest viewing file with most diagnostics
-        var worstFile = diagnostics.Where(d => d.FilePath != null)
-                                  .GroupBy(d => d.FilePath)
-                                  .OrderByDescending(g => g.Count())
-                                  .FirstOrDefault();
-        if (worstFile != null && worstFile.Count() > 3)
+        // Suggest code fixes if available
+        var fixableCount = diagnostics.Count(d => d.HasCodeFix);
+        if (fixableCount > 0)
         {
             actions.Add(new AIAction
             {
-                Action = "csharp_document_symbols",
-                Description = $"View file with most issues: {Path.GetFileName(worstFile.Key!)}",
+                Action = "csharp_apply_code_fix",
+                Description = $"🔧 Apply available code fixes ({fixableCount} diagnostics have fixes)",
                 Parameters = new Dictionary<string, object>
                 {
-                    ["filePath"] = worstFile.Key!
+                    ["filePath"] = firstError?.Location?.FilePath ?? diagnostics.First(d => d.HasCodeFix).Location?.FilePath ?? "",
+                    ["line"] = firstError?.Location?.Line ?? diagnostics.First(d => d.HasCodeFix).Location?.Line ?? 1,
+                    ["column"] = firstError?.Location?.Column ?? diagnostics.First(d => d.HasCodeFix).Location?.Column ?? 1,
+                    ["preview"] = true
                 },
-                Priority = 60
-            });
-        }
-
-        // Suggest running specific analyzer categories
-        var categories = diagnostics.Select(d => d.Category).Distinct().Take(3);
-        foreach (var category in categories)
-        {
-            actions.Add(new AIAction
-            {
-                Action = "csharp_get_diagnostics",
-                Description = $"Show only {category} diagnostics",
-                Parameters = new Dictionary<string, object>
-                {
-                    ["categoryFilter"] = category,
-                    ["scope"] = "solution"
-                },
-                Priority = 40
+                Priority = 70
             });
         }
 

@@ -30,7 +30,7 @@ public class CodeCloneDetectionTool : McpToolBase<CodeCloneDetectionParams, Code
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_code_clone_detection";
-    public override string Description => @"Detect duplicate code patterns across the solution to identify refactoring opportunities. Finds similar code blocks that could be consolidated to reduce technical debt.";
+    public override string Description => "Detect duplicate code patterns across the solution to identify refactoring opportunities. Finds similar code blocks that could be consolidated to reduce technical debt.\n\nEffective usage strategies:\n\u2022 Start broad: Use default settings to get overview, then narrow down based on results\n\u2022 Focus on high-impact: Use similarityThreshold: 0.9 to find exact duplicates first\n\u2022 Size filtering: Adjust minLines (6-20) based on project needs - larger for significant methods\n\u2022 Scope control: Use filePattern: \"src/**/*.cs\" to limit analysis to source code\n\u2022 Performance: Results auto-truncated at 10,000 tokens - use filtering for large codebases\n\nTypical workflow: Run broad scan \u2192 Review high-similarity groups \u2192 Extract common patterns \u2192 Verify with targeted re-scan";
 
     public CodeCloneDetectionTool(
         ILogger<CodeCloneDetectionTool> logger,
@@ -167,21 +167,12 @@ public class CodeCloneDetectionTool : McpToolBase<CodeCloneDetectionParams, Code
 
             var insights = GenerateInsights(cloneGroups, codeBlocks.Count);
             
-            // Add truncation warning if needed
+            // Add enhanced truncation messaging if needed
             if (wasTruncated)
             {
-                if (tokenLimitApplied && parameters.MaxGroups.HasValue && cloneGroups.Count < parameters.MaxGroups.Value)
-                {
-                    insights.Insert(0, $"⚠️ Token optimization applied. Showing {cloneGroups.Count} of {allGroups.Count} clone groups to fit context window.");
-                }
-                else if (tokenLimitApplied)
-                {
-                    insights.Insert(0, $"⚠️ Token optimization applied. Showing {cloneGroups.Count} of {allGroups.Count} clone groups.");
-                }
-                else
-                {
-                    insights.Insert(0, $"⚠️ Showing {cloneGroups.Count} of {allGroups.Count} clone groups. Full results available via resource URI.");
-                }
+                insights.InsertRange(0, GenerateEnhancedTruncationInsights(
+                    cloneGroups.Count, allGroups.Count, tokenLimitApplied, 
+                    codeBlocks.Count, parameters));
             }
             
             var actions = GenerateNextActions(cloneGroups, parameters, wasTruncated, allGroups.Count);
@@ -483,27 +474,51 @@ public class CodeCloneDetectionTool : McpToolBase<CodeCloneDetectionParams, Code
 
         if (groups.Count == 0)
         {
-            insights.Add("No code clones detected - good code quality!");
+            insights.Add("✨ No significant code clones detected - codebase follows DRY principles well");
+            insights.Add($"💡 Analyzed {totalBlocks} code blocks with current similarity threshold");
             return insights;
         }
 
-        insights.Add($"Found {groups.Count} clone groups from {totalBlocks} code blocks analyzed");
-
+        // Priority-based insights with smart categorization
+        var totalClones = groups.Sum(g => g.Clones?.Count ?? 0);
+        var duplicatedLines = groups.Sum(g => (g.Clones?.Count ?? 0) * (g.Clones?.FirstOrDefault()?.LineCount ?? 0));
+        
+        // Clone severity categorization
+        var criticalGroups = groups.Count(g => g.SimilarityScore > 0.95 && (g.Clones?.Count ?? 0) > 3);
         var highSimilarity = groups.Count(g => g.SimilarityScore > 0.9);
-        if (highSimilarity > 0)
+        var largeDuplication = groups.Count(g => (g.Clones?.Count ?? 0) > 5);
+        
+        insights.Add($"🔍 Found {groups.Count} clone groups from {totalBlocks} code blocks analyzed");
+        insights.Add($"📊 Impact: {duplicatedLines} duplicated lines across {totalClones} code instances");
+        
+        if (criticalGroups > 0)
         {
-            insights.Add($"{highSimilarity} groups have very high similarity (>90%) - consider immediate refactoring");
+            insights.Add($"🚨 Critical: {criticalGroups} groups have >95% similarity with 4+ instances - immediate refactoring candidates");
         }
-
+        else if (highSimilarity > 0)
+        {
+            insights.Add($"⚠️ High priority: {highSimilarity} groups with >90% similarity - strong refactoring opportunities");
+        }
+        
+        if (largeDuplication > 0)
+        {
+            insights.Add($"📈 Widespread: {largeDuplication} groups have 5+ instances - consider shared utilities or base classes");
+        }
+        
         var largestGroup = groups.OrderByDescending(g => g.Clones?.Count ?? 0).FirstOrDefault();
         if (largestGroup != null && largestGroup.Clones?.Count > 3)
         {
-            insights.Add($"Largest clone group has {largestGroup.Clones.Count} instances - significant duplication");
+            var firstClone = largestGroup.Clones.FirstOrDefault();
+            var context = firstClone != null ? $" in {firstClone.ContainingType}.{firstClone.Name}" : "";
+            insights.Add($"🎯 Largest group: {largestGroup.Clones.Count} instances{context} - highest impact target");
         }
-
-        var totalClones = groups.Sum(g => g.Clones?.Count ?? 0);
-        var duplicatedLines = groups.Sum(g => (g.Clones?.Count ?? 0) * (g.Clones?.FirstOrDefault()?.LineCount ?? 0));
-        insights.Add($"Estimated {duplicatedLines} duplicated lines of code across {totalClones} code blocks");
+        
+        // Technical debt estimation
+        if (duplicatedLines > 500)
+        {
+            var estimatedHours = duplicatedLines / 100; // Rough estimate: 100 lines per hour of refactoring
+            insights.Add($"💰 Technical debt: ~{estimatedHours} hours of refactoring opportunity");
+        }
 
         return insights;
     }
@@ -511,63 +526,208 @@ public class CodeCloneDetectionTool : McpToolBase<CodeCloneDetectionParams, Code
     private List<AIAction> GenerateNextActions(List<CloneGroup> groups, CodeCloneDetectionParams parameters, bool wasTruncated, int totalGroups)
     {
         var actions = new List<AIAction>();
+        var totalClones = groups.Sum(g => g.Clones?.Count ?? 0);
 
-        // If truncated, offer to get all results
-        if (wasTruncated)
+        // Enhanced filtering strategies for large result sets
+        if (wasTruncated && totalGroups > 20)
         {
+            // Focus on critical clones first
             actions.Add(new AIAction
             {
                 Action = "csharp_code_clone_detection",
-                Description = $"Get all {totalGroups} clone groups",
+                Description = $"🎯 Focus on critical clones (>95% similarity, 4+ instances)",
                 Parameters = new Dictionary<string, object>
                 {
-                    ["minLines"] = parameters.MinLines,
-                    ["minTokens"] = parameters.MinTokens,
+                    ["similarityThreshold"] = 0.95,
+                    ["minLines"] = Math.Max(parameters.MinLines, 10),
+                    ["maxGroups"] = 25
+                },
+                Priority = 98,
+                Category = "filtering"
+            });
+            
+            // Focus on large duplications
+            actions.Add(new AIAction
+            {
+                Action = "csharp_code_clone_detection",
+                Description = $"📏 Focus on significant duplications (20+ lines)",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["minLines"] = 20,
                     ["similarityThreshold"] = parameters.SimilarityThreshold,
-                    ["maxGroups"] = Math.Min(totalGroups, 500)
+                    ["maxGroups"] = 30
+                },
+                Priority = 96,
+                Category = "filtering"
+            });
+            
+            // Scope-based filtering
+            actions.Add(new AIAction
+            {
+                Action = "csharp_code_clone_detection",
+                Description = $"📂 Analyze specific area (use filePattern: \"YourFolder/**/*.cs\")",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["filePattern"] = "src/**/*.cs",
+                    ["similarityThreshold"] = parameters.SimilarityThreshold,
+                    ["minLines"] = parameters.MinLines
+                },
+                Priority = 94,
+                Category = "filtering"
+            });
+        }
+        else if (wasTruncated)
+        {
+            actions.Add(new AIAction
+            {
+                Action = "ReadMcpResourceTool",
+                Description = $"📋 View all {totalGroups} clone groups (full results)",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["server"] = "codenav"
                 },
                 Priority = 95,
-                Category = "pagination"
+                Category = "navigation"
             });
         }
 
-        var topGroup = groups.FirstOrDefault();
+        // Smart refactoring actions based on clone analysis
+        var topGroup = groups.OrderByDescending(g => g.SimilarityScore * (g.Clones?.Count ?? 0)).FirstOrDefault();
         if (topGroup?.Clones?.Any() == true)
         {
             var firstClone = topGroup.Clones.First();
+            var fileName = Path.GetFileName(firstClone.Location.FilePath);
+            
+            // Priority refactoring target
             actions.Add(new AIAction
             {
-                Action = "csharp_extract_method",
-                Description = $"Extract common logic from cloned code in '{firstClone.Name}'",
+                Action = "csharp_goto_definition",
+                Description = $"🔍 Examine highest-impact clone: {fileName}:{firstClone.Location.Line} ({topGroup.SimilarityScore:P0} similarity)",
                 Parameters = new Dictionary<string, object>
                 {
                     ["filePath"] = firstClone.Location.FilePath,
-                    ["startLine"] = firstClone.Location.Line,
-                    ["endLine"] = firstClone.Location.EndLine
+                    ["line"] = firstClone.Location.Line,
+                    ["column"] = firstClone.Location.Column
                 },
-                Priority = 90,
-                Category = "refactoring"
+                Priority = 92,
+                Category = "navigation"
             });
-
-            // Suggest reviewing the clone group
-            if (topGroup.Clones.Count > 1)
+            
+            // Refactoring actions based on clone characteristics
+            if (topGroup.SimilarityScore > 0.95)
             {
                 actions.Add(new AIAction
                 {
-                    Action = "review_clones",
-                    Description = $"Review all {topGroup.Clones.Count} instances of this clone",
+                    Action = "csharp_extract_method",
+                    Description = $"🔧 Extract duplicate method from {firstClone.ContainingType}.{firstClone.Name}",
                     Parameters = new Dictionary<string, object>
                     {
-                        ["cloneGroupId"] = topGroup.Id,
-                        ["similarity"] = topGroup.SimilarityScore
+                        ["filePath"] = firstClone.Location.FilePath,
+                        ["startLine"] = firstClone.Location.Line,
+                        ["endLine"] = firstClone.Location.EndLine,
+                        ["methodName"] = $"Extract{firstClone.Name}Common"
                     },
-                    Priority = 80,
-                    Category = "analysis"
+                    Priority = 90,
+                    Category = "refactoring"
+                });
+            }
+            
+            if (topGroup.Clones.Count > 3)
+            {
+                actions.Add(new AIAction
+                {
+                    Action = "csharp_generate_code",
+                    Description = $"🏗️ Generate base class/interface for {topGroup.Clones.Count} similar implementations",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = firstClone.Location.FilePath,
+                        ["line"] = firstClone.Location.Line,
+                        ["column"] = firstClone.Location.Column,
+                        ["generationType"] = "interface"
+                    },
+                    Priority = 88,
+                    Category = "refactoring"
                 });
             }
         }
+        
+        // Pattern analysis for multiple groups
+        if (groups.Count > 5)
+        {
+            var criticalGroups = groups.Count(g => g.SimilarityScore > 0.95);
+            if (criticalGroups > 2)
+            {
+                actions.Add(new AIAction
+                {
+                    Action = "csharp_solution_wide_find_replace",
+                    Description = $"🔄 Standardize {criticalGroups} exact duplicate patterns with find-replace",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["useRegex"] = true,
+                        ["preview"] = true
+                    },
+                    Priority = 86,
+                    Category = "refactoring"
+                });
+            }
+        }
+        
+        // Code quality assessment
+        if (totalClones > 20)
+        {
+            actions.Add(new AIAction
+            {
+                Action = "csharp_code_metrics",
+                Description = $"📈 Analyze complexity metrics for duplicated areas",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["scope"] = "solution",
+                    ["includeInherited"] = false
+                },
+                Priority = 75,
+                Category = "analysis"
+            });
+        }
 
-        return actions;
+        return actions.OrderByDescending(a => a.Priority).ToList();
+    }
+    
+    private List<string> GenerateEnhancedTruncationInsights(
+        int displayedGroups, int totalGroups, bool tokenLimitApplied, 
+        int totalBlocksAnalyzed, CodeCloneDetectionParams parameters)
+    {
+        var insights = new List<string>();
+        
+        // Clear explanation of why truncation happened
+        if (tokenLimitApplied)
+        {
+            insights.Add($"🔄 Results auto-truncated to prevent context overflow (10,000 token safety limit)");
+            insights.Add($"📊 Showing {displayedGroups} of {totalGroups} clone groups prioritized by impact (similarity × instances)");
+        }
+        else
+        {
+            insights.Add($"📋 Showing {displayedGroups} of {totalGroups} clone groups (maxGroups limit applied)");
+        }
+        
+        // Analysis scope context
+        insights.Add($"🔍 Analysis scope: {totalBlocksAnalyzed} code blocks, {parameters.MinLines}+ lines, {parameters.SimilarityThreshold:P0}+ similarity");
+        
+        // Strategic guidance for large result sets
+        if (totalGroups > 50)
+        {
+            insights.Add($"💡 Large codebase detected - use filtering strategies to focus analysis:");
+            insights.Add($"   • Increase similarityThreshold to 0.9+ for exact duplicates");
+            insights.Add($"   • Increase minLines to 15+ for significant methods only");
+            insights.Add($"   • Use filePattern to analyze specific areas first");
+        }
+        else if (totalGroups > 20)
+        {
+            insights.Add($"🎯 Medium complexity - consider focusing on highest-similarity groups first");
+        }
+        
+        insights.Add($"💾 Full results available via ReadMcpResourceTool");
+        
+        return insights;
     }
 
 }

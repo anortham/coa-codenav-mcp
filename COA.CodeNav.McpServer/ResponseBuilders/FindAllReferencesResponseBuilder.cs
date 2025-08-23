@@ -38,11 +38,25 @@ public class FindAllReferencesResponseBuilder : BaseResponseBuilder<FindAllRefer
         
         var wasTruncated = reducedLocations.Count < data.Locations.Count;
         
-        // Generate insights
+        // Generate enhanced insights
         var insights = GenerateInsights(data, context.ResponseMode ?? "optimized");
         if (wasTruncated)
         {
-            insights.Insert(0, $"⚠️ Showing {reducedLocations.Count} of {data.Locations.Count} references. Full results stored as resource.");
+            // Enhanced truncation messaging
+            var fileGroups = data.Locations.GroupBy(l => l.FilePath).ToList();
+            var returnedFileGroups = reducedLocations.GroupBy(l => l.FilePath).ToList();
+            
+            insights.Insert(0, $"🔍 Results truncated to prevent context overflow (showing {reducedLocations.Count} of {data.Locations.Count} references)");
+            insights.Insert(1, $"📂 Coverage: {returnedFileGroups.Count}/{fileGroups.Count} files included");
+            
+            // Check if any files were completely excluded
+            var excludedFiles = fileGroups.Count - returnedFileGroups.Count;
+            if (excludedFiles > 0)
+            {
+                insights.Insert(2, $"⚠️ {excludedFiles} files with references were excluded - use file filtering for focused analysis");
+            }
+            
+            insights.Add($"💾 Full results available via ReadMcpResourceTool");
         }
         
         // Generate actions
@@ -161,15 +175,60 @@ public class FindAllReferencesResponseBuilder : BaseResponseBuilder<FindAllRefer
         
         if (data.Locations.Count > 0)
         {
-            // Navigate to first reference
+            // Priority-based actions for truncated results
+            var fileGroups = data.Locations.GroupBy(l => l.FilePath).OrderByDescending(g => g.Count()).ToList();
+            var wasTruncated = data.Locations.Count > 50; // Assume truncation threshold
+            
+            if (wasTruncated && fileGroups.Count > 1)
+            {
+                // Focus on file with most references
+                var topFile = fileGroups.First();
+                var fileName = Path.GetFileName(topFile.Key);
+                actions.Add(new AIAction
+                {
+                    Action = "csharp_find_all_references",
+                    Description = $"📁 Focus on {fileName} ({topFile.Count()} references)",
+                    Category = "filtering",
+                    Priority = 95,
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = data.SearchLocation.FilePath,
+                        ["line"] = data.SearchLocation.Line,
+                        ["column"] = data.SearchLocation.Column,
+                        ["maxResults"] = topFile.Count()
+                    }
+                });
+
+                // Show second most referenced file if significant
+                if (fileGroups.Count > 1 && fileGroups[1].Count() > 3)
+                {
+                    var secondFile = fileGroups[1];
+                    var secondFileName = Path.GetFileName(secondFile.Key);
+                    actions.Add(new AIAction
+                    {
+                        Action = "csharp_find_all_references",
+                        Description = $"📁 Analyze {secondFileName} ({secondFile.Count()} references)",
+                        Category = "filtering",
+                        Priority = 85,
+                        Parameters = new Dictionary<string, object>
+                        {
+                            ["filePath"] = data.SearchLocation.FilePath,
+                            ["line"] = data.SearchLocation.Line,
+                            ["column"] = data.SearchLocation.Column,
+                            ["maxResults"] = 100
+                        }
+                    });
+                }
+            }
+
+            // Navigate to first reference (always useful)
             var firstRef = data.Locations.First();
             actions.Add(new AIAction
             {
-                Action = "navigate_first",
-                Tool = "csharp_goto_definition",
-                Description = $"Navigate to first reference at {Path.GetFileName(firstRef.FilePath)}:{firstRef.Line}",
-                Category = "navigate",
-                Priority = 10,
+                Action = "csharp_goto_definition", 
+                Description = $"🔍 View first usage: {Path.GetFileName(firstRef.FilePath)}:{firstRef.Line}",
+                Category = "navigation",
+                Priority = 80,
                 Parameters = new Dictionary<string, object>
                 {
                     ["filePath"] = firstRef.FilePath,
@@ -178,54 +237,60 @@ public class FindAllReferencesResponseBuilder : BaseResponseBuilder<FindAllRefer
                 }
             });
             
-            // Rename symbol
-            actions.Add(new AIAction
+            // Symbol-specific actions based on usage patterns
+            if (data.Symbol.Kind == SymbolKind.Method && data.Locations.Count > 10)
             {
-                Action = "rename",
-                Tool = "csharp_rename_symbol",
-                Description = $"Rename '{data.Symbol.Name}' across all {data.Locations.Count} references",
-                Category = "refactor",
-                Priority = 8,
-                Parameters = new Dictionary<string, object>
+                actions.Add(new AIAction
                 {
-                    ["filePath"] = data.SearchLocation.FilePath,
-                    ["line"] = data.SearchLocation.Line,
-                    ["column"] = data.SearchLocation.Column,
-                    ["newName"] = $"{data.Symbol.Name}_renamed"
-                }
-            });
+                    Action = "csharp_rename_symbol",
+                    Description = $"🔄 Safely rename '{data.Symbol.Name}' ({data.Locations.Count} usages)",
+                    Category = "refactoring",
+                    Priority = 75,
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = data.SearchLocation.FilePath,
+                        ["line"] = data.SearchLocation.Line,
+                        ["column"] = data.SearchLocation.Column,
+                        ["preview"] = true
+                    }
+                });
+            }
             
-            // Extract to interface if it's a class
             if (data.Symbol.Kind == SymbolKind.NamedType)
             {
                 actions.Add(new AIAction
                 {
-                    Action = "extract_interface",
-                    Tool = "csharp_generate_code",
-                    Description = "Extract interface from this class",
-                    Category = "refactor",
-                    Priority = 7
+                    Action = "csharp_find_implementations",
+                    Description = $"🔗 Find implementations/inheritances of '{data.Symbol.Name}'",
+                    Category = "analysis",
+                    Priority = 70,
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = data.SearchLocation.FilePath,
+                        ["line"] = data.SearchLocation.Line,
+                        ["column"] = data.SearchLocation.Column
+                    }
                 });
             }
-        }
-        
-        // Find implementations if interface/abstract
-        if (data.Symbol.IsAbstract || data.Symbol.Kind == SymbolKind.Method)
-        {
-            actions.Add(new AIAction
+
+            // Refactoring insights based on usage count
+            if (data.Locations.Count == 1)
             {
-                Action = "find_implementations",
-                Tool = "csharp_find_implementations",
-                Description = "Find all implementations/overrides",
-                Category = "analyze",
-                Priority = 9,
-                Parameters = new Dictionary<string, object>
+                actions.Add(new AIAction
                 {
-                    ["filePath"] = data.SearchLocation.FilePath,
-                    ["line"] = data.SearchLocation.Line,
-                    ["column"] = data.SearchLocation.Column
-                }
-            });
+                    Action = "csharp_inline_method",
+                    Description = $"💡 Single usage - consider inlining '{data.Symbol.Name}'",
+                    Category = "refactoring",
+                    Priority = 65,
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = data.SearchLocation.FilePath,
+                        ["line"] = data.SearchLocation.Line,
+                        ["column"] = data.SearchLocation.Column,
+                        ["preview"] = true
+                    }
+                });
+            }
         }
         
         return actions;

@@ -27,7 +27,16 @@ public class FindUnusedCodeTool : McpToolBase<FindUnusedCodeParams, FindUnusedCo
     private readonly AnalysisResultResourceProvider? _resourceProvider;
 
     public override string Name => "csharp_find_unused_code";
-    public override string Description => "Find unused classes, methods, properties, and fields. Identifies dead code that can be safely removed to reduce complexity.";
+    public override string Description => @"Find unused classes, methods, properties, and fields. Identifies dead code that can be safely removed to reduce complexity.
+
+Usage examples for effective unused code analysis:
+• Solution-wide scan: `csharp_find_unused_code` - Find all unused code in solution
+• Focus on specific types: `symbolKinds: ['Method', 'Property']` - Only unused methods/properties  
+• Include private members: `includePrivate: true` - Analyze private code (default)
+• Project analysis: `scope: 'project', projectName: 'MyProject'` - Single project
+• File analysis: `scope: 'file', filePath: 'Services/UserService.cs'` - Single file
+
+Start with private members (safer to remove) before tackling public APIs. Use filtering when results are large.";
 
     public FindUnusedCodeTool(
         ILogger<FindUnusedCodeTool> logger,
@@ -149,16 +158,11 @@ public class FindUnusedCodeTool : McpToolBase<FindUnusedCodeParams, FindUnusedCo
             var estimatedTokens = _tokenEstimator.EstimateObject(unusedElements);
             if (estimatedTokens > 10000)
             {
-                // Use framework's progressive reduction
-                returnedElements = _tokenEstimator.ApplyProgressiveReduction(
-                    unusedElements,
-                    element => _tokenEstimator.EstimateObject(element),
-                    10000,
-                    new[] { 100, 75, 50, 25, 10 }
-                );
+                // Apply smart prioritization for unused code
+                returnedElements = ApplySmartPrioritization(unusedElements, 10000);
                 wasTruncated = true;
                 
-                _logger.LogWarning("Token optimization applied: reducing unused elements from {Total} to {Safe}", 
+                _logger.LogWarning("Smart prioritization applied: reducing unused elements from {Total} to {Safe}", 
                     totalElements, returnedElements.Count);
             }
             else
@@ -173,7 +177,25 @@ public class FindUnusedCodeTool : McpToolBase<FindUnusedCodeParams, FindUnusedCo
 
             if (wasTruncated)
             {
-                insights.Insert(0, $"⚠️ Token limit applied. Showing {returnedElements.Count} of {totalElements} unused elements.");
+                var kindBreakdown = unusedElements.GroupBy(e => e.Kind).ToDictionary(g => g.Key, g => g.Count());
+                var returnedKindBreakdown = returnedElements.GroupBy(e => e.Kind).ToDictionary(g => g.Key, g => g.Count());
+                
+                insights.Insert(0, $"🧹 Results prioritized to prevent context overflow (showing {returnedElements.Count} of {totalElements} unused elements)");
+                
+                var kindSummary = string.Join(", ", kindBreakdown.OrderByDescending(kvp => kvp.Value)
+                    .Select(kvp => $"{returnedKindBreakdown.GetValueOrDefault(kvp.Key, 0)}/{kvp.Value} {kvp.Key.ToLower()}s"));
+                insights.Insert(1, $"📊 Priority breakdown: {kindSummary}");
+                
+                // Check for high-impact items
+                var privateCount = unusedElements.Count(e => e.Accessibility == "Private");
+                var returnedPrivateCount = returnedElements.Count(e => e.Accessibility == "Private");
+                
+                if (privateCount > returnedPrivateCount)
+                {
+                    insights.Insert(2, $"✅ Showing high-priority items first (excluded {privateCount - returnedPrivateCount} private members - safer to remove)");
+                }
+                
+                insights.Add($"💾 Full analysis available via ReadMcpResourceTool");
             }
 
             return new FindUnusedCodeResult
@@ -376,6 +398,59 @@ public class FindUnusedCodeTool : McpToolBase<FindUnusedCodeParams, FindUnusedCo
         };
     }
 
+    private List<UnusedCodeElement> ApplySmartPrioritization(List<UnusedCodeElement> allElements, int tokenLimit)
+    {
+        if (allElements.Count == 0) return allElements;
+        
+        // Estimate average tokens per element
+        var sampleSize = Math.Min(10, allElements.Count);
+        var sample = allElements.Take(sampleSize).ToList();
+        var sampleTokens = _tokenEstimator.EstimateObject(sample);
+        var avgTokensPerElement = sampleTokens / sampleSize;
+        
+        // Calculate target count with safety margin
+        var safeTokenLimit = (int)(tokenLimit * 0.8);
+        var targetCount = Math.Max(1, safeTokenLimit / avgTokensPerElement);
+        
+        if (targetCount >= allElements.Count) return allElements;
+        
+        // Prioritize unused code by removal safety and impact
+        var prioritized = allElements.OrderBy(e => GetUnusedCodePriority(e))
+                                   .ThenBy(e => e.Name)
+                                   .Take(targetCount)
+                                   .ToList();
+        
+        return prioritized;
+    }
+    
+    private int GetUnusedCodePriority(UnusedCodeElement element)
+    {
+        // Lower numbers = higher priority (shown first)
+        
+        // 1. Public APIs that might break consumers (highest priority to review)
+        if (element.Accessibility == "Public" && (element.Kind == "Method" || element.Kind == "Property" || element.Kind == "Class"))
+            return 1;
+            
+        // 2. Protected members that affect inheritance
+        if (element.Accessibility == "Protected")
+            return 2;
+            
+        // 3. Internal APIs within the assembly
+        if (element.Accessibility == "Internal")
+            return 3;
+            
+        // 4. Private members in classes (safe to remove, but show for completeness)
+        if (element.Accessibility == "Private" && element.Kind == "Method")
+            return 4;
+            
+        // 5. Private fields and properties (very safe to remove)
+        if (element.Accessibility == "Private" && (element.Kind == "Field" || element.Kind == "Property"))
+            return 5;
+            
+        // 6. Everything else
+        return 6;
+    }
+
     private List<string> GenerateInsights(List<UnusedCodeElement> elements)
     {
         var insights = new List<string>();
@@ -415,40 +490,120 @@ public class FindUnusedCodeTool : McpToolBase<FindUnusedCodeParams, FindUnusedCo
 
         if (elements.Any())
         {
-            // Suggest refactoring the first unused method
-            var firstMethod = elements.FirstOrDefault(e => e.Kind == "Method");
-            if (firstMethod != null)
+            // Smart filtering suggestions based on results
+            var kindGroups = elements.GroupBy(e => e.Kind).OrderByDescending(g => g.Count()).Take(3);
+            var accessibilityGroups = elements.GroupBy(e => e.Accessibility).OrderByDescending(g => g.Count());
+            
+            // Filter by most common unused type
+            foreach (var kindGroup in kindGroups.Take(2))
+            {
+                if (kindGroup.Count() > 1)
+                {
+                    actions.Add(new AIAction
+                    {
+                        Action = "csharp_find_unused_code",
+                        Description = $"🏷️ Focus on unused {kindGroup.Key.ToLower()}s ({kindGroup.Count()} found)",
+                        Parameters = new Dictionary<string, object>
+                        {
+                            ["symbolKinds"] = new[] { kindGroup.Key },
+                            ["scope"] = parameters.Scope ?? "solution",
+                            ["includePrivate"] = parameters.IncludePrivate
+                        },
+                        Priority = 90,
+                        Category = "filtering"
+                    });
+                }
+            }
+
+            // Suggest focusing on safer private members first
+            var privateCount = elements.Count(e => e.Accessibility == "Private");
+            var publicCount = elements.Count(e => e.Accessibility == "Public");
+            
+            if (privateCount > 0 && publicCount > 0)
             {
                 actions.Add(new AIAction
                 {
-                    Action = "review_and_remove",
-                    Description = $"Review and consider removing unused {firstMethod.Kind.ToLower()} '{firstMethod.Name}'",
+                    Action = "csharp_find_unused_code", 
+                    Description = $"🔒 Start with private members ({privateCount} items - safer to remove)",
                     Parameters = new Dictionary<string, object>
                     {
-                        ["filePath"] = firstMethod.Location.FilePath,
-                        ["line"] = firstMethod.Location.Line,
-                        ["column"] = firstMethod.Location.Column
+                        ["scope"] = parameters.Scope ?? "solution",
+                        ["includePrivate"] = true,
+                        ["symbolKinds"] = new[] { "Method", "Property", "Field" }
                     },
-                    Priority = 80,
-                    Category = "cleanup"
+                    Priority = 85,
+                    Category = "safety"
                 });
             }
 
-            // Suggest broader analysis if file scope
+            // Navigate to first high-priority item
+            var highPriorityItem = elements.OrderBy(e => GetUnusedCodePriority(e)).First();
+            var safetyLevel = highPriorityItem.Accessibility == "Private" ? "(safe to remove)" : 
+                             highPriorityItem.Accessibility == "Public" ? "(⚠️ review impact)" : "(review usage)";
+            
+            actions.Add(new AIAction
+            {
+                Action = "csharp_goto_definition",
+                Description = $"🔍 Review {highPriorityItem.Kind.ToLower()}: '{highPriorityItem.Name}' {safetyLevel}",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["filePath"] = highPriorityItem.Location.FilePath,
+                    ["line"] = highPriorityItem.Location.Line,
+                    ["column"] = highPriorityItem.Location.Column
+                },
+                Priority = 80,
+                Category = "navigation"
+            });
+
+            // Expand scope if analyzing single file/project
             if (parameters.Scope?.ToLower() == "file")
             {
                 actions.Add(new AIAction
                 {
                     Action = "csharp_find_unused_code",
-                    Description = "Analyze entire project for unused code",
+                    Description = $"📁 Expand to project-wide analysis",
                     Parameters = new Dictionary<string, object>
                     {
                         ["scope"] = "project",
                         ["filePath"] = parameters.FilePath ?? "",
                         ["includePrivate"] = true
                     },
+                    Priority = 70,
+                    Category = "expansion"
+                });
+            }
+            else if (parameters.Scope?.ToLower() == "project")
+            {
+                actions.Add(new AIAction
+                {
+                    Action = "csharp_find_unused_code",
+                    Description = $"🏢 Expand to solution-wide analysis",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["scope"] = "solution",
+                        ["includePrivate"] = true
+                    },
+                    Priority = 65,
+                    Category = "expansion"
+                });
+            }
+
+            // Suggest removal patterns for very safe items
+            var safeMethods = elements.Where(e => e.Kind == "Method" && e.Accessibility == "Private").Take(3);
+            if (safeMethods.Any())
+            {
+                actions.Add(new AIAction
+                {
+                    Action = "bulk_cleanup",
+                    Description = $"🧹 Safe to remove {safeMethods.Count()} private methods (batch cleanup)",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["symbolKinds"] = new[] { "Method" },
+                        ["includePrivate"] = true,
+                        ["excludeTestCode"] = parameters.ExcludeTestCode
+                    },
                     Priority = 60,
-                    Category = "analysis"
+                    Category = "cleanup"
                 });
             }
         }

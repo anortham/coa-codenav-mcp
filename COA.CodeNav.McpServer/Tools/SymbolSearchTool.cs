@@ -30,7 +30,16 @@ public class SymbolSearchTool : McpToolBase<SymbolSearchParams, SymbolSearchTool
     private const int AGGRESSIVE_MAX_RESULTS = 500; // For when we have token budget
 
     public override string Name => ToolNames.SymbolSearch;
-    public override string Description => "Search for classes, interfaces, and methods by name or pattern. Great for finding that UserService class or checking if an interface exists.";
+    public override string Description => @"Search for classes, interfaces, and methods by name or pattern. Great for finding that UserService class or checking if an interface exists.
+
+Usage examples for effective symbol search:
+• Basic search: `csharp_symbol_search query: 'UserService'` - Find symbols containing 'UserService'
+• Exact match: `searchType: 'exact', query: 'IUserRepository'` - Find exact interface name
+• Wildcard search: `searchType: 'wildcard', query: '*Service'` - All classes ending with Service
+• Filter by type: `symbolKinds: ['Class', 'Interface']` - Only classes and interfaces
+• Fuzzy search: `searchType: 'fuzzy', query: 'UsrSvc'` - Find similar names (UserService)
+
+When results are truncated, use specific filters to narrow down to relevant symbols.";
     public override ToolCategory Category => ToolCategory.Query;
 
     public SymbolSearchTool(
@@ -186,32 +195,32 @@ public class SymbolSearchTool : McpToolBase<SymbolSearchParams, SymbolSearchTool
         // Generate insights
         var insights = GenerateInsights(allSymbols, returnedSymbols, parameters);
         
-        // Add truncation message if needed
+        // Add enhanced truncation message if needed
         if (wasTruncated)
         {
-            insights.Insert(0, $"⚠️ Showing {returnedSymbols.Count} of {allSymbols.Count} symbols. Use maxResults parameter to get more.");
-        }
-        
-        // Generate next actions
-        var nextActions = GenerateNextActions(returnedSymbols);
-        
-        // Add action to get more results if truncated
-        if (wasTruncated)
-        {
-            nextActions.Insert(0, new AIAction
+            var kindBreakdown = allSymbols.GroupBy(s => s.Kind).ToDictionary(g => g.Key, g => g.Count());
+            var returnedKindBreakdown = returnedSymbols.GroupBy(s => s.Kind).ToDictionary(g => g.Key, g => g.Count());
+            
+            insights.Insert(0, $"🔍 Results truncated to prevent context overflow (showing {returnedSymbols.Count} of {allSymbols.Count} symbols)");
+            
+            var kindSummary = string.Join(", ", kindBreakdown.OrderByDescending(kvp => kvp.Value)
+                .Select(kvp => $"{returnedKindBreakdown.GetValueOrDefault(kvp.Key, 0)}/{kvp.Value} {kvp.Key.ToLower()}s"));
+            insights.Insert(1, $"📊 Breakdown: {kindSummary}");
+            
+            // Check if important symbols might be missing
+            var classes = kindBreakdown.GetValueOrDefault("Class", 0);
+            var interfaces = kindBreakdown.GetValueOrDefault("Interface", 0);
+            var returnedClasses = returnedKindBreakdown.GetValueOrDefault("Class", 0);
+            var returnedInterfaces = returnedKindBreakdown.GetValueOrDefault("Interface", 0);
+            
+            if (classes > returnedClasses || interfaces > returnedInterfaces)
             {
-                Action = ToolNames.SymbolSearch,
-                Description = "Get additional symbols",
-                Parameters = new Dictionary<string, object>
-                {
-                    ["query"] = parameters.Query,
-                    ["searchType"] = parameters.SearchType ?? "contains",
-                    ["maxResults"] = Math.Min(allSymbols.Count, 500)
-                },
-                Priority = 95,
-                Category = "pagination"
-            });
+                insights.Insert(2, $"💡 Some important symbols excluded - use specific filters to focus results");
+            }
         }
+        
+        // Generate enhanced next actions
+        var nextActions = GenerateEnhancedNextActions(allSymbols, returnedSymbols, parameters, wasTruncated);
         
         // Store full results as a resource if truncated
         string? resourceUri = null;
@@ -517,33 +526,95 @@ public class SymbolSearchTool : McpToolBase<SymbolSearchParams, SymbolSearchTool
         return insights;
     }
 
-    private List<AIAction> GenerateNextActions(List<Models.SymbolInfo> symbols)
+    private List<AIAction> GenerateEnhancedNextActions(List<Models.SymbolInfo> allSymbols, List<Models.SymbolInfo> returnedSymbols, SymbolSearchParams parameters, bool wasTruncated)
     {
         var actions = new List<AIAction>();
 
-        // Take first few symbols for next actions
-        foreach (var symbol in symbols.Take(3))
+        if (wasTruncated)
         {
-            if (symbol.Location != null)
+            // Priority 1: Filter by symbol type if mixed results
+            var kindGroups = allSymbols.GroupBy(s => s.Kind).OrderByDescending(g => g.Count()).Take(3);
+            if (kindGroups.Count() > 1)
+            {
+                foreach (var kindGroup in kindGroups.Take(2))
+                {
+                    var kindCount = kindGroup.Count();
+                    var returnedCount = returnedSymbols.Count(s => s.Kind == kindGroup.Key);
+                    if (kindCount > returnedCount)
+                    {
+                        actions.Add(new AIAction
+                        {
+                            Action = ToolNames.SymbolSearch,
+                            Description = $"🏷️ Show only {kindGroup.Key.ToLower()}s ({kindCount} total)",
+                            Parameters = new Dictionary<string, object>
+                            {
+                                ["query"] = parameters.Query,
+                                ["searchType"] = parameters.SearchType ?? "contains",
+                                ["symbolKinds"] = new[] { kindGroup.Key },
+                                ["maxResults"] = Math.Min(kindCount, 100)
+                            },
+                            Priority = 90,
+                            Category = "filtering"
+                        });
+                    }
+                }
+            }
+
+            // Priority 2: Filter by project if multiple projects
+            var projectGroups = allSymbols.Where(s => !string.IsNullOrEmpty(s.ProjectName))
+                                       .GroupBy(s => s.ProjectName!)
+                                       .OrderByDescending(g => g.Count()).Take(2);
+            if (projectGroups.Count() > 1)
+            {
+                foreach (var projectGroup in projectGroups)
+                {
+                    if (projectGroup.Count() > 5)
+                    {
+                        actions.Add(new AIAction
+                        {
+                            Action = ToolNames.SymbolSearch,
+                            Description = $"📁 Focus on project: {projectGroup.Key} ({projectGroup.Count()} symbols)",
+                            Parameters = new Dictionary<string, object>
+                            {
+                                ["query"] = parameters.Query,
+                                ["searchType"] = parameters.SearchType ?? "contains",
+                                ["projectFilter"] = projectGroup.Key
+                            },
+                            Priority = 80,
+                            Category = "filtering"
+                        });
+                    }
+                }
+            }
+
+            // Priority 3: Suggest more specific search patterns
+            if (parameters.SearchType != "exact" && !parameters.Query.Contains("*"))
             {
                 actions.Add(new AIAction
                 {
-                    Action = ToolNames.GoToDefinition,
-                    Description = $"Go to definition of '{symbol.Name}'",
+                    Action = ToolNames.SymbolSearch,
+                    Description = $"🎯 Try exact match: '{parameters.Query}'",
                     Parameters = new Dictionary<string, object>
                     {
-                        ["filePath"] = symbol.Location.FilePath,
-                        ["line"] = symbol.Location.Line,
-                        ["column"] = symbol.Location.Column
+                        ["query"] = parameters.Query,
+                        ["searchType"] = "exact"
                     },
-                    Priority = 80,
-                    Category = "navigation"
+                    Priority = 70,
+                    Category = "refinement"
                 });
+            }
+        }
 
+        // Always add navigation actions for top results
+        foreach (var symbol in returnedSymbols.Take(2))
+        {
+            if (symbol.Location != null)
+            {
+                var symbolDesc = symbol.Kind == "Method" ? $"{symbol.Kind.ToLower()} in {symbol.ContainerName ?? symbol.ContainerType ?? "unknown"}" : symbol.Kind.ToLower();
                 actions.Add(new AIAction
                 {
-                    Action = ToolNames.FindAllReferences,
-                    Description = $"Find references to '{symbol.Name}'",
+                    Action = ToolNames.GoToDefinition,
+                    Description = $"🔍 View {symbolDesc}: '{symbol.Name}'",
                     Parameters = new Dictionary<string, object>
                     {
                         ["filePath"] = symbol.Location.FilePath,
@@ -551,6 +622,20 @@ public class SymbolSearchTool : McpToolBase<SymbolSearchParams, SymbolSearchTool
                         ["column"] = symbol.Location.Column
                     },
                     Priority = 75,
+                    Category = "navigation"
+                });
+
+                actions.Add(new AIAction
+                {
+                    Action = ToolNames.FindAllReferences,
+                    Description = $"🔗 Find all uses of '{symbol.Name}'",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["filePath"] = symbol.Location.FilePath,
+                        ["line"] = symbol.Location.Line,
+                        ["column"] = symbol.Location.Column
+                    },
+                    Priority = 73,
                     Category = "navigation"
                 });
             }

@@ -107,7 +107,9 @@
       "Bash(timeout 120 dotnet test --filter \"ExtractInterfaceTool\" --verbosity minimal)",
       "mcp__goldfish__checkpoint",
       "mcp__goldfish__restore_session",
-      "mcp__goldfish__view_todos"
+      "mcp__goldfish__view_todos",
+      "Bash(where powershell)",
+      "Bash(powershell:*)"
     ],
     "deny": []
   }

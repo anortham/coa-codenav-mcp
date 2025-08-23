@@ -26,7 +26,16 @@ public class FindAllReferencesTool : McpToolBase<FindAllReferencesParams, FindAl
     private readonly FindAllReferencesResponseBuilder _responseBuilder;
 
     public override string Name => "csharp_find_all_references";
-    public override string Description => "Find all usages of a symbol across your solution. Perfect for understanding impact before refactoring or seeing how a method is used throughout the codebase.";
+    public override string Description => @"Find all usages of a symbol across your solution. Perfect for understanding impact before refactoring or seeing how a method is used throughout the codebase.
+
+Usage examples for effective reference analysis:
+• Method usage: Click on method name → `csharp_find_all_references` - See all call sites
+• Class usage: Click on class name → Find all instantiations and inheritance
+• Property access: Click on property → Distinguish between reads and writes
+• Interface usage: Click on interface → Find all implementations and usages
+• Impact analysis: Before refactoring, see exactly what code will be affected
+
+When results are truncated, focus on files with the most references first for efficient analysis.";
     public override ToolCategory Category => ToolCategory.Query;
 
     public FindAllReferencesTool(
