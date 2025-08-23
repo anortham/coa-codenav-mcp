@@ -369,6 +369,7 @@ FodyWeavers.xsd
 .claude/data/
 .claude/hooks/
 .claude/agents/
+.claude/settings.local.json
 .claude/TYPE_VERIFICATION_README.md
 NUL
 
