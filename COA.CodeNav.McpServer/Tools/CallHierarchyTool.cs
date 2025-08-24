@@ -33,13 +33,14 @@ public class CallHierarchyTool : McpToolBase<CallHierarchyParams, CallHierarchyR
     public override string Description => "Show what calls a method and what it calls. Perfect for understanding execution flow and dependencies before making changes.";
 
     public CallHierarchyTool(
+        IServiceProvider serviceProvider,
         ILogger<CallHierarchyTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         CallHierarchyResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

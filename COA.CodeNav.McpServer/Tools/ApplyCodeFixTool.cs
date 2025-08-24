@@ -32,13 +32,14 @@ public class ApplyCodeFixTool : McpToolBase<ApplyCodeFixParams, ApplyCodeFixTool
     public override string Description => "Apply automated fixes for compiler errors and warnings. One-click solutions for common issues like missing braces or wrong accessibility.";
     
     public ApplyCodeFixTool(
+        IServiceProvider serviceProvider,
         ILogger<ApplyCodeFixTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         CodeFixService codeFixService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _tokenEstimator = tokenEstimator;

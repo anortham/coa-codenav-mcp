@@ -22,11 +22,12 @@ public class LoadProjectTool : McpToolBase<LoadProjectParams, LoadProjectResult>
     public override string Description => @"Load C# project into workspace for code analysis. Required first step before using other C# navigation or analysis tools.";
 
     public LoadProjectTool(
+        IServiceProvider serviceProvider,
         ILogger<LoadProjectTool> logger,
         MSBuildWorkspaceManager workspaceManager,
         RoslynWorkspaceService workspaceService,
         ITokenEstimator tokenEstimator)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceManager = workspaceManager;

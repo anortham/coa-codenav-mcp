@@ -24,13 +24,18 @@ public class TsHoverTool : McpToolBase<TsHoverParams, TsHoverResult>, IDisposabl
 
     public override string Name => ToolNames.TsHover;
     
-    public override string Description => @"Check TypeScript method signatures and types showing exact parameter types, return values, and JSDoc documentation.";
+    public override string Description => @"Check TypeScript method signatures and types showing exact parameter types, return values, and JSDoc documentation.
+
+Parameters use 1-based indexing:
+- line: 1-based line number (first line is 1)
+- character: 1-based character position (first character is 1)";
 
     public TsHoverTool(
+        IServiceProvider serviceProvider,
         ILogger<TsHoverTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -118,9 +123,9 @@ public class TsHoverTool : McpToolBase<TsHoverParams, TsHoverResult>, IDisposabl
             // Normalize file path
             var normalizedPath = Path.GetFullPath(parameters.FilePath).Replace('\\', '/');
 
-            // Convert 0-based to 1-based for TSP
-            var tspLine = parameters.Line + 1;
-            var tspOffset = parameters.Character + 1;
+            // Parameters are 1-based, TSP expects 1-based, so no conversion needed
+            var tspLine = parameters.Line;
+            var tspOffset = parameters.Character;
 
             // Get quick info from TypeScript server
             var quickInfoResponse = await handler.GetQuickInfoAsync(

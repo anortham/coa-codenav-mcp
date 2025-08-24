@@ -40,13 +40,14 @@ public class TsAddMissingImportsTool : McpToolBase<TsAddMissingImportsParams, Ts
     public override string Description => "Automatically add missing import statements. Fixes 'Cannot find name' errors by detecting and importing the correct modules.";
 
     public TsAddMissingImportsTool(
+        IServiceProvider serviceProvider,
         ILogger<TsAddMissingImportsTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null,
         TsAddMissingImportsResponseBuilder? responseBuilder = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

@@ -50,6 +50,7 @@ public class MoveTypeToolUnitTests : IDisposable
         var responseBuilder = new MoveTypeResponseBuilder(_mockResponseBuilderLogger.Object, tokenEstimator);
         
         _tool = new MoveTypeTool(
+            TestServiceProvider.Create(),
             _mockLogger.Object,
             _workspaceService,
             _documentService,

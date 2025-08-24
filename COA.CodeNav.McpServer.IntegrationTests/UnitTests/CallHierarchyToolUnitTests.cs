@@ -57,7 +57,7 @@ public class CallHierarchyToolUnitTests : IDisposable
         var workspaceManager = new MSBuildWorkspaceManager(_mockManagerLogger.Object, config);
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
         _documentService = new DocumentService(_mockDocumentLogger.Object, _workspaceService);
-        _tool = new CallHierarchyTool(_mockLogger.Object, _workspaceService, _documentService, _responseBuilder, _mockTokenEstimator.Object);
+        _tool = new CallHierarchyTool(TestServiceProvider.Create(), _mockLogger.Object, _workspaceService, _documentService, _responseBuilder, _mockTokenEstimator.Object);
     }
 
     [Fact]
@@ -401,6 +401,8 @@ EndGlobal");
         await File.WriteAllTextAsync(testFile, @"
 using System;
 
+using Moq;
+
 public class TestClass
 {
     public void TestMethod()
@@ -410,7 +412,7 @@ public class TestClass
 }");
 
         await _workspaceService.LoadSolutionAsync(solutionPath);
-        return (projectPath, new MethodLocation { FilePath = testFile, Line = 6, Column = 17 });
+        return (projectPath, new MethodLocation { FilePath = testFile, Line = 7, Column = 17 });
     }
 
     private async Task<(string ProjectPath, MethodLocation Location)> SetupProjectWithCallHierarchyAsync()
@@ -446,6 +448,8 @@ EndGlobal");
         
         var hierarchyCode = @"
 using System;
+
+using Moq;
 
 public class BusinessLogic
 {
@@ -507,7 +511,7 @@ public class BatchProcessor
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MethodLocation { FilePath = testFile, Line = 6, Column = 17 });
+        return (projectPath, new MethodLocation { FilePath = testFile, Line = 7, Column = 17 });
     }
 
     private async Task<(string ProjectPath, MethodLocation Location)> SetupDeepCallChainAsync()
@@ -543,6 +547,8 @@ EndGlobal");
         
         var deepChainCode = @"
 using System;
+
+using Moq;
 
 public class DeepCallChain
 {
@@ -599,7 +605,7 @@ public class ChainStarter
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MethodLocation { FilePath = testFile, Line = 6, Column = 17 });
+        return (projectPath, new MethodLocation { FilePath = testFile, Line = 7, Column = 17 });
     }
 
     private async Task<(string ProjectPath, MethodLocation Location)> SetupProjectWithManyCallersAsync()
@@ -635,6 +641,8 @@ EndGlobal");
         
         var manyCallersCode = @"
 using System;
+
+using Moq;
 
 public class SharedUtility
 {
@@ -686,7 +694,7 @@ public class Caller5
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MethodLocation { FilePath = testFile, Line = 6, Column = 24 });
+        return (projectPath, new MethodLocation { FilePath = testFile, Line = 7, Column = 24 });
     }
 
     private async Task<(string ProjectPath, MethodLocation Location)> SetupLargeCallHierarchyAsync()
@@ -698,6 +706,8 @@ public class Caller5
         {
             var additionalCode = $@"
 using System;
+
+using Moq;
 
 public class AdditionalCaller{i}
 {{
@@ -774,6 +784,8 @@ EndGlobal");
         var inheritanceCode = @"
 using System;
 
+using Moq;
+
 public abstract class BaseService
 {
     public virtual void ProcessData() // Target - Line 6, Column 25
@@ -836,7 +848,7 @@ public class ServiceConsumer
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MethodLocation { FilePath = testFile, Line = 6, Column = 25 });
+        return (projectPath, new MethodLocation { FilePath = testFile, Line = 7, Column = 25 });
     }
 
     private async Task<(string MainProject, string LibProject, MethodLocation Location)> SetupCrossProjectCallHierarchyAsync()
@@ -854,6 +866,8 @@ public class ServiceConsumer
 
         var libCode = @"
 using System;
+
+using Moq;
 
 namespace Library
 {
@@ -892,6 +906,8 @@ namespace Library
         var mainCode = @"
 using System;
 using Library;
+
+using Moq;
 
 namespace MainApp
 {
@@ -938,7 +954,7 @@ EndGlobal");
 
         await _workspaceService.LoadSolutionAsync(solutionPath);
         
-        return (mainProjectPath, libProjectPath, new MethodLocation { FilePath = libFile, Line = 8, Column = 28 });
+        return (mainProjectPath, libProjectPath, new MethodLocation { FilePath = libFile, Line = 9, Column = 28 });
     }
 
     // Helper methods for analyzing results

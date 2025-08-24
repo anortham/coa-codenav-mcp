@@ -29,12 +29,13 @@ public class DependencyAnalysisTool : McpToolBase<DependencyAnalysisParams, Depe
     public override string Description => @"Analyze dependencies and coupling between types, namespaces, and projects. Detects circular dependencies and tight coupling issues for architecture analysis.";
 
     public DependencyAnalysisTool(
+        IServiceProvider serviceProvider,
         ILogger<DependencyAnalysisTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

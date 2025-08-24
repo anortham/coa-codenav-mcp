@@ -44,12 +44,13 @@ Usage examples for effective diagnostics analysis:
 When results are truncated, use the suggested actions to filter effectively. Always fix errors before warnings.";
 
     public GetDiagnosticsTool(
+        IServiceProvider serviceProvider,
         ILogger<GetDiagnosticsTool> logger,
         RoslynWorkspaceService workspaceService,
         DiagnosticsResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

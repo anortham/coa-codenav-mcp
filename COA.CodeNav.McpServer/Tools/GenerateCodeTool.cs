@@ -33,12 +33,13 @@ public class GenerateCodeTool : McpToolBase<GenerateCodeParams, GenerateCodeTool
     public override string Description => @"Generate boilerplate code like constructors, properties, and interface implementations. Saves time writing repetitive code patterns and ensures consistent structure.";
     
     public GenerateCodeTool(
+        IServiceProvider serviceProvider,
         ILogger<GenerateCodeTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _tokenEstimator = tokenEstimator;

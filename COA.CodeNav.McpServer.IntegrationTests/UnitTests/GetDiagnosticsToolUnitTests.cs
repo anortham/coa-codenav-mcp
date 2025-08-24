@@ -45,7 +45,7 @@ public class GetDiagnosticsToolUnitTests : IDisposable
         var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
         var responseBuilder = new DiagnosticsResponseBuilder(_mockResponseBuilderLogger.Object, tokenEstimator);
         
-        _tool = new GetDiagnosticsTool(_mockLogger.Object, _workspaceService, responseBuilder, tokenEstimator, null);
+        _tool = new GetDiagnosticsTool(TestServiceProvider.Create(), _mockLogger.Object, _workspaceService, responseBuilder, tokenEstimator, null);
     }
 
     [Fact]
@@ -206,6 +206,8 @@ EndProject");
         // Create file with diagnostic issue
         await File.WriteAllTextAsync(testFilePath, @"
 using System;
+using Moq;
+
 public class Test {
     public void Method() {
         int unused = 42; // CS0219
@@ -431,6 +433,8 @@ public class MixedIssues
             var largeCode = $@"
 using System;
 using System.Collections.Generic;
+
+using Moq;
 
 namespace LargeProject 
 {{

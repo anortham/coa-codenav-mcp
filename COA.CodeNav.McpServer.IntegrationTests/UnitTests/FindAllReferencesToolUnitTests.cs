@@ -49,7 +49,7 @@ public class FindAllReferencesToolUnitTests : IDisposable
             responseBuilderLogger.Object, 
             tokenEstimator);
         
-        _tool = new FindAllReferencesTool(_mockLogger.Object, _workspaceService, _documentService, responseBuilder, null);
+        _tool = new FindAllReferencesTool(TestServiceProvider.Create(), _mockLogger.Object, _workspaceService, _documentService, responseBuilder, null);
     }
 
     [Fact]
@@ -369,6 +369,8 @@ EndGlobal");
         await File.WriteAllTextAsync(testFile, @"
 using System;
 
+using Moq;
+
 public class TestClass
 {
     public void TestMethod()
@@ -420,6 +422,8 @@ EndGlobal");
         // Create code with method definition and multiple references
         var codeWithReferences = @"
 using System;
+
+using Moq;
 
 public class BusinessService
 {
@@ -497,6 +501,8 @@ EndGlobal");
         var codeWithProperty = @"
 using System;
 
+using Moq;
+
 public class DataModel
 {
     public string Name { get; set; } // Property definition - Line 6, Column 19
@@ -557,6 +563,8 @@ EndGlobal");
         var codeWithManyRefs = @"
 using System;
 using System.Collections.Generic;
+
+using Moq;
 
 public class UtilityClass
 {
@@ -640,6 +648,8 @@ public class Consumer3
             var additionalCode = $@"
 using System;
 
+using Moq;
+
 public class AdditionalConsumer{i}
 {{
     public void Method1()
@@ -687,6 +697,8 @@ public class AdditionalConsumer{i}
         var libCode = @"
 using System;
 
+using Moq;
+
 namespace Library
 {
     public class SharedUtility
@@ -718,6 +730,8 @@ namespace Library
         var mainCode = @"
 using System;
 using Library;
+
+using Moq;
 
 namespace MainApp
 {

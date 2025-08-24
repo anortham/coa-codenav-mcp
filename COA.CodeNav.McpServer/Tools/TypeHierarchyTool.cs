@@ -29,12 +29,13 @@ public class TypeHierarchyTool : McpToolBase<TypeHierarchyParams, TypeHierarchyR
     public override string Description => "View complete type hierarchy including base classes and derived types. Maps inheritance relationships to understand class structure.";
 
     public TypeHierarchyTool(
+        IServiceProvider serviceProvider,
         ILogger<TypeHierarchyTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

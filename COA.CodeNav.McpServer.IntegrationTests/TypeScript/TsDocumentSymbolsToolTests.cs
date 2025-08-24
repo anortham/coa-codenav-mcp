@@ -5,7 +5,9 @@ using System.Threading.Tasks;
 using COA.CodeNav.McpServer.Infrastructure.TypeScript;
 using COA.CodeNav.McpServer.Services.TypeScript;
 using COA.CodeNav.McpServer.Tools.TypeScript;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Moq;
 using Xunit;
 using Xunit.Abstractions;
 using FluentAssertions;
@@ -34,7 +36,7 @@ public class TsDocumentSymbolsToolTests : IDisposable
         _logger = loggerFactory.CreateLogger<TsDocumentSymbolsTool>();
         _compilerManager = new TypeScriptCompilerManager(loggerFactory.CreateLogger<TypeScriptCompilerManager>());
         _workspaceService = new TypeScriptWorkspaceService(loggerFactory.CreateLogger<TypeScriptWorkspaceService>(), _compilerManager);
-        _tool = new TsDocumentSymbolsTool(_logger, _workspaceService, _compilerManager);
+        _tool = new TsDocumentSymbolsTool(TestServiceProvider.Create(), _logger, _workspaceService, _compilerManager);
         
         // Use the test data project
         _testProjectPath = Path.Combine(Directory.GetCurrentDirectory(), "TestData", "TypeScriptProject");

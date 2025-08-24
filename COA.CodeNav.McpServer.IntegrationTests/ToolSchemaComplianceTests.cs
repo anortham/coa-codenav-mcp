@@ -30,6 +30,7 @@ public class ToolSchemaComplianceTests
         
         var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
         var tool = new GetWorkspaceStatisticsTool(
+            TestServiceProvider.Create(),
             NullLogger<GetWorkspaceStatisticsTool>.Instance,
             workspaceManager,
             tokenEstimator);
@@ -81,6 +82,7 @@ public class ToolSchemaComplianceTests
             
         var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
         var tool = new GoToDefinitionTool(
+            TestServiceProvider.Create(),
             NullLogger<GoToDefinitionTool>.Instance,
             workspaceService,
             documentService,
@@ -175,6 +177,7 @@ public class ToolSchemaComplianceTests
         var responseBuilder = new FindAllReferencesResponseBuilder(mockResponseBuilderLogger.Object, tokenEstimator2);
         
         var tool = new FindAllReferencesTool(
+            TestServiceProvider.Create(),
             NullLogger<FindAllReferencesTool>.Instance,
             workspaceService,
             documentService,

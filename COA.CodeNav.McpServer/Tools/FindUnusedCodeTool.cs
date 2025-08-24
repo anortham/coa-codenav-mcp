@@ -39,12 +39,13 @@ Usage examples for effective unused code analysis:
 Start with private members (safer to remove) before tackling public APIs. Use filtering when results are large.";
 
     public FindUnusedCodeTool(
+        IServiceProvider serviceProvider,
         ILogger<FindUnusedCodeTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

@@ -37,13 +37,14 @@ public class InlineMethodTool : McpToolBase<InlineMethodParams, InlineMethodResu
     public override ToolCategory Category => ToolCategory.Refactoring;
     
     public InlineMethodTool(
+        IServiceProvider serviceProvider,
         ILogger<InlineMethodTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         InlineMethodResponseBuilder responseBuilder,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _tokenEstimator = tokenEstimator;

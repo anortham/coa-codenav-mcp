@@ -109,8 +109,18 @@
       "mcp__goldfish__restore_session",
       "mcp__goldfish__view_todos",
       "Bash(where powershell)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(git push:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "mcp__codenav__ts_symbol_search",
+      "mcp__codenav__ts_call_hierarchy"
     ],
-    "deny": []
+    "deny": [],
+    "additionalDirectories": [
+      "C:\\source\\COA MCP Framework",
+      "C:\\Users\\CHS300372\\.claude\\hooks"
+    ]
   }
 }

@@ -120,6 +120,7 @@ namespace TestProject
         var responseBuilder = new TestDiagnosticsResponseBuilder(mockResponseBuilderLogger.Object, tokenEstimator);
         
         _diagnosticsTool = new GetDiagnosticsTool(
+            TestServiceProvider.Create(),
             NullLogger<GetDiagnosticsTool>.Instance,
             _workspaceService,
             responseBuilder,
@@ -127,6 +128,7 @@ namespace TestProject
             null);
 
         _refreshTool = new RefreshWorkspaceTool(
+            TestServiceProvider.Create(),
             NullLogger<RefreshWorkspaceTool>.Instance,
             _workspaceService,
             tokenEstimator);

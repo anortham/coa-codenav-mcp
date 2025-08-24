@@ -8,6 +8,7 @@ using FluentAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -50,6 +51,7 @@ public class ExtractInterfaceToolUnitTests : IDisposable
         var responseBuilder = new ExtractInterfaceResponseBuilder(_mockResponseBuilderLogger.Object, tokenEstimator);
         
         _tool = new ExtractInterfaceTool(
+            TestServiceProvider.Create(),
             _mockLogger.Object,
             _workspaceService,
             _documentService,

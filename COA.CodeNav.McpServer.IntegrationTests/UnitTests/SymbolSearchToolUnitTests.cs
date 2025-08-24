@@ -45,7 +45,7 @@ public class SymbolSearchToolUnitTests : IDisposable
         var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
         var responseBuilder = new SymbolSearchResponseBuilder(_mockResponseBuilderLogger.Object, tokenEstimator);
         
-        _tool = new SymbolSearchTool(_mockLogger.Object, _workspaceService, responseBuilder, tokenEstimator, null);
+        _tool = new SymbolSearchTool(TestServiceProvider.Create(), _mockLogger.Object, _workspaceService, responseBuilder, tokenEstimator, null);
     }
 
     [Fact]
@@ -564,6 +564,8 @@ EndProject");
         var symbolsCode = @"
 using System;
 
+using Moq;
+
 public class TestClass
 {
     public string TestProperty { get; set; }
@@ -643,6 +645,8 @@ EndProject");
         var namespacedCode = @"
 using System;
 
+using Moq;
+
 namespace Business.Services
 {
     public class OrderService
@@ -714,6 +718,8 @@ namespace UI.Controllers
         var libCode = @"
 using System;
 
+using Moq;
+
 namespace Library
 {
     public class LibraryClass
@@ -745,6 +751,8 @@ namespace Library
         var mainCode = @"
 using System;
 using Library;
+
+using Moq;
 
 namespace MainApp
 {
@@ -820,6 +828,8 @@ EndGlobal");
 using System;
 using System.Collections.Generic;
 
+using Moq;
+
 namespace LargeProject.Module{i}
 {{
     public class LargeClass{i}
@@ -890,6 +900,8 @@ EndProject");
 
         var privateCode = @"
 using System;
+
+using Moq;
 
 public class PublicClass
 {

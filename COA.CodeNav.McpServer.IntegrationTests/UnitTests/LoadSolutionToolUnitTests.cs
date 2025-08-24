@@ -35,7 +35,7 @@ public class LoadSolutionToolUnitTests : IDisposable
         var workspaceManager = new MSBuildWorkspaceManager(_mockManagerLogger.Object, config);
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
         var tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
-        _tool = new LoadSolutionTool(_mockLogger.Object, workspaceManager, _workspaceService, tokenEstimator);
+        _tool = new LoadSolutionTool(TestServiceProvider.Create(), _mockLogger.Object, workspaceManager, _workspaceService, tokenEstimator);
     }
 
     [Fact]
@@ -335,6 +335,8 @@ public class LoadSolutionToolUnitTests : IDisposable
         await File.WriteAllTextAsync(classFile, @"
 using System;
 
+using Moq;
+
 namespace SimpleProject
 {
     public class SimpleClass
@@ -396,6 +398,8 @@ EndGlobal");
             await File.WriteAllTextAsync(classFile, $@"
 using System;
 
+using Moq;
+
 namespace {projects[i]}
 {{
     public class Class{i + 1}
@@ -455,6 +459,8 @@ EndGlobal";
         await File.WriteAllTextAsync(libClassFile, @"
 using System;
 
+using Moq;
+
 namespace Library
 {
     public class LibraryClass
@@ -485,6 +491,8 @@ namespace Library
         await File.WriteAllTextAsync(mainClassFile, @"
 using System;
 using Library;
+
+using Moq;
 
 namespace MainApp
 {
@@ -557,6 +565,8 @@ EndGlobal";
                 await File.WriteAllTextAsync(classFile, $@"
 using System;
 using System.Collections.Generic;
+
+using Moq;
 
 namespace {projectName}
 {{
@@ -669,6 +679,8 @@ EndGlobal";
         var classFile = Path.Combine(_tempDirectory, $"FrameworkClass.cs");
         await File.WriteAllTextAsync(classFile, $@"
 using System;
+
+using Moq;
 
 namespace FrameworkTest
 {{

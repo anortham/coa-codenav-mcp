@@ -32,13 +32,14 @@ public class CodeMetricsTool : McpToolBase<CodeMetricsParams, CodeMetricsResult>
     public override string Description => "Calculate code quality metrics like cyclomatic complexity and maintainability index. Identifies overly complex methods that need refactoring.";
 
     public CodeMetricsTool(
+        IServiceProvider serviceProvider,
         ILogger<CodeMetricsTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         CodeMetricsResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

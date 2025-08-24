@@ -30,12 +30,13 @@ public class DocumentSymbolsTool : McpToolBase<DocumentSymbolsParams, DocumentSy
     public override string Description => "Get an outline of all symbols in a file. Shows classes, methods, properties, and their structure for understanding code organization.\n\nHierarchy navigation strategies:\n\u2022 Overview scan: Start with default settings to see overall file structure\n\u2022 Focused analysis: Use symbolKinds: [\"Class\", \"Interface\"] for architecture review\n\u2022 Public API view: Set includePrivate: false to see exposed surface\n\u2022 Implementation details: Set includePrivate: true for complete internal structure\n\u2022 Large files: Results auto-truncated at 10,000 tokens - use filtering for complex files\n\nTypical workflow: Overview \u2192 Focus on public types \u2192 Drill into implementations \u2192 Navigate to definitions";
 
     public DocumentSymbolsTool(
+        IServiceProvider serviceProvider,
         ILogger<DocumentSymbolsTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentSymbolsResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

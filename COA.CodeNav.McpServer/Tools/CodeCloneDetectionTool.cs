@@ -33,13 +33,14 @@ public class CodeCloneDetectionTool : McpToolBase<CodeCloneDetectionParams, Code
     public override string Description => "Detect duplicate code patterns across the solution to identify refactoring opportunities. Finds similar code blocks that could be consolidated to reduce technical debt.\n\nEffective usage strategies:\n\u2022 Start broad: Use default settings to get overview, then narrow down based on results\n\u2022 Focus on high-impact: Use similarityThreshold: 0.9 to find exact duplicates first\n\u2022 Size filtering: Adjust minLines (6-20) based on project needs - larger for significant methods\n\u2022 Scope control: Use filePattern: \"src/**/*.cs\" to limit analysis to source code\n\u2022 Performance: Results auto-truncated at 10,000 tokens - use filtering for large codebases\n\nTypical workflow: Run broad scan \u2192 Review high-similarity groups \u2192 Extract common patterns \u2192 Verify with targeted re-scan";
 
     public CodeCloneDetectionTool(
+        IServiceProvider serviceProvider,
         ILogger<CodeCloneDetectionTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         CodeCloneResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

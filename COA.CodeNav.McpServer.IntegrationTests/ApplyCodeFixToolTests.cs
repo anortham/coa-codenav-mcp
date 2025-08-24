@@ -10,6 +10,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using System.Text.Json.Serialization;
 
+using Moq;
+
 namespace COA.CodeNav.McpServer.IntegrationTests;
 
 /// <summary>
@@ -35,6 +37,7 @@ public class ApplyCodeFixToolTests
             NullLogger<CodeFixService>.Instance);
             
         var tool = new ApplyCodeFixTool(
+            TestServiceProvider.Create(),
             NullLogger<ApplyCodeFixTool>.Instance,
             workspaceService,
             documentService,

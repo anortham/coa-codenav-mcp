@@ -29,12 +29,13 @@ public class FindImplementationsTool : McpToolBase<FindImplementationsParams, Fi
     public override string Description => "Find all implementations of interfaces and abstract methods. Shows every concrete class that implements or overrides the selected symbol.";
 
     public FindImplementationsTool(
+        IServiceProvider serviceProvider,
         ILogger<FindImplementationsTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

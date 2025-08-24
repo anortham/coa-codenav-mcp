@@ -24,11 +24,12 @@ public class LoadSolutionTool : McpToolBase<LoadSolutionParams, LoadSolutionResu
     public override ToolCategory Category => ToolCategory.Resources;
 
     public LoadSolutionTool(
+        IServiceProvider serviceProvider,
         ILogger<LoadSolutionTool> logger,
         MSBuildWorkspaceManager workspaceManager,
         RoslynWorkspaceService workspaceService,
         ITokenEstimator tokenEstimator)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceManager = workspaceManager;

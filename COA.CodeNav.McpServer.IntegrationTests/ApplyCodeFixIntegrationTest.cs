@@ -10,6 +10,8 @@ using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
+using Moq;
+
 namespace COA.CodeNav.McpServer.IntegrationTests;
 
 /// <summary>
@@ -45,6 +47,8 @@ public class ApplyCodeFixIntegrationTest
         var sourceText = SourceText.From(@"
 using System;
 
+using Moq;
+
 public class TestClass
 {
     public void TestMethod()
@@ -74,6 +78,7 @@ public class TestClass
             NullLogger<CodeFixService>.Instance);
             
         var tool = new ApplyCodeFixTool(
+            TestServiceProvider.Create(),
             NullLogger<ApplyCodeFixTool>.Instance,
             workspaceService,
             documentService,

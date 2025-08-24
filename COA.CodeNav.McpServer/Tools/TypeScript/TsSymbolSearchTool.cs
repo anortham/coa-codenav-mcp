@@ -27,10 +27,11 @@ public class TsSymbolSearchTool : McpToolBase<TsSymbolSearchParams, TsSymbolSear
     public override string Description => "Search for TypeScript symbols by name or pattern. Great for finding interfaces, types, or functions across your TypeScript project.";
 
     public TsSymbolSearchTool(
+        IServiceProvider serviceProvider,
         ILogger<TsSymbolSearchTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

@@ -33,12 +33,13 @@ public class ExtractMethodTool : McpToolBase<ExtractMethodParams, ExtractMethodR
     public override string Description => "Extract selected code into a new method. Clean up long methods by breaking them into smaller, more focused pieces.";
     
     public ExtractMethodTool(
+        IServiceProvider serviceProvider,
         ILogger<ExtractMethodTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _tokenEstimator = tokenEstimator;

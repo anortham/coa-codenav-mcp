@@ -27,10 +27,11 @@ public class TsDocumentSymbolsTool : McpToolBase<TsDocumentSymbolsParams, TsDocu
     public override string Description => @"Map TypeScript file structure showing all interfaces, classes, functions, and exports to understand what exists before making changes.";
 
     public TsDocumentSymbolsTool(
+        IServiceProvider serviceProvider,
         ILogger<TsDocumentSymbolsTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

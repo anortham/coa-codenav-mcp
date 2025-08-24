@@ -23,10 +23,10 @@
 
   <ItemGroup>
     <!-- COA MCP Framework NuGet packages -->
-    <PackageReference Include="COA.Mcp.Framework" Version="1.7.19" />
-    <PackageReference Include="COA.Mcp.Framework.TokenOptimization" Version="1.7.19" />
-    <PackageReference Include="COA.Mcp.Framework.Testing" Version="1.7.19" />
-    <PackageReference Include="COA.Mcp.Client" Version="1.7.19" />
+    <PackageReference Include="COA.Mcp.Framework" Version="2.0.1" />
+    <PackageReference Include="COA.Mcp.Framework.TokenOptimization" Version="2.0.1" />
+    <PackageReference Include="COA.Mcp.Framework.Testing" Version="2.0.1" />
+    <PackageReference Include="COA.Mcp.Client" Version="2.0.1" />
 
     <PackageReference Include="Microsoft.Build.Locator" Version="1.9.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0">

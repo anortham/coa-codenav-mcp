@@ -22,9 +22,10 @@ public class LoadTsConfigTool : McpToolBase<TsLoadConfigParams, TsLoadConfigResu
     public override ToolCategory Category => ToolCategory.Resources;
 
     public LoadTsConfigTool(
+        IServiceProvider serviceProvider,
         ILogger<LoadTsConfigTool> logger,
         TypeScriptWorkspaceService workspaceService)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

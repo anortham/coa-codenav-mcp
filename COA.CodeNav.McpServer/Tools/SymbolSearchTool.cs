@@ -43,12 +43,13 @@ When results are truncated, use specific filters to narrow down to relevant symb
     public override ToolCategory Category => ToolCategory.Query;
 
     public SymbolSearchTool(
+        IServiceProvider serviceProvider,
         ILogger<SymbolSearchTool> logger,
         RoslynWorkspaceService workspaceService,
         SymbolSearchResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

@@ -26,14 +26,19 @@ public class TsCallHierarchyTool : McpToolBase<TsCallHierarchyParams, TsCallHier
 
     public override string Name => ToolNames.TsCallHierarchy;
     
-    public override string Description => @"Show complete TypeScript function call hierarchy showing who calls this function and what it calls for impact analysis.";
+    public override string Description => @"Show complete TypeScript function call hierarchy showing who calls this function and what it calls for impact analysis.
+
+Parameters use 1-based indexing:
+- line: 1-based line number (first line is 1)  
+- character: 1-based character position (first character is 1)";
 
     public TsCallHierarchyTool(
+        IServiceProvider serviceProvider,
         ILogger<TsCallHierarchyTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager,
         ITokenEstimator tokenEstimator)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -121,9 +126,9 @@ public class TsCallHierarchyTool : McpToolBase<TsCallHierarchyParams, TsCallHier
             // For now, create a basic implementation using find references
             // This will be enhanced once TypeScript Server Protocol call hierarchy methods are added
             
-            // Convert 0-based to 1-based for TSP
-            var tspLine = parameters.Line + 1;
-            var tspOffset = parameters.Character + 1;
+            // Parameters are 1-based, TSP expects 1-based, so no conversion needed
+            var tspLine = parameters.Line;
+            var tspOffset = parameters.Character;
             
             // Get quick info to understand what symbol we're on
             var quickInfo = await handler.GetQuickInfoAsync(parameters.FilePath, tspLine, tspOffset, cancellationToken);

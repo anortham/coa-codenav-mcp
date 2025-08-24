@@ -24,10 +24,11 @@ public class RefreshWorkspaceTool : McpToolBase<RefreshWorkspaceParams, RefreshW
     public override string Description => @"Refresh workspace to resolve stale diagnostics and sync with external file changes. Fixes cached analysis results that may be outdated.";
 
     public RefreshWorkspaceTool(
+        IServiceProvider serviceProvider,
         ILogger<RefreshWorkspaceTool> logger,
         RoslynWorkspaceService workspaceService,
         ITokenEstimator tokenEstimator)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

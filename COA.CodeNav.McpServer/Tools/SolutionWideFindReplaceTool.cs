@@ -32,13 +32,14 @@ public class SolutionWideFindReplaceTool : McpToolBase<SolutionWideFindReplacePa
     public override string Description => @"Find and replace text patterns across the entire solution with preview. Enables bulk changes like renaming patterns or updating deprecated APIs with regex support.";
 
     public SolutionWideFindReplaceTool(
+        IServiceProvider serviceProvider,
         ILogger<SolutionWideFindReplaceTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         SolutionWideFindReplaceResponseBuilder responseBuilder,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

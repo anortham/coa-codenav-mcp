@@ -8,6 +8,8 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
+using Moq;
+
 namespace COA.CodeNav.McpServer.IntegrationTests;
 
 /// <summary>
@@ -34,6 +36,7 @@ public class ExtractInterfaceToolTests : IDisposable
         var responseBuilder = new ExtractInterfaceResponseBuilder(NullLogger<ExtractInterfaceResponseBuilder>.Instance, tokenEstimator);
 
         _tool = new ExtractInterfaceTool(
+            TestServiceProvider.Create(),
             NullLogger<ExtractInterfaceTool>.Instance,
             _workspaceService,
             documentService,
@@ -49,6 +52,8 @@ public class ExtractInterfaceToolTests : IDisposable
         var sourceCode = @"
 using System;
 using System.Collections.Generic;
+
+using Moq;
 
 namespace TestApp.Services
 {
@@ -115,7 +120,7 @@ namespace TestApp.Services
         var parameters = new COA.CodeNav.McpServer.Tools.ExtractInterfaceParams
         {
             FilePath = sourceFilePath,
-            Line = 9, // UserService class declaration line
+            Line = 12, // UserService class declaration line
             Column = 18, // Inside "UserService"
             InterfaceName = "IUserService",
             UpdateClass = true
@@ -159,7 +164,7 @@ namespace TestApp.Services
         result.Query.Should().NotBeNull();
         result.Query!.FilePath.Should().Be(sourceFilePath);
         result.Query.Position.Should().NotBeNull();
-        result.Query.Position!.Line.Should().Be(9);
+        result.Query.Position!.Line.Should().Be(12);
 
         result.Summary.Should().NotBeNull();
         result.Summary!.TotalFound.Should().Be(4);
@@ -180,6 +185,8 @@ namespace TestApp.Services
         var sourceCode = @"
 using System;
 
+using Moq;
+
 namespace TestApp
 {
     public class LargeService
@@ -195,7 +202,7 @@ namespace TestApp
         var parameters = new COA.CodeNav.McpServer.Tools.ExtractInterfaceParams
         {
             FilePath = sourceFilePath,
-            Line = 6, // LargeService class declaration line
+            Line = 8, // LargeService class declaration line
             Column = 18, // Inside "LargeService"
             InterfaceName = "ILargeService",
             UpdateClass = true
@@ -232,6 +239,8 @@ namespace TestApp
 using System;
 using System.Collections.Generic;
 
+using Moq;
+
 namespace TestApp
 {
     public class GenericRepository<T> where T : class
@@ -266,7 +275,7 @@ namespace TestApp
         var parameters = new COA.CodeNav.McpServer.Tools.ExtractInterfaceParams
         {
             FilePath = sourceFilePath,
-            Line = 7, // GenericRepository class declaration line
+            Line = 8, // GenericRepository class declaration line
             Column = 18, // Inside "GenericRepository"
             InterfaceName = "IRepository",
             UpdateClass = true

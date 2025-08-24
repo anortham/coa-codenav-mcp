@@ -31,12 +31,13 @@ public class TsGetDiagnosticsTool : McpToolBase<TsGetDiagnosticsParams, TsGetDia
     public override ToolCategory Category => ToolCategory.Diagnostics;
 
     public TsGetDiagnosticsTool(
+        IServiceProvider serviceProvider,
         ILogger<TsGetDiagnosticsTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptLanguageService languageService,
         ITokenEstimator tokenEstimator,
         TsDiagnosticsResponseBuilder? responseBuilder = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

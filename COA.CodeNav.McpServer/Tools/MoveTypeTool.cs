@@ -36,13 +36,14 @@ public class MoveTypeTool : McpToolBase<MoveTypeParams, MoveTypeResult>
     public override ToolCategory Category => ToolCategory.Refactoring;
     
     public MoveTypeTool(
+        IServiceProvider serviceProvider,
         ILogger<MoveTypeTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         MoveTypeResponseBuilder responseBuilder,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _tokenEstimator = tokenEstimator;

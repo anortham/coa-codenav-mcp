@@ -63,7 +63,7 @@ public class CodeMetricsToolUnitTests : IDisposable
         var workspaceManager = new MSBuildWorkspaceManager(_mockManagerLogger.Object, config);
         _workspaceService = new RoslynWorkspaceService(_mockWorkspaceLogger.Object, workspaceManager);
         _documentService = new DocumentService(_mockDocumentLogger.Object, _workspaceService);
-        _tool = new CodeMetricsTool(_mockLogger.Object, _workspaceService, _documentService, _responseBuilder, _mockTokenEstimator.Object);
+        _tool = new CodeMetricsTool(TestServiceProvider.Create(), _mockLogger.Object, _workspaceService, _documentService, _responseBuilder, _mockTokenEstimator.Object);
     }
 
     [Fact]
@@ -496,6 +496,8 @@ EndGlobal");
         await File.WriteAllTextAsync(testFile, @"
 using System;
 
+using Moq;
+
 public class TestClass
 {
     public void TestMethod()
@@ -508,7 +510,7 @@ public class TestClass
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MetricLocation { FilePath = testFile, Line = 6, Column = 17 });
+        return (projectPath, new MetricLocation { FilePath = testFile, Line = 8, Column = 17 });
     }
 
     private async Task<(string ProjectPath, MetricLocation Location)> SetupSimpleMethodAsync()
@@ -545,6 +547,8 @@ EndGlobal");
         var simpleCode = @"
 using System;
 
+using Moq;
+
 public class SimpleClass
 {
     public void SimpleMethod() // Target - Line 6, Column 17
@@ -562,7 +566,7 @@ public class SimpleClass
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MetricLocation { FilePath = testFile, Line = 6, Column = 17 });
+        return (projectPath, new MetricLocation { FilePath = testFile, Line = 8, Column = 17 });
     }
 
     private async Task<(string ProjectPath, MetricLocation Location)> SetupComplexMethodAsync()
@@ -599,6 +603,8 @@ EndGlobal");
         var complexCode = @"
 using System;
 using System.Collections.Generic;
+
+using Moq;
 
 public class ComplexClass
 {
@@ -666,7 +672,7 @@ public class ComplexClass
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MetricLocation { FilePath = testFile, Line = 7, Column = 17 });
+        return (projectPath, new MetricLocation { FilePath = testFile, Line = 8, Column = 17 });
     }
 
     private async Task<(string ProjectPath, MetricLocation Location)> SetupComplexClassAsync()
@@ -704,6 +710,8 @@ EndGlobal");
 using System;
 using System.Collections.Generic;
 using System.Linq;
+
+using Moq;
 
 public class BusinessLogic // Target - Line 6, Column 14
 {
@@ -759,7 +767,7 @@ public class BusinessLogic // Target - Line 6, Column 14
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MetricLocation { FilePath = testFile, Line = 6, Column = 14 });
+        return (projectPath, new MetricLocation { FilePath = testFile, Line = 7, Column = 14 });
     }
 
     private async Task<(string ProjectPath, MetricLocation Location)> SetupMultiClassFileAsync()
@@ -795,6 +803,8 @@ EndGlobal");
         
         var multiClassCode = @"
 using System;
+
+using Moq;
 
 public class FirstClass
 {
@@ -878,6 +888,8 @@ EndGlobal");
         var mixedCode = @"
 using System;
 using System.Collections.Generic;
+
+using Moq;
 
 public class MixedComplexityClass // Target - Line 5, Column 14
 {
@@ -966,7 +978,7 @@ public class MixedComplexityClass // Target - Line 5, Column 14
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MetricLocation { FilePath = testFile, Line = 5, Column = 14 });
+        return (projectPath, new MetricLocation { FilePath = testFile, Line = 6, Column = 14 });
     }
 
     private async Task<(string ProjectPath, MetricLocation Location)> SetupLargeFileAsync()
@@ -977,6 +989,8 @@ public class MixedComplexityClass // Target - Line 5, Column 14
 using System;
 using System.Collections.Generic;
 using System.Linq;
+
+using Moq;
 
 namespace LargeFile
 {";
@@ -1082,6 +1096,8 @@ EndGlobal");
         var inheritanceCode = @"
 using System;
 
+using Moq;
+
 public abstract class BaseProcessor
 {
     public virtual void Process()
@@ -1136,7 +1152,7 @@ public class DerivedProcessor : BaseProcessor // Target - Line 19, Column 14
         await _workspaceService.LoadSolutionAsync(solutionPath);
         await Task.Delay(1000); // Give time for workspace to fully load and discover files
         
-        return (projectPath, new MetricLocation { FilePath = testFile, Line = 19, Column = 14 });
+        return (projectPath, new MetricLocation { FilePath = testFile, Line = 17, Column = 14 });
     }
 
     public void Dispose()

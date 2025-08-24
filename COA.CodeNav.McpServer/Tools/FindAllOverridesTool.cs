@@ -29,12 +29,13 @@ public class FindAllOverridesTool : McpToolBase<FindAllOverridesParams, FindAllO
     public override string Description => @"Find all overrides of virtual and abstract methods. Shows complete inheritance tree with all implementations and their relationships.";
 
     public FindAllOverridesTool(
+        IServiceProvider serviceProvider,
         ILogger<FindAllOverridesTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

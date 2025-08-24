@@ -29,12 +29,13 @@ public class GetTypeMembersTool : McpToolBase<GetTypeMembersParams, GetTypeMembe
     public override string Description => "Get all members of a type including properties, methods, and fields. Shows exact signatures and accessibility for understanding type structure.";
 
     public GetTypeMembersTool(
+        IServiceProvider serviceProvider,
         ILogger<GetTypeMembersTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

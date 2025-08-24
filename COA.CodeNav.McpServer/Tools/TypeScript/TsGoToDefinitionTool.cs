@@ -24,13 +24,18 @@ public class TsGoToDefinitionTool : McpToolBase<TsGoToDefinitionParams, TsGoToDe
 
     public override string Name => ToolNames.TsGoToDefinition;
     
-    public override string Description => @"Navigate to TypeScript type definitions showing actual implementation structure and properties. Understand interfaces and types before using them.";
+    public override string Description => @"Navigate to TypeScript type definitions showing actual implementation structure and properties. Understand interfaces and types before using them.
+
+Parameters use 1-based indexing:
+- line: 1-based line number (first line is 1)  
+- character: 1-based character position (first character is 1)";
 
     public TsGoToDefinitionTool(
+        IServiceProvider serviceProvider,
         ILogger<TsGoToDefinitionTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -114,9 +119,9 @@ public class TsGoToDefinitionTool : McpToolBase<TsGoToDefinitionParams, TsGoToDe
             // Normalize file path
             var normalizedPath = Path.GetFullPath(parameters.FilePath).Replace('\\', '/');
 
-            // Convert 0-based to 1-based for TSP (TSP uses 1-based line/offset)
-            var tspLine = parameters.Line + 1;
-            var tspOffset = parameters.Character + 1;
+            // Parameters are 1-based, TSP expects 1-based, so no conversion needed
+            var tspLine = parameters.Line;
+            var tspOffset = parameters.Character;
 
             // Get definition from TypeScript server
             var definitionResponse = await handler.GetDefinitionAsync(

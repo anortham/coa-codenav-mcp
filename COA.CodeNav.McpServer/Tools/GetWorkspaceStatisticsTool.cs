@@ -22,10 +22,11 @@ public class GetWorkspaceStatisticsTool : McpToolBase<GetWorkspaceStatisticsPara
     public override string Description => @"Get statistics about loaded workspaces including project count, file count, and resource usage. Useful for monitoring workspace health and troubleshooting performance issues.";
 
     public GetWorkspaceStatisticsTool(
+        IServiceProvider serviceProvider,
         ILogger<GetWorkspaceStatisticsTool> logger,
         MSBuildWorkspaceManager workspaceManager,
         ITokenEstimator tokenEstimator)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceManager = workspaceManager;

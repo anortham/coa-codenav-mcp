@@ -50,6 +50,7 @@ public class InlineMethodToolUnitTests : IDisposable
         var responseBuilder = new InlineMethodResponseBuilder(_mockResponseBuilderLogger.Object, tokenEstimator);
         
         _tool = new InlineMethodTool(
+            TestServiceProvider.Create(),
             _mockLogger.Object,
             _workspaceService,
             _documentService,

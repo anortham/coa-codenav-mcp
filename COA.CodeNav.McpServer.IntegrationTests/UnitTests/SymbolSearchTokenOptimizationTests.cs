@@ -42,7 +42,7 @@ public class SymbolSearchTokenOptimizationTests : IDisposable
         _tokenEstimator = new COA.Mcp.Framework.TokenOptimization.DefaultTokenEstimator();
         
         var responseBuilder = new SymbolSearchResponseBuilder(_mockResponseBuilderLogger.Object, _tokenEstimator);
-        _tool = new SymbolSearchTool(_mockLogger.Object, _workspaceService, responseBuilder, _tokenEstimator, null);
+        _tool = new SymbolSearchTool(TestServiceProvider.Create(), _mockLogger.Object, _workspaceService, responseBuilder, _tokenEstimator, null);
     }
     
     [Fact]

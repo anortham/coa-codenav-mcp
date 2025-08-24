@@ -31,12 +31,13 @@ public class RenameSymbolTool : McpToolBase<RenameSymbolParams, RenameSymbolTool
     public override string Description => "Safely rename symbols across your entire solution. Updates all references automatically with conflict detection and preview mode.";
     
     public RenameSymbolTool(
+        IServiceProvider serviceProvider,
         ILogger<RenameSymbolTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

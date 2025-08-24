@@ -6,7 +6,9 @@ using COA.CodeNav.McpServer.Models;
 using COA.CodeNav.McpServer.Services.TypeScript;
 using COA.CodeNav.McpServer.Tools.TypeScript;
 using COA.Mcp.Framework.TokenOptimization;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Moq;
 using Xunit;
 using Xunit.Abstractions;
 using FluentAssertions;
@@ -37,7 +39,7 @@ public class TsCallHierarchyToolTests : IDisposable
         _compilerManager = new TypeScriptCompilerManager(loggerFactory.CreateLogger<TypeScriptCompilerManager>());
         _workspaceService = new TypeScriptWorkspaceService(loggerFactory.CreateLogger<TypeScriptWorkspaceService>(), _compilerManager);
         _tokenEstimator = new DefaultTokenEstimator();
-        _tool = new TsCallHierarchyTool(_logger, _workspaceService, _compilerManager, _tokenEstimator);
+        _tool = new TsCallHierarchyTool(TestServiceProvider.Create(), _logger, _workspaceService, _compilerManager, _tokenEstimator);
         
         _testProjectPath = @"C:\source\COA CodeNav MCP\ts-test-project";
     }

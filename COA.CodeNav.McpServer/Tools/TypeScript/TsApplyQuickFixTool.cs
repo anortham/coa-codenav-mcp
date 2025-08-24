@@ -37,16 +37,21 @@ public class TsApplyQuickFixTool : McpToolBase<TsApplyQuickFixParams, TsApplyQui
     public override string Name => ToolNames.TsApplyQuickFix;
     public override ToolCategory Category => ToolCategory.Refactoring;
     
-    public override string Description => @"Apply TypeScript compiler quick fixes instantly. One-click solutions for suggested fixes like adding missing declarations or imports.";
+    public override string Description => @"Apply TypeScript compiler quick fixes instantly. One-click solutions for suggested fixes like adding missing declarations or imports.
+
+Parameters use 1-based indexing:
+- line: 1-based line number (first line is 1)  
+- character: 1-based character position (first character is 1)";
 
     public TsApplyQuickFixTool(
+        IServiceProvider serviceProvider,
         ILogger<TsApplyQuickFixTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null,
         TsApplyQuickFixResponseBuilder? responseBuilder = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -101,12 +106,12 @@ public class TsApplyQuickFixTool : McpToolBase<TsApplyQuickFixParams, TsApplyQui
             // Get current file content
             var originalContent = await File.ReadAllTextAsync(parameters.FilePath, cancellationToken);
 
-            // Normalize file path and convert to 1-based coordinates for TSP
+            // Normalize file path - parameters are already 1-based, TSP expects 1-based, so no conversion needed
             var normalizedPath = Path.GetFullPath(parameters.FilePath).Replace('\\', '/');
-            var tspLine = parameters.Line + 1;
-            var tspOffset = parameters.Character + 1;
-            var endTspLine = (parameters.EndLine ?? parameters.Line) + 1;
-            var endTspOffset = (parameters.EndCharacter ?? parameters.Character) + 1;
+            var tspLine = parameters.Line;
+            var tspOffset = parameters.Character;
+            var endTspLine = parameters.EndLine ?? parameters.Line;
+            var endTspOffset = parameters.EndCharacter ?? parameters.Character;
 
             // Get available code fixes at the position
             var codeFixesResponse = await handler.GetCodeFixesAsync(

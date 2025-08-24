@@ -33,12 +33,13 @@ public class FormatDocumentTool : McpToolBase<FormatDocumentParams, FormatDocume
     public override string Description => @"Format code according to project settings and style guidelines ensuring consistent indentation, spacing, and organization.";
     
     public FormatDocumentTool(
+        IServiceProvider serviceProvider,
         ILogger<FormatDocumentTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _tokenEstimator = tokenEstimator;

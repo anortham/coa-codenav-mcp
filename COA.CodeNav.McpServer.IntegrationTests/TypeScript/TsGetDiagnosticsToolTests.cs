@@ -310,6 +310,7 @@ public class TsGetDiagnosticsToolTests
         // Create tool with response builder
         var responseBuilder = _serviceProvider.GetRequiredService<TsDiagnosticsResponseBuilder>();
         var tool = new TsGetDiagnosticsTool(
+            _serviceProvider,
             _serviceProvider.GetRequiredService<ILogger<TsGetDiagnosticsTool>>(),
             _workspaceService,
             _serviceProvider.GetRequiredService<TypeScriptLanguageService>(),

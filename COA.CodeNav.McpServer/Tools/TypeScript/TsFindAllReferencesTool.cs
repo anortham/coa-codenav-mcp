@@ -26,13 +26,18 @@ public class TsFindAllReferencesTool : McpToolBase<TsFindAllReferencesParams, Ts
 
     public override string Name => ToolNames.TsFindAllReferences;
     
-    public override string Description => @"Find all TypeScript usages across the codebase for impact analysis before modifying interfaces or public functions.";
+    public override string Description => @"Find all TypeScript usages across the codebase for impact analysis before modifying interfaces or public functions.
+
+Parameters use 1-based indexing:
+- line: 1-based line number (first line is 1)  
+- character: 1-based character position (first character is 1)";
 
     public TsFindAllReferencesTool(
+        IServiceProvider serviceProvider,
         ILogger<TsFindAllReferencesTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -79,9 +84,9 @@ public class TsFindAllReferencesTool : McpToolBase<TsFindAllReferencesParams, Ts
             // Normalize file path
             var normalizedPath = Path.GetFullPath(parameters.FilePath).Replace('\\', '/');
 
-            // Convert 0-based to 1-based for TSP
-            var tspLine = parameters.Line + 1;
-            var tspOffset = parameters.Character + 1;
+            // Parameters are 1-based, TSP expects 1-based, so no conversion needed
+            var tspLine = parameters.Line;
+            var tspOffset = parameters.Character;
 
             // Get references from TypeScript server
             var referencesResponse = await handler.GetReferencesAsync(

@@ -1,0 +1,1 @@
+Testing if hooks work after restart - Second attempt after user restart

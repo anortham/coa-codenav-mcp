@@ -32,12 +32,13 @@ public class TraceCallStackTool : McpToolBase<TraceCallStackParams, TraceCallSta
     public override string Description => @"Trace execution paths through code to understand complete call chains. Shows how methods connect from entry points to implementations for debugging and impact analysis.";
 
     public TraceCallStackTool(
+        IServiceProvider serviceProvider,
         ILogger<TraceCallStackTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

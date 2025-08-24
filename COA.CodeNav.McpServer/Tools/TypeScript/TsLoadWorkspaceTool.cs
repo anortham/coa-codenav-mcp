@@ -37,13 +37,14 @@ public class TsLoadWorkspaceTool : McpToolBase<TsLoadWorkspaceParams, TsLoadWork
     public override string Description => "Load multiple TypeScript projects from a workspace for cross-project analysis. Great for monorepos with shared libraries and multiple applications.";
 
     public TsLoadWorkspaceTool(
+        IServiceProvider serviceProvider,
         ILogger<TsLoadWorkspaceTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null,
         TsLoadWorkspaceResponseBuilder? responseBuilder = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

@@ -20,49 +20,5 @@
       "LS"
     ],
     "deny": []
-  },
-  "hooks": {
-    "SessionStart": [
-      {
-        "source": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "uv run .claude/hooks/session_start_codenav.py"
-          }
-        ]
-      },
-      {
-        "source": "resume",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "uv run .claude/hooks/session_start_codenav.py"
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "uv run .claude/hooks/guard_rails_pre.py"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "csharp_load_solution|csharp_load_project|csharp_hover|csharp_goto_definition|ts_hover|ts_goto_definition",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "uv run .claude/hooks/guard_rails_post.py"
-          }
-        ]
-      }
-    ]
   }
 }

@@ -41,13 +41,14 @@ public class TsOrganizeImportsTool : McpToolBase<TsOrganizeImportsParams, TsOrga
     public override string Description => @"Organize and sort TypeScript import statements automatically. Groups imports, removes unused ones, and applies consistent formatting.";
 
     public TsOrganizeImportsTool(
+        IServiceProvider serviceProvider,
         ILogger<TsOrganizeImportsTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null,
         TsOrganizeImportsResponseBuilder? responseBuilder = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

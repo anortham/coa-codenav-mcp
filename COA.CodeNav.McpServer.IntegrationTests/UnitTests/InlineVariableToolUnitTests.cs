@@ -50,6 +50,7 @@ public class InlineVariableToolUnitTests : IDisposable
         var responseBuilder = new InlineVariableResponseBuilder(_mockResponseBuilderLogger.Object, tokenEstimator);
         
         _tool = new InlineVariableTool(
+            TestServiceProvider.Create(),
             _mockLogger.Object,
             _workspaceService,
             _documentService,

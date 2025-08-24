@@ -4,7 +4,9 @@ using System.Threading.Tasks;
 using COA.CodeNav.McpServer.Infrastructure.TypeScript;
 using COA.CodeNav.McpServer.Services.TypeScript;
 using COA.CodeNav.McpServer.Tools.TypeScript;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Moq;
 using Xunit;
 using Xunit.Abstractions;
 using FluentAssertions;
@@ -33,7 +35,7 @@ public class TsGoToDefinitionToolTests : IDisposable
         _logger = loggerFactory.CreateLogger<TsGoToDefinitionTool>();
         _compilerManager = new TypeScriptCompilerManager(loggerFactory.CreateLogger<TypeScriptCompilerManager>());
         _workspaceService = new TypeScriptWorkspaceService(loggerFactory.CreateLogger<TypeScriptWorkspaceService>(), _compilerManager);
-        _tool = new TsGoToDefinitionTool(_logger, _workspaceService, _compilerManager);
+        _tool = new TsGoToDefinitionTool(TestServiceProvider.Create(), _logger, _workspaceService, _compilerManager);
         
         _testProjectPath = @"C:\source\COA CodeNav MCP\ts-test-project";
     }

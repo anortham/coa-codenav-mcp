@@ -34,13 +34,14 @@ public class AddMissingUsingsTool : McpToolBase<AddMissingUsingsParams, AddMissi
     public override string Description => "Automatically add missing using statements for unresolved types. Fixes 'type not found' errors by importing the correct namespaces.";
     
     public AddMissingUsingsTool(
+        IServiceProvider serviceProvider,
         ILogger<AddMissingUsingsTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         CodeFixService codeFixService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;

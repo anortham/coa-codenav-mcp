@@ -39,12 +39,13 @@ When results are truncated, focus on files with the most references first for ef
     public override ToolCategory Category => ToolCategory.Query;
 
     public FindAllReferencesTool(
+        IServiceProvider serviceProvider,
         ILogger<FindAllReferencesTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         FindAllReferencesResponseBuilder responseBuilder,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -100,9 +101,8 @@ When results are truncated, focus on files with the most references first for ef
                 startTime);
         }
 
-        // Find symbol at position
-        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
-            semanticModel, position, document.Project.Solution.Workspace, cancellationToken);
+        // Find symbol at position with tolerance for positional inaccuracies
+        var symbol = await FindSymbolWithToleranceAsync(semanticModel, document, position, cancellationToken);
         
         if (symbol == null)
         {
@@ -224,6 +224,69 @@ When results are truncated, focus on files with the most references first for ef
             },
             Meta = new ToolExecutionMetadata { ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" }
         };
+    }
+
+    /// <summary>
+    /// Find symbol at position with tolerance for slight positional inaccuracies from AI agents
+    /// Tries multiple nearby positions following cclsp pattern
+    /// </summary>
+    private async Task<ISymbol?> FindSymbolWithToleranceAsync(
+        SemanticModel semanticModel, 
+        Document document, 
+        int position, 
+        CancellationToken cancellationToken)
+    {
+        // Try exact position first
+        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
+            semanticModel, position, document.Project.Solution.Workspace, cancellationToken);
+        
+        if (symbol != null)
+        {
+            _logger.LogDebug("Found symbol at exact position {Position}: {Symbol}", position, symbol.ToDisplayString());
+            return symbol;
+        }
+
+        // Get text and line info for position tolerance
+        var text = await document.GetTextAsync(cancellationToken);
+        var line = text.Lines.GetLineFromPosition(position);
+        var lineStart = line.Start;
+        var lineEnd = line.End;
+        var columnInLine = position - lineStart;
+
+        // Try adjacent positions within the same line (cclsp pattern: try 4 combinations)
+        var positionsToTry = new List<int>();
+        
+        // Previous character (if not at start of line)
+        if (columnInLine > 0)
+            positionsToTry.Add(position - 1);
+            
+        // Next character (if not at end of line)
+        if (position < lineEnd)
+            positionsToTry.Add(position + 1);
+            
+        // Two positions back (if possible)
+        if (columnInLine > 1)
+            positionsToTry.Add(position - 2);
+
+        // Try each fallback position
+        foreach (var tryPosition in positionsToTry)
+        {
+            _logger.LogDebug("Trying fallback position {Position} (offset {Offset} from original)", 
+                tryPosition, tryPosition - position);
+                
+            symbol = await SymbolFinder.FindSymbolAtPositionAsync(
+                semanticModel, tryPosition, document.Project.Solution.Workspace, cancellationToken);
+            
+            if (symbol != null)
+            {
+                _logger.LogDebug("Found symbol at fallback position {Position} (offset {Offset}): {Symbol}", 
+                    tryPosition, tryPosition - position, symbol.ToDisplayString());
+                return symbol;
+            }
+        }
+
+        _logger.LogDebug("No symbol found at position {Position} or any fallback positions", position);
+        return null;
     }
     
 }

@@ -1,6 +1,8 @@
 using COA.CodeNav.McpServer.Tools;
 using COA.CodeNav.McpServer.IntegrationTests.Helpers;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 
 namespace COA.CodeNav.McpServer.IntegrationTests.Tools
 {
@@ -15,7 +17,7 @@ namespace COA.CodeNav.McpServer.IntegrationTests.Tools
         public void LoadSolutionTool_ShouldHaveCorrectName()
         {
             // This is a simple schema test that doesn't require actual Roslyn setup
-            var tool = new LoadSolutionTool(null!, null!, null!, null!);
+            var tool = new LoadSolutionTool(TestServiceProvider.Create(), null!, null!, null!, null!);
             
             tool.Name.Should().Be("csharp_load_solution");
             tool.Description.Should().NotBeNullOrEmpty();

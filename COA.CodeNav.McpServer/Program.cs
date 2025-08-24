@@ -5,7 +5,9 @@ using COA.CodeNav.McpServer.Services;
 using COA.CodeNav.McpServer.Services.TypeScript;
 using COA.CodeNav.McpServer.Tools;
 using COA.CodeNav.McpServer.Tools.TypeScript;
+using COA.Mcp.Framework.Configuration;
 using COA.Mcp.Framework.Interfaces;
+using COA.Mcp.Framework.Registration;
 using COA.Mcp.Framework.Resources;
 using COA.Mcp.Framework.Server;
 using COA.Mcp.Framework.TokenOptimization;
@@ -65,6 +67,17 @@ builder.Services.Configure<COA.CodeNav.McpServer.Configuration.WorkspaceManagerC
     configuration.GetSection("WorkspaceManager"));
 builder.Services.Configure<COA.CodeNav.McpServer.Configuration.StartupConfiguration>(
     configuration.GetSection("Startup"));
+
+// Add advanced enforcement services (Type Verification + TDD)
+builder.Services.AddAdvancedEnforcement(
+    typeVerification =>
+    {
+        configuration.GetSection("TypeVerification").Bind(typeVerification);
+    },
+    tddEnforcement =>
+    {
+        configuration.GetSection("TddEnforcement").Bind(tddEnforcement);
+    });
 
 // Register core services
 builder.Services.AddSingleton<COA.CodeNav.McpServer.Utilities.SolutionFinder>();

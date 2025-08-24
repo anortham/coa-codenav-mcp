@@ -24,13 +24,18 @@ public class TsFindImplementationsTool : McpToolBase<TsFindImplementationsParams
 
     public override string Name => ToolNames.TsFindImplementations;
     
-    public override string Description => @"Find all TypeScript interface implementations and abstract method overrides to discover concrete classes that implement interfaces.";
+    public override string Description => @"Find all TypeScript interface implementations and abstract method overrides to discover concrete classes that implement interfaces.
+
+Parameters use 1-based indexing:
+- line: 1-based line number (first line is 1)  
+- character: 1-based character position (first character is 1)";
 
     public TsFindImplementationsTool(
+        IServiceProvider serviceProvider,
         ILogger<TsFindImplementationsTool> logger,
         TypeScriptWorkspaceService workspaceService,
         TypeScriptCompilerManager compilerManager)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -114,9 +119,9 @@ public class TsFindImplementationsTool : McpToolBase<TsFindImplementationsParams
             // Normalize file path
             var normalizedPath = Path.GetFullPath(parameters.FilePath).Replace('\\', '/');
 
-            // Convert 0-based to 1-based for TSP (TSP uses 1-based line/offset)
-            var tspLine = parameters.Line + 1;
-            var tspOffset = parameters.Character + 1;
+            // Parameters are 1-based, TSP expects 1-based, so no conversion needed
+            var tspLine = parameters.Line;
+            var tspOffset = parameters.Character;
 
             // Get implementations from TypeScript server
             var implementationsResponse = await handler.GetImplementationAsync(

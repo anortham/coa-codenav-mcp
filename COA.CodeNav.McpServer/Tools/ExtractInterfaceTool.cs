@@ -36,13 +36,14 @@ public class ExtractInterfaceTool : McpToolBase<ExtractInterfaceParams, ExtractI
     public override ToolCategory Category => ToolCategory.Refactoring;
     
     public ExtractInterfaceTool(
+        IServiceProvider serviceProvider,
         ILogger<ExtractInterfaceTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         ExtractInterfaceResponseBuilder responseBuilder,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _tokenEstimator = tokenEstimator;
