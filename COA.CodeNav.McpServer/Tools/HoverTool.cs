@@ -12,6 +12,7 @@ using COA.Mcp.Framework.Attributes;
 using COA.Mcp.Framework.TokenOptimization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
 
 namespace COA.CodeNav.McpServer.Tools;
@@ -31,12 +32,13 @@ public class HoverTool : McpToolBase<HoverParams, HoverToolResult>
     public override string Description => "Get detailed information about a symbol at a specific position. Shows method signatures, parameter types, return values, and documentation.";
 
     public HoverTool(
+        IServiceProvider serviceProvider,
         ILogger<HoverTool> logger,
         RoslynWorkspaceService workspaceService,
         DocumentService documentService,
         ITokenEstimator tokenEstimator,
         AnalysisResultResourceProvider? resourceProvider = null)
-        : base(logger)
+        : base(serviceProvider, logger)
     {
         _logger = logger;
         _workspaceService = workspaceService;
@@ -146,71 +148,38 @@ public class HoverTool : McpToolBase<HoverParams, HoverToolResult>
             };
         }
 
-        // Get the syntax node at the position
-        var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
-        var root = await syntaxTree!.GetRootAsync(cancellationToken);
-        var node = root.FindToken(position).Parent;
-        
-        if (node == null)
-        {
-            return new HoverToolResult
-            {
-                Success = false,
-                Message = "No syntax node found at position",
-                Error = new ErrorInfo
-                {
-                    Code = "NO_NODE_AT_POSITION",
-                    Message = "No syntax node found at position",
-                    Recovery = new RecoveryInfo
-                    {
-                        Steps = new[] { "Ensure the position is within a valid code element" }
-                    }
-                },
-                Query = new QueryInfo
-                {
-                    FilePath = parameters.FilePath,
-                    Position = new PositionInfo { Line = parameters.Line, Column = parameters.Column }
-                },
-                Meta = new ToolExecutionMetadata 
-                { 
-                    ExecutionTime = $"{(DateTime.UtcNow - startTime).TotalMilliseconds:F2}ms" 
-                }
-            };
-        }
-
-        // Get symbol info
-        var symbolInfo = semanticModel.GetSymbolInfo(node, cancellationToken);
-        var symbol = symbolInfo.Symbol;
+        // Find symbol at position using the robust approach from other tools
+        _logger.LogDebug("Searching for symbol at position {Position}", position);
+        var symbol = await SymbolFinder.FindSymbolAtPositionAsync(
+            semanticModel, position, document.Project.Solution.Workspace, cancellationToken);
 
         if (symbol == null)
         {
-            // Try to get type info if symbol info is null
-            var typeInfo = semanticModel.GetTypeInfo(node, cancellationToken);
-            if (typeInfo.Type != null)
-            {
-                symbol = typeInfo.Type;
-            }
-        }
-
-        if (symbol == null)
-        {
-            _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}", 
-                parameters.Line, parameters.Column, parameters.FilePath);
+            // Get diagnostic information about what's at the position
+            var syntaxTree = await document.GetSyntaxTreeAsync(cancellationToken);
+            var root = await syntaxTree!.GetRootAsync(cancellationToken);
+            var token = root.FindToken(position);
+            var tokenText = token.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None) ? "<none>" : token.ToString();
+            
+            _logger.LogDebug("No symbol found at position {Line}:{Column} in {FilePath}. Token at position: '{TokenText}' ({TokenKind})", 
+                parameters.Line, parameters.Column, parameters.FilePath, tokenText, token.RawKind);
+                
             return new HoverToolResult
             {
                 Success = false,
-                Message = "No symbol found at the specified position",
+                Message = $"No symbol found at the specified position. Found token: '{tokenText}' ({token.RawKind})",
                 Error = new ErrorInfo
                 {
                     Code = ErrorCodes.NO_SYMBOL_AT_POSITION,
-                    Message = "No symbol found at the specified position",
+                    Message = $"No symbol found at the specified position. Found token: '{tokenText}' ({token.RawKind})",
                     Recovery = new RecoveryInfo
                     {
                         Steps = new[]
                         {
                             "Verify the line and column numbers are correct (1-based)",
                             "Ensure the cursor is on a symbol (class, method, property, etc.)",
-                            "Try adjusting the column position to the start of the symbol name"
+                            "Try adjusting the column position to the start of the symbol name",
+                            $"Current position shows token: '{tokenText}' of type {token.RawKind}"
                         }
                     }
                 },
@@ -230,7 +199,7 @@ public class HoverTool : McpToolBase<HoverParams, HoverToolResult>
             symbol.ToDisplayString(), symbol.Kind);
 
         // Build hover information
-        var hoverInfo = BuildHoverInfo(symbol, node, semanticModel);
+        var hoverInfo = BuildHoverInfo(symbol, null!, semanticModel);
         var nextActions = GenerateNextActions(symbol, parameters);
         var insights = GenerateInsights(symbol);
 
@@ -306,7 +275,7 @@ public class HoverTool : McpToolBase<HoverParams, HoverToolResult>
         // Add parameter info for methods
         if (symbol is IMethodSymbol method)
         {
-            info.Parameters = method.Parameters.Select(p => new ParameterInfo
+            info.Parameters = method.Parameters.Select(p => new COA.CodeNav.McpServer.Models.ParameterInfo
             {
                 Name = p.Name,
                 Type = p.Type.ToDisplayString(),
